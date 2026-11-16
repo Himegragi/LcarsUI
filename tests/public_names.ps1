@@ -37,32 +37,52 @@ foreach ($header in $Headers) {
     $candidates = [Collections.Generic.List[object]]::new()
     $pendingClass = $null
     $nextClass = 0
-    $standard = $false
+    $standardTokens = @{}
+    $angleDepth = 0
     for ($i = 0; $i -lt $tokens.Count; ++$i) {
         $token = $tokens[$i].Value
         if ($token -eq 'class' -or $token -eq 'struct') {
             # enum class is not a class access scope.
-            if ($i -eq 0 -or $tokens[$i - 1].Value -ne 'enum') {
+            if ($angleDepth -eq 0 -and ($i -eq 0 -or $tokens[$i - 1].Value -ne 'enum')) {
                 $pendingClass = if ($token -eq 'class') { 'private' } else { 'public' }
             }
         } elseif ($token -eq '{') {
             $classId = if ($pendingClass) { $nextClass += 1; $nextClass } else { 0 }
             $scopes.Add(@{ Access = $pendingClass; ClassId = $classId })
             $pendingClass = $null
+            $angleDepth = 0
         } elseif ($token -eq '}') {
             if ($scopes.Count) { $scopes.RemoveAt($scopes.Count - 1) }
-        } elseif ($token -eq ';' -or $token -eq '>') {
+            $angleDepth = 0
+        } elseif ($token -eq ';') {
             $pendingClass = $null
+            $angleDepth = 0
+        } elseif ($token -eq '<') {
+            $angleDepth += 1
+        } elseif ($token -eq '>') {
+            $angleDepth = [Math]::Max(0, $angleDepth - 1)
         } elseif ($token -in @('public', 'private', 'protected') -and
                   $i + 1 -lt $tokens.Count -and $tokens[$i + 1].Value -eq ':' -and $scopes.Count) {
             $scopes[$scopes.Count - 1].Access = $token
         }
-        if ($token -eq 'std') { $standard = $true; continue }
-        if ($token -eq '::') { continue }
-        $isStandard = $standard -and $i -gt 0 -and $tokens[$i - 1].Value -eq '::'
-        if (-not $isStandard) { $standard = $false }
+        $isStandard = $token -eq 'std'
+        if ($i -ge 2 -and $tokens[$i - 1].Value -eq '::') {
+            $qualifier = $i - 2
+            # std::vector<std::pair<int, int>>::size_type is still a std name.
+            if ($tokens[$qualifier].Value -eq '>') {
+                $depth = 1
+                $qualifier -= 1
+                while ($qualifier -ge 0 -and $depth -gt 0) {
+                    if ($tokens[$qualifier].Value -eq '>') { $depth += 1 }
+                    if ($tokens[$qualifier].Value -eq '<') { $depth -= 1 }
+                    $qualifier -= 1
+                }
+            }
+            $isStandard = $isStandard -or $standardTokens.ContainsKey($qualifier)
+        }
+        if ($isStandard) { $standardTokens[$i] = $true; continue }
         if ($token -notmatch '_' -or $token -notmatch '^[a-zA-Z_][a-zA-Z_0-9]*$' -or
-            $token -cmatch '^[A-Z][A-Z_0-9]*$' -or $macros.ContainsKey($token) -or $isStandard) { continue }
+            $macros.ContainsKey($token) -or $isStandard) { continue }
         if ($token -in @('char16_t', 'char32_t', 'wchar_t', 'static_assert', 'static_cast',
                         'const_cast', 'dynamic_cast', 'reinterpret_cast', 'thread_local')) { continue }
         # A member access is an expression, never the name being declared. This

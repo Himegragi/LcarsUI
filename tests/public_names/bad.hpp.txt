@@ -3,6 +3,7 @@ struct Fixture {
     void deliberately_bad();
     int component_id;
     static constexpr int default_limit = 4;
+    static constexpr int BAD_CONSTANT = 4;
     enum class Kind { radio_group };
     int publicTrailing_;
 private:
