@@ -347,6 +347,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #100 field and text-field public names | none: host and layout edits are pure renames, and the unused appearance method is removed; the consumer checks the new names and rejects the old ones, with all existing CTests and `demo_render_compare` retained |
 | #102 shared snapshot fields | none: owning `CommonState` extraction and complete snapshot equality only; no host or layout changes, and option-node values are preserved for #106; `snapshots` and `demo_render_compare` cover the refactor |
 | #101 aligned component and semantic snapshots (0.4.0) | `-Only uia,axe,demo-uia`: the UIA adapter combines item and parent `IsEnabled` and propagates parent availability events; `snapshots` is the core twin. No `desktop_host.cpp` or layout change. Check right-click and keyboard menus once with real input; component `focused` is false while the menu owns input. |
+| #106 option snapshots describe their own state (0.4.0) | `-Only uia,axe,demo-uia`: options no longer inherit parent descriptions, errors, labels or selection requirements; disabled list rows are not keyboard-focusable. `option_nodes` is the core twin. No host/provider or layout code changes; `tests/uia/verify.ps1` requires the two new UIA09 property checks. |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
