@@ -913,7 +913,7 @@ public:
             s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
         }
     }
-    void describe_admissions(const UiState& ui, const Component& c, const ComponentSnapshot&, std::vector<Admission>& out) const override {
+    void describe_admissions(const UiState& ui, const Component& c, const ComponentSnapshot& s, std::vector<Admission>& out) const override {
         auto& bools = UiState::Internals::bools(ui);
         auto it = bools.find(c.id);
         if (!s.executing && (it == bools.end() || it->second.writable())) out.push_back(Admission::activate);

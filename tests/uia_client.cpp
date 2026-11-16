@@ -14,8 +14,9 @@ public:
     LONG expected_value = ToggleState_Off;
     bool double_value = false; double expected_double = 0;
     bool string_value = false; std::wstring expected_string;
+    bool bool_value = false; bool expected_bool = false;
     HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement*, PROPERTYID id, VARIANT value) override {
-        if (id == expected && ((string_value && value.vt == VT_BSTR && value.bstrVal && expected_string == value.bstrVal) || (!string_value && !double_value && value.vt == VT_I4 && value.lVal == expected_value) || (double_value && value.vt == VT_R8 && value.dblVal == expected_double))) SetEvent(received);
+        if (id == expected && ((string_value && value.vt == VT_BSTR && value.bstrVal && expected_string == value.bstrVal) || (!string_value && !double_value && !bool_value && value.vt == VT_I4 && value.lVal == expected_value) || (double_value && value.vt == VT_R8 && value.dblVal == expected_double) || (bool_value && value.vt == VT_BOOL && (value.boolVal != VARIANT_FALSE) == expected_bool))) SetEvent(received);
         return S_OK;
     }
 };
@@ -509,6 +510,25 @@ int wmain(int argc, wchar_t** argv) {
         if (SUCCEEDED(selection_subscribed)) automation->RemoveAutomationEventHandler(UIA_SelectionItem_ElementSelectedEventId, focus_option, selection_events);
         selection_events->Release();
         radio = radio && SUCCEEDED(invoke_id(automation, root, L"fixture.offline_disabled")) && select_id(automation, mode, L"offline") == static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED);
+        // #101: semantic enabled is the item's own setting; UIA combines it with its parent,
+        // and parent transitions still raise availability events on enabled items.
+        auto enabled_events = new PropertyEvents();
+        enabled_events->expected = UIA_IsEnabledPropertyId; enabled_events->bool_value = true;
+        PROPERTYID enabled_property = UIA_IsEnabledPropertyId;
+        const auto enabled_subscribed = focus_option ? automation->AddPropertyChangedEventHandlerNativeArray(focus_option, TreeScope_Element, nullptr, enabled_events, &enabled_property, 1) : E_FAIL;
+        BOOL item_enabled = TRUE;
+        radio = radio && SUCCEEDED(enabled_subscribed) && SUCCEEDED(invoke_id(automation, root, L"fixture.mode_disabled")) &&
+            SUCCEEDED(focus_option->get_CurrentIsEnabled(&item_enabled)) && !item_enabled &&
+            WaitForSingleObject(enabled_events->received, 2000) == WAIT_OBJECT_0;
+        ResetEvent(enabled_events->received); enabled_events->expected_bool = true;
+        radio = radio && SUCCEEDED(invoke_id(automation, root, L"fixture.mode_enabled")) &&
+            SUCCEEDED(focus_option->get_CurrentIsEnabled(&item_enabled)) && item_enabled &&
+            WaitForSingleObject(enabled_events->received, 2000) == WAIT_OBJECT_0;
+        auto offline = find_id(automation, mode, L"offline");
+        radio = radio && offline && SUCCEEDED(offline->get_CurrentIsEnabled(&item_enabled)) && !item_enabled;
+        if (offline) offline->Release();
+        if (SUCCEEDED(enabled_subscribed)) automation->RemovePropertyChangedEventHandler(focus_option, enabled_events);
+        enabled_events->Release();
         std::cout << "UIA04 radio selection: " << (radio ? "PASS" : "FAIL") << '\n'; pass &= radio;
         if (select_item) select_item->Release(); if (focus_option) focus_option->Release();
         if (selected) selected->Release(); if (selection) selection->Release(); if (mode) mode->Release();

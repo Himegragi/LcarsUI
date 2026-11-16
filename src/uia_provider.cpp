@@ -109,6 +109,14 @@ struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
         }
     }
     Provider* provider(const NodeRef& ref);
+    bool effective_enabled(const NodeSnapshot& node) const {
+        if (!node.enabled) return false;
+        if (node.ref.item) {
+            const auto parent = ui->semantics().get({node.ref.id});
+            return parent && parent->enabled;
+        }
+        return true;
+    }
     void observe();
 };
 namespace {
@@ -200,7 +208,7 @@ public:
             else if (id == UIA_AccessKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->access_key); }
             else if (id == UIA_ControlTypePropertyId) { v.vt=VT_I4; v.lVal=control_type(n->role); }
             else if (id == UIA_IsEnabledPropertyId || id == UIA_IsKeyboardFocusablePropertyId || id == UIA_HasKeyboardFocusPropertyId || id == UIA_IsOffscreenPropertyId || id == UIA_IsDataValidForFormPropertyId || id == UIA_IsControlElementPropertyId || id == UIA_IsContentElementPropertyId) {
-                v.vt=VT_BOOL; bool b = id == UIA_IsEnabledPropertyId ? n->enabled : id == UIA_IsKeyboardFocusablePropertyId ? n->focusable : id == UIA_HasKeyboardFocusPropertyId ? n->focused && ::GetFocus() == ctx->hwnd : id == UIA_IsOffscreenPropertyId ? !n->bounds : id == UIA_IsDataValidForFormPropertyId ? !n->invalid : true; v.boolVal=b ? VARIANT_TRUE : VARIANT_FALSE;
+                v.vt=VT_BOOL; bool b = id == UIA_IsEnabledPropertyId ? ctx->effective_enabled(*n) : id == UIA_IsKeyboardFocusablePropertyId ? n->focusable : id == UIA_HasKeyboardFocusPropertyId ? n->focused && ::GetFocus() == ctx->hwnd : id == UIA_IsOffscreenPropertyId ? !n->bounds : id == UIA_IsDataValidForFormPropertyId ? !n->invalid : true; v.boolVal=b ? VARIANT_TRUE : VARIANT_FALSE;
             }
             else if (id == UIA_LabeledByPropertyId && !n->labelled_by.empty()) { v.vt=VT_UNKNOWN; v.punkVal=static_cast<IRawElementProviderSimple*>(ctx->provider(n->labelled_by.front())); v.punkVal->AddRef(); }
             else if (id == UIA_DescribedByPropertyId && !n->described_by.empty()) {
@@ -1191,12 +1199,29 @@ void UiaBridge::Impl::observe() {
         }
         if (event.kind == SemanticEventKind::property_changed && event.property == "enabled") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
-            auto p = ctx->provider(event.ref); p->AddRef(); bool enabled = n->enabled;
-            ctx->events->post([p, enabled] {
-                VARIANT before, after; VariantInit(&before); VariantInit(&after);
-                before.vt = after.vt = VT_BOOL; before.boolVal = enabled ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = enabled ? VARIANT_TRUE : VARIANT_FALSE;
-                UiaRaiseAutomationPropertyChangedEvent(p, UIA_IsEnabledPropertyId, before, after);
-                p->Release(); });
+            auto raise = [&](const NodeSnapshot& node, bool parent_changed = false) {
+                // A setting changed under a disabled parent leaves UIA's effective state unchanged.
+                if (node.ref.item && !parent_changed) {
+                    auto parent = ctx->ui->semantics().get({node.ref.id});
+                    if (!parent || !parent->enabled) return;
+                }
+                auto p = ctx->provider(node.ref); p->AddRef(); bool enabled = ctx->effective_enabled(node);
+                ctx->events->post([p, enabled] {
+                    VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                    before.vt = after.vt = VT_BOOL; before.boolVal = enabled ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = enabled ? VARIANT_TRUE : VARIANT_FALSE;
+                    UiaRaiseAutomationPropertyChangedEvent(p, UIA_IsEnabledPropertyId, before, after);
+                    p->Release(); });
+            };
+            raise(*n);
+            if (!event.ref.item) {
+                // Semantic item.enabled is its own setting; changing the parent still changes UIA's items.
+                auto children = ctx->ui->semantics().children(event.ref);
+                if (children) for (const auto& ref : *children) if (ref.item) {
+                    auto item = ctx->ui->semantics().get(ref);
+                    if (!item || !item->enabled) continue;
+                    raise(*item, true);
+                }
+            }
         }
         if (event.kind == SemanticEventKind::property_changed && event.property == "value") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n || n->role != Role::text) return;

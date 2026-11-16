@@ -28,7 +28,88 @@ bool same_common_fields(const ComponentSnapshot& a, const NodeSnapshot& b) {
     return fields(a) == fields(b) && range(a) == range(b) && a.verbs == b.verbs;
 }
 
+Query<ComponentSnapshot> describe(const ComponentHandle& handle) {
+    return std::visit([](const auto& h) -> Query<ComponentSnapshot> {
+        if constexpr (requires { h.describe(); }) return h.describe();
+        else return {Status::not_found, {}, {}};
+    }, handle);
+}
+template <class T> Source<T> source(T value) {
+    return {[value] { return value; }, [](std::function<void()>) { return [] {}; }};
+}
+struct Subject { std::string id; ComponentHandle handle; };
+// One public, assembled inventory, including single/multi-line and rich text and attached labels.
+// Drivers change a state once, then run the same checks over every applicable component kind.
+struct World {
+    Ui ui;
+    test::FakeMeasure measure;
+    ScrollState page_scroll;
+    std::vector<Subject> subjects;
+    TextHandle multi;
+    template <class H> H keep(H h) { subjects.push_back({h.describe()->id, h}); return h; }
+    explicit World(bool enabled = true, bool read_only = false) {
+        auto config = [&](std::string id) { return ComponentConfig{.id = std::move(id), .label = u"Fallback", .enabled = enabled}; };
+        auto text_config = config("text"); text_config.read_only = read_only;
+        auto text = keep(ui.add_text(text_config).value.value());
+        text.connect_source(source(std::u16string(u"Single")));
+        text.connect_confirmed([](const auto&) { return Result{}; });
+        auto multi_config = config("multi"); multi_config.multiline = true; multi_config.visible_lines = 2;
+        multi_config.rich = true; multi_config.read_only = read_only;
+        multi = keep(ui.add_text(multi_config).value.value());
+        multi.connect_rich_source(source(RichText{u"a\nb\nc\nd\ne\nf", {{0, 1, true}}}));
+        multi.connect_rich_confirmed([](const auto&) { return Result{}; });
+        auto button = keep(ui.add_button(config("button")).value.value());
+        button.bind([] { return Result{}; });
+        auto label_config = config("label"); label_config.value = u"Displayed"; label_config.vertical_digits = 2;
+        keep(ui.add_label(label_config).value.value());
+        auto box = keep(ui.add_checkbox(config("checkbox")).value.value());
+        box.connect_source(source(true)); box.connect_confirmed([](const auto&) { return Result{}; });
+        const std::vector<OptionItem> options = {{{"a"}, u"Alpha"}, {{"b"}, u"Disabled", false}};
+        auto radio = keep(ui.add_radio_group(config("radio"), options).value.value());
+        radio.connect_source(source(std::optional{OptionValue{"a"}})); radio.connect_confirmed([](const auto&) { return Result{}; });
+        auto slider_config = config("slider"); slider_config.read_only = read_only;
+        auto slider = keep(ui.add_slider(slider_config, {-5, 15, 5}).value.value());
+        slider.connect_source(source(5)); slider.connect_confirmed([](const auto&) { return Result{}; });
+        auto dropdown = keep(ui.add_dropdown(config("dropdown"), options).value.value());
+        dropdown.connect_source(source(std::optional{OptionValue{"a"}})); dropdown.connect_confirmed([](const auto&) { return Result{}; });
+        auto list_config = config("list"); list_config.read_only = read_only;
+        auto list = keep(ui.add_list(list_config, options).value.value());
+        list.connect_source(source(std::optional{OptionValue{"a"}})); list.connect_immediate([](const auto&) { return Result{}; });
+        const std::vector<TabPage> pages = {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Disabled", false, {}}};
+        keep(ui.add_tabs(config("tabs"), pages).value.value());
+        auto progress = keep(ui.add_progress(config("progress")).value.value()); progress.connect_source(source(42));
+        keep(ui.add_navigation_list(config("navigation"), pages, {"a"}).value.value());
+        for (auto role : {LabelKind::name, LabelKind::description, LabelKind::error}) {
+            auto label = config("text.label." + std::to_string(static_cast<int>(role)));
+            label.target = "text"; label.label_kind = role; label.value = u"Attached";
+            keep(ui.add_label(label).value.value());
+        }
+    }
+    layout::Node root() const {
+        std::vector<layout::Node> nodes;
+        for (const auto& s : subjects) if (describe(s.handle)->target.empty()) nodes.push_back(layout::component(s.handle));
+        return layout::scroll(layout::column(std::move(nodes)));
+    }
+    Frame arrange_page(int height = 2400) {
+        return arrange(root(), ui, web_appearance(), measure, 400, height, 1.f, page_scroll);
+    }
+};
+void compare_all(World& w, const char* state) {
+    for (const auto& subject : w.subjects) {
+        const auto context = std::string(state) + "/" + subject.id;
+        const auto component = describe(subject.handle);
+        const auto node = w.ui.semantics().get({subject.id});
+        check(component && node && same_common_fields(*component, *node), (context + ": common fields agree").c_str());
+        for (const auto& option : component->items) {
+            const auto item = w.ui.semantics().get({subject.id, option.value});
+            check(item && item->enabled == option.enabled && item->selected == option.selected && item->invalid == option.invalid,
+                  (context + "/" + option.value.id + ": enabled, selected and invalid agree").c_str());
+        }
+    }
+}
+
 void normal() {
+    World world; compare_all(world, "before_layout"); world.arrange_page(); compare_all(world, "normal");
     Ui ui;
     auto label = ui.add_label({.id = "label", .label = u"Fallback", .value = u"Displayed"}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
@@ -43,9 +124,107 @@ void normal() {
     check(same_common_fields(*field.describe(), *ui.semantics().get({"multi"})), "normal/multi: all common fields agree");
     check(!field.describe()->writing_mode && !field.describe()->vertical_digits &&
           field.describe()->scroll == std::optional{TextScroll{0, 2, 4}}, "normal/multi: only labels have writing settings, scrolling is one value");
+    auto name = ui.add_label({.id = "label.name", .value = u"Other", .target = "label", .label_kind = LabelKind::name}).value.value();
+    check(label.describe()->name == u"Displayed" && ui.semantics().get({"label"})->name == u"Displayed",
+          "normal/label: an association does not replace the label's own displayed name");
+}
+void disabled() {
+    World w(false); w.arrange_page(); compare_all(w, "disabled");
+    for (const auto& subject : w.subjects) {
+        const auto snapshot = describe(subject.handle);
+        check(!snapshot->enabled && snapshot->verbs.empty(), ("disabled/" + subject.id + ": no component actions").c_str());
+        for (const auto& option : snapshot->items)
+            check(w.ui.semantics().get({subject.id, option.value})->verbs.empty(), "disabled: item keeps its setting but offers no action");
+    }
+}
+void read_only() {
+    World w(true, true); w.arrange_page(); compare_all(w, "read_only");
+    for (const auto& subject : w.subjects) {
+        const auto snapshot = describe(subject.handle);
+        // Applicability follows the typed handle/configuration capabilities, including read-only progress.
+        const bool applicable = std::holds_alternative<TextHandle>(subject.handle) ||
+                                std::holds_alternative<SliderHandle>(subject.handle) ||
+                                std::holds_alternative<ListHandle>(subject.handle) ||
+                                std::holds_alternative<ProgressHandle>(subject.handle);
+        if (applicable) check(snapshot->read_only, ("read_only/" + subject.id + ": state reached").c_str());
+    }
+}
+void context_menu_open() {
+    World w; w.arrange_page();
+    for (const auto& subject : w.subjects) {
+        const auto menu = w.ui.add_context_menu(subject.handle, {{.id = "inspect", .label = u"Inspect", .action = [](const auto&) { return Result{}; }}});
+        check(bool(menu) && bool(w.ui.open_context_menu(subject.handle)), ("context_menu/" + subject.id + ": opened").c_str());
+        compare_all(w, "context_menu_open");
+        for (const auto& other : w.subjects) check(!describe(other.handle)->focused, "context_menu: components do not own keyboard input");
+        w.ui.close_context_menu();
+    }
+}
+void attached_error_visible() {
+    Ui ui;
+    auto box = ui.add_checkbox({.id = "box", .label = u"Check"}).value.value();
+    box.connect_source(source(false));
+    box.connect_confirmed([](const auto&) { return Result{Status::invalid_value, u"Error"}; });
+    auto error = ui.add_label({.id = "box.error", .target = "box", .label_kind = LabelKind::error}).value.value();
+    check(bool(box.toggle()) && box.confirm().status == Status::invalid_value, "attached error: rejected confirmation creates an error");
+    test::FakeMeasure measure; ScrollState scroll;
+    arrange(layout::component(box), ui, web_appearance(), measure, 300, 200, 1.f, scroll);
+    const auto node = ui.semantics().get({"box.error"});
+    check(node && node->bounds && node->visible && error.describe()->visible && same_common_fields(*error.describe(), *node),
+          "attached error: the visible error line has the same visibility in both snapshots");
+}
+void hidden() {
+    World w; w.arrange_page();
+    std::vector<ComponentHandle> members;
+    for (const auto& s : w.subjects) members.push_back(s.handle);
+    const auto gate = w.ui.add_navigation_list({.id = "gate", .label = u"Gate"},
+        {{{"shown"}, u"Shown", true, members}, {{"hidden"}, u"Hidden", true, {}}}, {"shown"}).value.value();
+    check(bool(gate.select({"hidden"})), "hidden: select the other page");
+    w.arrange_page(); compare_all(w, "hidden");
+    for (const auto& s : w.subjects) {
+        const auto node = w.ui.semantics().get({s.id});
+        check(node->hidden && !node->visible && node->verbs.empty(), ("hidden/" + s.id + ": state reached").c_str());
+    }
+}
+void blocked_by_modal() {
+    World w;
+    const auto inside = w.ui.add_button({.id = "dialog.close", .label = u"Close"}).value.value();
+    const auto fallback = std::get<ButtonHandle>(w.subjects[2].handle);
+    const auto dialog = w.ui.add_dialog("dialog", {inside}, inside, fallback, [](bool) {}).value.value();
+    check(bool(dialog.open()), "modal: open dialog");
+    arrange(layout::modal(w.root(), layout::component(inside), dialog), w.ui, web_appearance(), w.measure, 400, 2400, 1.f, w.page_scroll);
+    compare_all(w, "blocked_by_modal");
+    for (const auto& s : w.subjects) {
+        const auto node = w.ui.semantics().get({s.id});
+        check(node->blocked_by_modal && node->verbs.empty(), ("modal/" + s.id + ": state reached").c_str());
+    }
+}
+void multiline_scrolled() {
+    World w; w.arrange_page();
+    for (const auto& subject : w.subjects) {
+        if (const auto* field = std::get_if<TextHandle>(&subject.handle); field && field->describe()->multiline)
+            check(bool(field->set_scroll_line(3)), "multiline_scrolled: set first display line");
+    }
+    w.arrange_page(); compare_all(w, "multiline_scrolled");
+    check(w.multi.describe()->scroll == std::optional{TextScroll{3, 2, 6}}, "multiline_scrolled: scrolled view reached");
+}
+void scrolled_offscreen() {
+    World w;
+    const auto filler = w.ui.add_label({.id = "filler", .value = std::u16string(80, u'\n')}).value.value();
+    for (const auto& subject : w.subjects) {
+        ScrollState scroll;
+        const auto root = layout::scroll(layout::column({layout::component(subject.handle), layout::component(filler)}));
+        auto frame = arrange(root, w.ui, web_appearance(), w.measure, 400, 100, 1.f, scroll);
+        check(frame.maximum > 0 && frame.scroll_to(w.ui, scroll, frame.maximum), "scrolled_offscreen: scroll past subject");
+        arrange(root, w.ui, web_appearance(), w.measure, 400, 100, 1.f, scroll);
+        compare_all(w, "scrolled_offscreen");
+        check(!describe(subject.handle)->visible && !w.ui.semantics().get({subject.id})->bounds,
+              ("scrolled_offscreen/" + subject.id + ": no visible area").c_str());
+    }
 }
 }
 int main() {
-    const test::Case cases[] = {{"normal", normal}};
+    const test::Case cases[] = {{"normal", normal}, {"disabled", disabled}, {"read_only", read_only}, {"context_menu_open", context_menu_open},
+                              {"attached_error_visible", attached_error_visible}, {"hidden", hidden}, {"blocked_by_modal", blocked_by_modal},
+                              {"multiline_scrolled", multiline_scrolled}, {"scrolled_offscreen", scrolled_offscreen}};
     return test::run("snapshots", cases);
 }

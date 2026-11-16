@@ -2152,15 +2152,16 @@ std::optional<ComponentSnapshot> detail::UiState::describe(std::string_view id) 
     ComponentSnapshot s;
     s.id = control->id; s.kind = control->kind; s.target = control->target; s.label_kind = control->label_kind;
     s.enabled = control->enabled; s.read_only = control->read_only;
-    if (auto it = visibility_.find(control->id); it != visibility_.end())
-        s.visible = it->second && available(id, true).status != Status::hidden;
+    // The arranged, clipped bounds include attached label lines as well as standalone components.
+    // Both public snapshots use this one record; visibility_ remains the host's tooltip eligibility record.
+    s.visible = semantic_bounds_.contains(control->id) && available(id, true).status != Status::hidden;
     auto text_scroll = text_scrolls_.find(id);
     s.focusable = bool(available(id, true)) && (component_type(control->kind).can_focus() || (text_scroll != text_scrolls_.end() && text_scroll->second.maximum > 0));
-    s.focused = focus_ == control->id;
+    // An open context menu owns keyboard input; focus_ only remembers its component for restoration.
+    s.focused = focus_ == control->id && !menu_;
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
     s.text_align = control->text_align; s.justify_method = control->justify_method; s.line_spacing = control->line_spacing; s.paragraph_spacing = control->paragraph_spacing;
-    component_type(control->kind).describe(*this, *control, s);
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
     for (const auto& other : controls_) {
@@ -2173,6 +2174,7 @@ std::optional<ComponentSnapshot> detail::UiState::describe(std::string_view id) 
         if (!s.description.empty()) s.description += u"\n";
         s.description += tip->second.text;
     }
+    component_type(control->kind).describe(*this, *control, s);
     s.verbs = snapshot_verbs(*control, s);
     return s;
 }
@@ -3449,9 +3451,7 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
     n.name = s.name; n.value = s.value; n.description = s.description; n.error = s.error;
-    if (n.role == Role::label) n.name = s.value;
-    // While a context menu is open, keyboard focus belongs to its items (the component keeps core focus).
-    n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused && !u.menu_;
+    n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
     n.range = s.range; n.numeric_value = s.numeric_value;
     n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits; n.scroll = s.scroll; n.rich = s.rich;
@@ -3459,7 +3459,7 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
-    n.visible = n.bounds.has_value();
+    n.visible = s.visible;
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->label_kind == LabelKind::name) n.labelled_by.push_back({id}); else if (label && (label->label_kind == LabelKind::description || label->label_kind == LabelKind::error)) n.described_by.push_back({id}); }
     n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
@@ -3468,7 +3468,7 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
         if (it == s.items.end()) return {Status::not_found, {}, {}};
         if (auto item_role = detail::component_type(c->kind).item_role()) n.role = *item_role;
         else return {Status::not_found, {}, {}};
-        n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = s.enabled && it->enabled; n.invalid = it->invalid;
+        n.name = it->label; n.value.clear(); n.selected = it->selected; n.enabled = it->enabled; n.invalid = it->invalid;
         n.focused = n.role == Role::list_item && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.items.begin()); auto rects = u.semantic_options_.find(ref.id);
         if (!n.hidden && (!detail::component_type(c->kind).opens_popup() || s.expanded) && rects != u.semantic_options_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
