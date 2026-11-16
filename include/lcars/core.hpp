@@ -132,7 +132,7 @@ struct NamedColor {
 // context_menu opens a component's menu (the argument may be an OptionValue naming a list row, or a
 // MenuPosition); cancel on the menu node closes it; invoke on a menu item runs it.
 // hover simulates the pointer resting on the node (or on one of its items); it is accepted whenever the
-// typed Ui::simulate_hover would be, and is never listed in NodeSnapshot::verbs (hover is not an operation of the node).
+// typed Ui::simulate_hover would be, and is never listed in snapshot verbs (hover is not an operation of the node).
 // select_word / select_paragraph / double_click / triple_click take an int UTF-16 offset (the character starting there);
 // set_word_segmentation takes a WordSegmentation. All are text fields only.
 enum class Verb { invoke, toggle, set_value, select, open, cancel, focus, undo, redo, copy, cut, paste, confirm, scroll, set_text_align, set_line_spacing, set_paragraph_spacing, context_menu, set_writing_mode, set_vertical_digits, hover, set_style, set_typing_style,
@@ -150,7 +150,7 @@ struct ComponentSnapshot {
     ComponentKind kind = ComponentKind::label;
     std::u16string name, value, description, error;
     bool enabled = true, read_only = false, focusable = false, focused = false, invalid = false, executing = false, source_conflict = false;
-    bool visible = false; // intersects the clip in the latest arranged frame
+    bool visible = false; // positive on-screen area in the latest arranged frame, and not hidden
     bool multiline = false;     // text fields: created multi-line
     bool rich = false;          // text fields: created with ComponentConfig::rich
     std::optional<TextScroll> scroll; // multi-line text fields: configured height and latest arranged display lines

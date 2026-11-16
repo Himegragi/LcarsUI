@@ -41,7 +41,10 @@ struct NodeSnapshot {
     std::uint64_t instance = 0; // Changes when an identifier is removed and reused.
     std::u16string name, value, description, error, accelerator_key, access_key;
     bool enabled = true, read_only = false, focusable = false, focused = false, selected = false, expanded = false, invalid = false, executing = false;
+    // enabled is this node's own setting, including on items; parent restrictions affect verbs separately.
+    // focused means keyboard input goes here now; an open context menu takes it away from its component.
     bool hidden = false, visible = false, blocked_by_modal = false;
+    // visible means positive on-screen area in the latest arranged frame, and not hidden.
     bool selection_required = false;
     std::optional<bool> checked;
     std::optional<SliderRange> range; std::optional<int> numeric_value;
