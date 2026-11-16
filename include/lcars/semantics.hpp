@@ -50,6 +50,7 @@ struct NodeSnapshot : CommonState {
     std::optional<TextStyle> typing_style;  // rich text fields: the style the next typed text takes
     std::optional<WordSegmentation> word_segmentation, word_segmentation_in_use;  // text fields: as set, and what works now
     std::uint64_t text_revision = 0; // changes when committed text changes
+    bool operator==(const NodeSnapshot&) const = default;
 };
 // UI-thread-only live queries; the tree does not own its Ui.
 class SemanticTree {

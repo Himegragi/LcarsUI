@@ -188,7 +188,7 @@ struct KeyPress {
     char16_t letter = 0;  // uppercase ASCII letter for Ctrl shortcuts, e.g. u'Z'
 };
 struct Shortcut { Key key = Key::other; char16_t letter = 0; bool ctrl = false, shift = false; };
-struct Selection { unsigned anchor = 0, caret = 0; };
+struct Selection { unsigned anchor = 0, caret = 0; bool operator==(const Selection&) const = default; };
 // A half-open range of UTF-16 offsets into text.
 struct TextSpan { unsigned begin = 0, end = 0; bool operator==(const TextSpan&) const = default; };
 // How a text field decides where words are, for double click, Ctrl+arrow and UIA word units. Every mode

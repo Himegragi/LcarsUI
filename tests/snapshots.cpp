@@ -245,11 +245,24 @@ void component_equality() {
     changed.items.front().label = u"Changed";
     check(!(original == changed), "component equality: items are part of the whole snapshot");
 }
+void node_equality() {
+    Ui ui;
+    const auto label = ui.add_label({.id = "label", .value = u"Displayed"}).value.value();
+    test::FakeMeasure measure; ScrollState scroll;
+    arrange(layout::component(label), ui, web_appearance(), measure, 300, 200, 1.f, scroll);
+    const auto original = *ui.semantics().get({"label"});
+    auto changed = original;
+    check(original == changed, "node equality: a copied snapshot is equal");
+    check(changed.bounds.has_value(), "node equality: the arranged label has bounds");
+    ++changed.bounds->x;
+    check(!(original == changed), "node equality: bounds are part of the whole snapshot");
+}
 }
 int main() {
     const test::Case cases[] = {{"normal", normal}, {"disabled", disabled}, {"read_only", read_only}, {"context_menu_open", context_menu_open},
                               {"attached_error_visible", attached_error_visible}, {"hidden", hidden}, {"blocked_by_modal", blocked_by_modal},
                               {"multiline_scrolled", multiline_scrolled}, {"scrolled_offscreen", scrolled_offscreen},
-                              {"errors", errors}, {"dropdown_open", dropdown_open}, {"component_equality", component_equality}};
+                              {"errors", errors}, {"dropdown_open", dropdown_open}, {"component_equality", component_equality},
+                              {"node_equality", node_equality}};
     return test::run("snapshots", cases);
 }

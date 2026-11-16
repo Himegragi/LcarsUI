@@ -51,5 +51,5 @@ the words public names use are these.
 - F. A read-only snapshot is `XxxSnapshot`: a struct that describes the whole state of one component, option, menu, menu
   item or semantic tree node at one moment, and is only read back, never passed in (`ComponentSnapshot`,
   `OptionSnapshot`, `MenuSnapshot`, `MenuItemSnapshot`, `NodeSnapshot`). A struct that holds a part of such state, or
-  that the application passes in, keeps its own name (`Placement`, `Frame`, `Palette`, `TextSpan`, `TextFieldScroll`,
+  that the application passes in, keeps its own name (`CommonState`, `Placement`, `Frame`, `Palette`, `TextSpan`, `TextFieldScroll`,
   `HoverTarget`, `OptionValue`); so do `describe()`, `SemanticTree`, `NodeRef` and `Ui::semantics()`.
