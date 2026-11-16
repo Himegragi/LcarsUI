@@ -1241,7 +1241,7 @@ void UiaBridge::Impl::observe() {
                 UiaRaiseAutomationPropertyChangedEvent(p, UIA_NamePropertyId, before, after); VariantClear(&after);
                 p->Release(); });
         }
-        if (event.kind == SemanticEventKind::propertyChanged && event.property == "numeric_value") {
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "numericValue") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->numericValue) return;
             auto p = ctx->provider(event.ref); p->AddRef(); double value = *n->numericValue;
             ctx->events->post([p, value] {

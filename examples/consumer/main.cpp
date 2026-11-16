@@ -4,6 +4,7 @@
 #include "lcars/semantics.hpp"
 #include "lcars/version.hpp"
 #include "handle_kinds.hpp"
+#include "camelcase_names.hpp"
 static_assert(lcars::frameworkVersion == LCARS_PACKAGE_VERSION);
 static_assert(LCARS_VERSION_MAJOR == 0 && LCARS_VERSION_MINOR == 4 && LCARS_VERSION_PATCH == 0);
 static_assert(lcars::frameworkVersionMajor == 0 && lcars::frameworkVersionMinor == 4 && lcars::frameworkVersionPatch == 0);

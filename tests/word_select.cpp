@@ -448,7 +448,7 @@ void theSemanticLayerAnnouncesASegmentationChange() {
     auto subscription = tree.subscribe([&](const SemanticEvent& e) { seen.push_back(e); });
     f.handle.setWordSegmentation(WordSegmentation::scriptRun);
     tree.dispatchEvents();
-    check(std::any_of(seen.begin(), seen.end(), [](const SemanticEvent& e) { return e.kind == SemanticEventKind::propertyChanged && e.property == "word_segmentation"; }),
+    check(std::any_of(seen.begin(), seen.end(), [](const SemanticEvent& e) { return e.kind == SemanticEventKind::propertyChanged && e.property == "wordSegmentation"; }),
           "A property_changed event names word_segmentation");
     seen.clear();
     f.handle.doubleClick(0);

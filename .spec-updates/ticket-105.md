@@ -1,0 +1,917 @@
+# Ticket #105: exact external specification updates
+
+Apply these spelling-only replacements after the other tickets' spec handoffs.
+Version remains 0.4.0. CMake targets, file names, persisted settings keys,
+macro names and runtime strings other than semantic property names are unchanged.
+
+## `first-component-batch.md`
+
+- Section **逐項元件契約**: `focus_indicator` → `focusIndicator`.
+- Section **應用政策與測試設定**: `visible_lines` → `visibleLines`.
+- Section **應用政策與測試設定**: `max_length` → `maxLength`.
+## `v1-draw-list-gpu-rendering.md`
+
+- Section **Solution 解法與交付範圍**: `Status::renderer_failed` → `Status::rendererFailed`.
+- Section **Solution 解法與交付範圍**: `renderer_failed` → `rendererFailed`.
+- Section **現況（main @ 5e03610）**: `run_desktop` → `runDesktop`.
+- Section **現況（main @ 5e03610）**: `renderer_failed` → `rendererFailed`.
+- Section **現況（main @ 5e03610）**: `blocked_by_modal` → `blockedByModal`.
+- Section **繪圖清單：指令只取現有元件真正用到的**: `focus_indicator` → `focusIndicator`.
+- Section **繪圖清單：指令只取現有元件真正用到的**: `error_text` → `errorText`.
+- Section **繪圖清單：指令只取現有元件真正用到的**: `error_indicator` → `errorIndicator`.
+- Section **繪圖清單：指令只取現有元件真正用到的**: `Palette::hover_alpha` → `Palette::hoverAlpha`.
+- Section **繪圖清單：指令只取現有元件真正用到的**: `read_back` → `readBack`.
+- Section **Vulkan 紙上對照表**: `device_reset` → `deviceReset`.
+- Section **渲染器失效**: `enum class Status { /* 既有值 */, renderer_failed };` → `enum class Status { /* 既有值 */, rendererFailed };`.
+- Section **渲染器失效**: `enum class DebugContext { build_default, on, off };   // Debug 預設開、Release 預設關（#12 Q3）` → `enum class DebugContext { buildDefault, on, off };   // Debug 預設開、Release 預設關（#12 Q3）`.
+- Section **渲染器失效**: `enum class RendererFailureKind { frame_error, device_reset, present_failed, resource_failed };` → `enum class RendererFailureKind { frameError, deviceReset, presentFailed, resourceFailed };`.
+- Section **渲染器失效**: `struct RendererFailure { RendererFailureKind kind; std::uint32_t native_code; std::u16string message; };` → `struct RendererFailure { RendererFailureKind kind; std::uint32_t nativeCode; std::u16string message; };`.
+- Section **渲染器失效**: `enum class StartupFailureKind { window, context_version, context_creation, shader, resource };` → `enum class StartupFailureKind { window, contextVersion, contextCreation, shader, resource };`.
+- Section **渲染器失效**: `    bool debug_context, debug_messages, reset_detection;   // false 即「不支援／無法偵測重置」` → `    bool debugContext, debugMessages, resetDetection;   // false 即「不支援／無法偵測重置」`.
+- Section **渲染器失效**: `    DebugContext debug_context = DebugContext::build_default;` → `    DebugContext debugContext = DebugContext::buildDefault;`.
+- Section **渲染器失效**: `    std::function<void(Desktop&, const RendererFailure&)> on_renderer_failed;   // 未設＝未登記` → `    std::function<void(Desktop&, const RendererFailure&)> onRendererFailed;   // 未設＝未登記`.
+- Section **渲染器失效**: `    std::function<void(const RenderDiagnostic&)> on_diagnostic;                // 見下節` → `    std::function<void(const RenderDiagnostic&)> onDiagnostic;                // 見下節`.
+- Section **渲染器失效**: `    Result rebuild_renderer();          // UI 執行緒；未失效時 invalid_value；在繪製中呼叫為 busy` → `    Result rebuildRenderer();          // UI 執行緒；未失效時 invalidValue；在繪製中呼叫為 busy`.
+- Section **渲染器失效**: `    bool renderer_failed() const;` → `    bool rendererFailed() const;`.
+- Section **渲染器失效**: `// 便利函式：status 為 ok、renderer_failed，或建立失敗時的狀態（此時 startup 有值）` → `// 便利函式：status 為 ok、rendererFailed，或建立失敗時的狀態（此時 startup 有值）`.
+- Section **渲染器失效**: `RunResult run_desktop(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopConfig = {});` → `RunResult runDesktop(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopConfig = {});`.
+- Section **渲染器失效**: `Status::renderer_failed` → `Status::rendererFailed`.
+- Section **渲染器失效**: `renderer_failed` → `rendererFailed`.
+- Section **渲染器失效**: `wrong_thread` → `wrongThread`.
+- Section **渲染器失效**: `not_found` → `notFound`.
+- Section **渲染器失效**: `blocked_by_modal` → `blockedByModal`.
+- Section **渲染器失效**: `{Status::renderer_failed, failure}` → `{Status::rendererFailed, failure}`.
+- Section **渲染器失效**: `context_version` → `contextVersion`.
+- Section **渲染器失效**: `fail_context_33` → `failContext33`.
+- Section **渲染器失效**: `fragment_shader_override` → `fragmentShaderOverride`.
+- Section **渲染器失效**: `gl_error_at_frame` → `errorAtFrame`.
+- Section **渲染器失效**: `injected_error` → `injectedError`.
+- Section **渲染器失效**: `reset_at_frame` → `resetAtFrame`.
+- Section **渲染器失效**: `fail_rebuild_once` → `failRebuildOnce`.
+- Section **渲染器失效**: `hide_khr_debug` → `hideKhrDebug`.
+- Section **渲染器失效**: `hide_robustness` → `hideRobustness`.
+- Section **渲染器失效**: `misuse_once` → `misuseOnce`.
+- Section **渲染診斷**: `native_code` → `nativeCode`.
+- Section **渲染診斷**: `native_message` → `nativeMessage`.
+- Section **渲染診斷**: `received_at` → `receivedAt`.
+- Section **渲染診斷**: `source_time` → `sourceTime`.
+- Section **渲染診斷**: `ui_environment` → `uiEnvironment`.
+- Section **渲染診斷**: `component_id` → `componentId`.
+- Section **渲染診斷**: `operation_id` → `operationId`.
+- Section **渲染診斷**: `backend_detail` → `backendDetail`.
+- Section **渲染診斷**: `on_diagnostic` → `onDiagnostic`.
+- Section **GPU 與 CPU 比對**: `focus_indicator` → `focusIndicator`.
+- Section **GPU 與 CPU 比對**: `error_indicator` → `errorIndicator`.
+- Section **GPU 與 CPU 比對**: `error_text` → `errorText`.
+- Section **實作順序與依賴**: `Status::renderer_failed` → `Status::rendererFailed`.
+- Section **繪圖清單（DL）**: `focus_indicator` → `focusIndicator`.
+- Section **繪圖清單（DL）**: `error_text` → `errorText`.
+- Section **GPU 與 CPU 比對（GC）**: `focus_indicator` → `focusIndicator`.
+- Section **渲染器失效（RF，承接 #12 Q13 第 1–6 項）**: `StartupFailure{context_version, u"OpenGL 3.3 core", 實際版本}` → `StartupFailure{contextVersion, u"OpenGL 3.3 core", 實際版本}`.
+- Section **渲染器失效（RF，承接 #12 Q13 第 1–6 項）**: `TextHandle::set_value` → `TextHandle::setValue`.
+- Section **渲染器失效（RF，承接 #12 Q13 第 1–6 項）**: `renderer_failed` → `rendererFailed`.
+- Section **渲染器失效（RF，承接 #12 Q13 第 1–6 項）**: `rebuild_renderer()` → `rebuildRenderer()`.
+- Section **渲染器失效（RF，承接 #12 Q13 第 1–6 項）**: `{renderer_failed, frame_error}` → `{rendererFailed, frameError}`.
+- Section **渲染器失效（RF，承接 #12 Q13 第 1–6 項）**: `kind == device_reset` → `kind == deviceReset`.
+- Section **渲染器失效（RF，承接 #12 Q13 第 1–6 項）**: `hide_robustness` → `hideRobustness`.
+- Section **渲染器失效（RF，承接 #12 Q13 第 1–6 項）**: `capabilities().reset_detection == false` → `capabilities().resetDetection == false`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `misuse_once` → `misuseOnce`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `kind == api_misuse` → `kind == apiMisuse`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `native_code` → `nativeCode`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `native_message` → `nativeMessage`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `received_at` → `receivedAt`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `source_time` → `sourceTime`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `component_id` → `componentId`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `hide_khr_debug` → `hideKhrDebug`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `capabilities().debug_messages == false` → `capabilities().debugMessages == false`.
+- Section **渲染診斷（DG，承接 #12 Q13 第 4、7 項）**: `backend_detail` → `backendDetail`.
+- Section **Further Notes 來源與接續**: `Status::renderer_failed` → `Status::rendererFailed`.
+- Section **Further Notes 來源與接續**: `on_renderer_failed` → `onRendererFailed`.
+- Section **已決事項**: `renderer_failed` → `rendererFailed`.
+## `v1-packaging-and-delivery.md`
+
+- Section **Solution 解法與交付範圍**: `lcars::framework_version` → `lcars::frameworkVersion`.
+- Section **Solution 解法與交付範圍**: `lcars::third_party_notices()` → `lcars::thirdPartyNotices()`.
+- Section **Solution 解法與交付範圍**: `framework_version` → `frameworkVersion`.
+- Section **Solution 解法與交付範圍**: `third_party_notices()` → `thirdPartyNotices()`.
+- Section **User Stories 使用者情境**: `lcars::third_party_notices()` → `lcars::thirdPartyNotices()`.
+- Section **元件與匯出目標（規格提案；粒度見已決事項 D4）**: `Ui::set_presentation` → `Ui::setPresentation`.
+- Section **元件與匯出目標（規格提案；粒度見已決事項 D4）**: `third_party_notices()` → `thirdPartyNotices()`.
+- Section **公開標頭清單（安裝與否）**: `web_appearance()` → `webAppearance()`.
+- Section **公開標頭清單（安裝與否）**: `material_appearance()` → `materialAppearance()`.
+- Section **公開標頭清單（安裝與否）**: `DesktopConfig::on_diagnostic` → `DesktopConfig::onDiagnostic`.
+- Section **define LCARS_VERSION_PATCH 0**: `inline constexpr int framework_version_major = LCARS_VERSION_MAJOR;` → `inline constexpr int frameworkVersionMajor = LCARS_VERSION_MAJOR;`.
+- Section **define LCARS_VERSION_PATCH 0**: `inline constexpr int framework_version_minor = LCARS_VERSION_MINOR;` → `inline constexpr int frameworkVersionMinor = LCARS_VERSION_MINOR;`.
+- Section **define LCARS_VERSION_PATCH 0**: `inline constexpr int framework_version_patch = LCARS_VERSION_PATCH;` → `inline constexpr int frameworkVersionPatch = LCARS_VERSION_PATCH;`.
+- Section **define LCARS_VERSION_PATCH 0**: `inline constexpr std::u16string_view framework_version = u"0.2.0";  // 與 LcarsUI_VERSION 相同` → `inline constexpr std::u16string_view frameworkVersion = u"0.2.0";  // 與 LcarsUI_VERSION 相同`.
+- Section **「關於」頁的共用介面（與規格 4 共同陳述）**: `third_party_notices()` → `thirdPartyNotices()`.
+- Section **「關於」頁的共用介面（與規格 4 共同陳述）**: `lcars::framework_version            // std::u16string_view，例：u"0.2.0"` → `lcars::frameworkVersion            // std::u16string_view，例：u"0.2.0"`.
+- Section **include <string_view>**: `std::span<const ThirdPartyNotice> third_party_notices() noexcept;` → `std::span<const ThirdPartyNotice> thirdPartyNotices() noexcept;`.
+- Section **include <string_view>**: `Ui::add_label` → `Ui::addLabel`.
+- Section **include <string_view>**: `lcars::framework_version` → `lcars::frameworkVersion`.
+- Section **include <string_view>**: `third_party_notices()` → `thirdPartyNotices()`.
+- Section **Stand-alone consumer: sees LcarsUI only through an installed package.**: `static_assert(lcars::framework_version == u"" LCARS_EXPECTED_VERSION)` → `static_assert(lcars::frameworkVersion == u"" LCARS_EXPECTED_VERSION)`.
+- Section **Stand-alone consumer: sees LcarsUI only through an installed package.**: `third_party_notices()` → `thirdPartyNotices()`.
+- Section **實作順序與依賴**: `ctest -R third_party_notices` → `ctest -R thirdPartyNotices`.
+- Section **執行位置（#11 Q24）**: `ctest --test-dir build/Release -R "package_install|consumer_example|third_party_notices"` → `ctest --test-dir build/Release -R "package_install|consumer_example|thirdPartyNotices"`.
+- Section **消費端（CS）**: `framework_version` → `frameworkVersion`.
+- Section **消費端（CS）**: `third_party_notices()` → `thirdPartyNotices()`.
+- Section **授權聲明與鎖版（NT）**: `third_party_notices()` → `thirdPartyNotices()`.
+- Section **Further Notes 來源與接續**: `lcars::framework_version` → `lcars::frameworkVersion`.
+- Section **Further Notes 來源與接續**: `lcars::third_party_notices()` → `lcars::thirdPartyNotices()`.
+## `v1-semantic-layer-and-uia.md`
+
+- Section **Problem Statement 問題**: `invalid_value` → `invalidValue`.
+- Section **Solution 解法與交付範圍**: `Ui::add_*` → `Ui::add*`.
+- Section **Solution 解法與交付範圍**: `blocked_by_modal` → `blockedByModal`.
+- Section **Solution 解法與交付範圍**: `invalid_value` → `invalidValue`.
+- Section **Solution 解法與交付範圍**: `set_text_align` → `setTextAlign`.
+- Section **Solution 解法與交付範圍**: `set_line_spacing` → `setLineSpacing`.
+- Section **Solution 解法與交付範圍**: `set_paragraph_spacing` → `setParagraphSpacing`.
+- Section **Solution 解法與交付範圍**: `set_writing_mode` → `setWritingMode`.
+- Section **Solution 解法與交付範圍**: `set_vertical_digits` → `setVerticalDigits`.
+- Section **Solution 解法與交付範圍**: `set_style` → `setStyle`.
+- Section **Solution 解法與交付範圍**: `set_typing_style` → `setTypingStyle`.
+- Section **Solution 解法與交付範圍**: `set_word_segmentation` → `setWordSegmentation`.
+- Section **Solution 解法與交付範圍**: `select_word` → `selectWord`.
+- Section **Solution 解法與交付範圍**: `select_paragraph` → `selectParagraph`.
+- Section **Solution 解法與交付範圍**: `double_click` → `doubleClick`.
+- Section **Solution 解法與交付範圍**: `triple_click` → `tripleClick`.
+- Section **Solution 解法與交付範圍**: `set_justify_method` → `setJustifyMethod`.
+- Section **User Stories 使用者情境**: `invalid_value` → `invalidValue`.
+- Section **現況（main @ 5e03610）**: `wrong_thread` → `wrongThread`.
+- Section **現況（main @ 5e03610）**: `not_supported` → `notSupported`.
+- Section **現況（main @ 5e03610）**: `empty_history` → `emptyHistory`.
+- Section **現況（main @ 5e03610）**: `add_dialog` → `addDialog`.
+- Section **現況（main @ 5e03610）**: `add_tooltip` → `addTooltip`.
+- Section **現況（main @ 5e03610）**: `Ui::add_*` → `Ui::add*`.
+- Section **現況（main @ 5e03610）**: `add_slider` → `addSlider`.
+- Section **現況（main @ 5e03610）**: `Ui::on_change` → `Ui::onChange`.
+- Section **現況（main @ 5e03610）**: `std::invalid_argument` → `std::invalidArgument`.
+- Section **現況（main @ 5e03610）**: `add_button` → `addButton`.
+- Section **現況（main @ 5e03610）**: `add_label` → `addLabel`.
+- Section **現況（main @ 5e03610）**: `add_checkbox` → `addCheckbox`.
+- Section **現況（main @ 5e03610）**: `invalid_value` → `invalidValue`.
+- Section **現況（main @ 5e03610）**: `wrong_thread → failed → not_found → hidden（分頁／未開對話框）→ disabled → blocked_by_modal` → `wrongThread → failed → notFound → hidden（分頁／未開對話框）→ disabled → blockedByModal`.
+- Section **現況（main @ 5e03610）**: `set_value(id, …)` → `setValue(id, …)`.
+- Section **消費端範例斷言怎麼改**: `Status::invalid_value` → `Status::invalidValue`.
+- Section **識別碼登記（S1）**: `add_button` → `addButton`.
+- Section **識別碼登記（S1）**: `add_label` → `addLabel`.
+- Section **識別碼登記（S1）**: `add_checkbox` → `addCheckbox`.
+- Section **識別碼登記（S1）**: `add_radio_group` → `addRadioGroup`.
+- Section **識別碼登記（S1）**: `add_slider` → `addSlider`.
+- Section **識別碼登記（S1）**: `add_progress` → `addProgress`.
+- Section **識別碼登記（S1）**: `add_dropdown` → `addDropdown`.
+- Section **識別碼登記（S1）**: `add_tabs` → `addTabs`.
+- Section **識別碼登記（S1）**: `add_list` → `addList`.
+- Section **識別碼登記（S1）**: `add_dialog` → `addDialog`.
+- Section **識別碼登記（S1）**: `add_tooltip` → `addTooltip`.
+- Section **識別碼登記（S1）**: `Query{Status::invalid_value}` → `Query{Status::invalidValue}`.
+- Section **識別碼登記（S1）**: `add_button({.id = "form.name"})` → `addButton({.id = "form.name"})`.
+- Section **識別碼登記（S1）**: `invalid_value` → `invalidValue`.
+- Section **識別碼登記（S1）**: `not_found` → `notFound`.
+- Section **識別碼登記（S1）**: `add_*` → `add*`.
+- Section **語意層讀取（S2）**: `enum class Role { text, button, label, checkbox, radio_group, radio_option, slider,` → `enum class Role { text, button, label, checkbox, radioGroup, radioOption, slider,`.
+- Section **語意層讀取（S2）**: `                  dropdown, dropdown_option, list, list_item, tabs, tab_item,` → `                  dropdown, dropdownOption, list, listItem, tabs, tabItem,`.
+- Section **語意層讀取（S2）**: `                  menu, menu_item, menu_separator };   // 最後三個：右鍵選單（#85）` → `                  menu, menuItem, menuSeparator };   // 最後三個：右鍵選單（#85）`.
+- Section **語意層讀取（S2）**: `enum class Verb { invoke, toggle, set_value, select, open, cancel, focus,` → `enum class Verb { invoke, toggle, setValue, select, open, cancel, focus,`.
+- Section **語意層讀取（S2）**: `                  set_text_align, set_line_spacing, set_paragraph_spacing,   // #80` → `                  setTextAlign, setLineSpacing, setParagraphSpacing,   // #80`.
+- Section **語意層讀取（S2）**: `                  context_menu,                                          // #85` → `                  contextMenu,                                          // #85`.
+- Section **語意層讀取（S2）**: `                  set_writing_mode, set_vertical_digits,                 // #82` → `                  setWritingMode, setVerticalDigits,                 // #82`.
+- Section **語意層讀取（S2）**: `                  set_style, set_typing_style,                           // #81` → `                  setStyle, setTypingStyle,                           // #81`.
+- Section **語意層讀取（S2）**: `                  set_word_segmentation, select_word, select_paragraph,` → `                  setWordSegmentation, selectWord, selectParagraph,`.
+- Section **語意層讀取（S2）**: `                  double_click, triple_click,                            // #83` → `                  doubleClick, tripleClick,                            // #83`.
+- Section **語意層讀取（S2）**: `                  set_justify_method };                                  // #84` → `                  setJustifyMethod };                                  // #84`.
+- Section **語意層讀取（S2）**: `enum class TextUnitKind { word, paragraph };   // #83：SemanticTree::text_unit 的查詢單位` → `enum class TextUnitKind { word, paragraph };   // #83：SemanticTree::textUnit 的查詢單位`.
+- Section **語意層讀取（S2）**: `struct TextScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; };  // #79` → `struct TextScroll { unsigned firstLine = 0, visibleLines = 0, lineCount = 0; };  // #79`.
+- Section **語意層讀取（S2）**: `    std::u16string accelerator_key;      // 按鈕的快捷鍵；選單項目的快捷鍵提示文字（例 Ctrl+X，只顯示，#85）` → `    std::u16string acceleratorKey;      // 按鈕的快捷鍵；選單項目的快捷鍵提示文字（例 Ctrl+X，只顯示，#85）`.
+- Section **語意層讀取（S2）**: `    std::u16string access_key;           // 選單項目的快速鍵字母（例 U，#85）；其他節點為空` → `    std::u16string accessKey;           // 選單項目的快速鍵字母（例 U，#85）；其他節點為空`.
+- Section **語意層讀取（S2）**: `    bool enabled, read_only, focusable, focused, selected, expanded, invalid, executing;` → `    bool enabled, readOnly, focusable, focused, selected, expanded, invalid, executing;`.
+- Section **語意層讀取（S2）**: `    bool blocked_by_modal;  // 對話框開啟時的背景元件（#10 Q4）；與 enabled 分開` → `    bool blockedByModal;  // 對話框開啟時的背景元件（#10 Q4）；與 enabled 分開`.
+- Section **語意層讀取（S2）**: `    std::optional<SliderRange> range; std::optional<int> numeric_value;` → `    std::optional<SliderRange> range; std::optional<int> numericValue;`.
+- Section **語意層讀取（S2）**: `    std::optional<WritingMode> writing_mode;  // 標籤才有：horizontal（預設）或 vertical（#82）` → `    std::optional<WritingMode> writingMode;  // 標籤才有：horizontal（預設）或 vertical（#82）`.
+- Section **語意層讀取（S2）**: `    std::optional<int> vertical_digits;       // 標籤才有：縱中橫最多位數，0-3，預設 3（#82）` → `    std::optional<int> verticalDigits;       // 標籤才有：縱中橫最多位數，0-3，預設 3（#82）`.
+- Section **語意層讀取（S2）**: `    std::vector<NodeRef> labelled_by, described_by;` → `    std::vector<NodeRef> labelledBy, describedBy;`.
+- Section **語意層讀取（S2）**: `    std::optional<Selection> text_selection;  // 文字欄位，UTF-16` → `    std::optional<Selection> textSelection;  // 文字欄位，UTF-16`.
+- Section **語意層讀取（S2）**: `    TextAlign text_align = TextAlign::left;                // 標籤與文字欄位才有意義（#80、#84）` → `    TextAlign textAlign = TextAlign::left;                // 標籤與文字欄位才有意義（#80、#84）`.
+- Section **語意層讀取（S2）**: `    JustifyMethod justify_method = JustifyMethod::automatic;   // 同上（#84）` → `    JustifyMethod justifyMethod = JustifyMethod::automatic;   // 同上（#84）`.
+- Section **語意層讀取（S2）**: `    double line_spacing = 1.0;           // 同上（#80）` → `    double lineSpacing = 1.0;           // 同上（#80）`.
+- Section **語意層讀取（S2）**: `    int paragraph_spacing = 0;           // 同上（#80）` → `    int paragraphSpacing = 0;           // 同上（#80）`.
+- Section **語意層讀取（S2）**: `    std::optional<TextStyle> typing_style;   // 富文字欄位：接下來要打的字的樣式（#81）` → `    std::optional<TextStyle> typingStyle;   // 富文字欄位：接下來要打的字的樣式（#81）`.
+- Section **語意層讀取（S2）**: `    std::optional<WordSegmentation> word_segmentation;         // 文字欄位：設定的斷詞方式（#83）` → `    std::optional<WordSegmentation> wordSegmentation;         // 文字欄位：設定的斷詞方式（#83）`.
+- Section **語意層讀取（S2）**: `    std::optional<WordSegmentation> word_segmentation_in_use;  // 實際使用的方式（詞典不可用時為 per_character）（#83）` → `    std::optional<WordSegmentation> wordSegmentationInUse;  // 實際使用的方式（詞典不可用時為 perCharacter）（#83）`.
+- Section **語意層讀取（S2）**: `    Query<TextSpan> text_unit(std::string_view id, TextUnitKind unit, unsigned offset) const;  // 該位置所在的詞／段落範圍（#83）` → `    Query<TextSpan> textUnit(std::string_view id, TextUnitKind unit, unsigned offset) const;  // 該位置所在的詞／段落範圍（#83）`.
+- Section **語意層讀取（S2）**: `    Query<unsigned> word_stop(std::string_view id, unsigned offset, bool forward) const;       // 下一個／前一個詞停點（#83）` → `    Query<unsigned> wordStop(std::string_view id, unsigned offset, bool forward) const;       // 下一個／前一個詞停點（#83）`.
+- Section **語意層讀取（S2）**: `    Query<Palette> effective_palette() const;                           // 唯讀：目前外觀與主題變體下實際生效的顏色（#78）` → `    Query<Palette> effectivePalette() const;                           // 唯讀：目前外觀與主題變體下實際生效的顏色（#78）`.
+- Section **語意層讀取（S2）**: `    Result clear_simulated_hover();                // 結束模擬；真實滑鼠位置不受影響（#74）` → `    Result clearSimulatedHover();                // 結束模擬；真實滑鼠位置不受影響（#74）`.
+- Section **語意層讀取（S2）**: `    Query<Color> text_color(const NodeRef& ref, std::string_view name) const;   // 富文字：顏色名稱「現在」畫出的顏色（#81）` → `    Query<Color> textColor(const NodeRef& ref, std::string_view name) const;   // 富文字：顏色名稱「現在」畫出的顏色（#81）`.
+- Section **語意層讀取（S2）**: `menu_opened` → `menuOpened`.
+- Section **語意層讀取（S2）**: `menu_closed` → `menuClosed`.
+- Section **語意層讀取（S2）**: `wrong_thread` → `wrongThread`.
+- Section **語意層讀取（S2）**: `text_unit` → `textUnit`.
+- Section **語意層讀取（S2）**: `word_stop` → `wordStop`.
+- Section **語意層讀取（S2）**: `TextHandle::word_at／paragraph_at／next_word_stop／previous_word_stop` → `TextHandle::wordAt／paragraphAt／nextWordStop／previousWordStop`.
+- Section **語意層讀取（S2）**: `clear_simulated_hover()` → `clearSimulatedHover()`.
+- Section **語意層讀取（S2）**: `text_color` → `textColor`.
+- Section **語意層讀取（S2）**: `not_found` → `notFound`.
+- Section **語意層讀取（S2）**: `not_supported` → `notSupported`.
+- Section **語意層讀取（S2）**: `blocked_by_modal = true` → `blockedByModal = true`.
+- Section **語意層讀取（S2）**: `blocked_by_modal` → `blockedByModal`.
+- Section **語意層操作（S3）**: `set_value(u16string)` → `setValue(u16string)`.
+- Section **語意層操作（S3）**: `set_text_align(TextAlign)` → `setTextAlign(TextAlign)`.
+- Section **語意層操作（S3）**: `set_justify_method(JustifyMethod)` → `setJustifyMethod(JustifyMethod)`.
+- Section **語意層操作（S3）**: `set_line_spacing(double)` → `setLineSpacing(double)`.
+- Section **語意層操作（S3）**: `set_paragraph_spacing(int)` → `setParagraphSpacing(int)`.
+- Section **語意層操作（S3）**: `set_word_segmentation(WordSegmentation)` → `setWordSegmentation(WordSegmentation)`.
+- Section **語意層操作（S3）**: `select_word` → `selectWord`.
+- Section **語意層操作（S3）**: `select_paragraph` → `selectParagraph`.
+- Section **語意層操作（S3）**: `double_click` → `doubleClick`.
+- Section **語意層操作（S3）**: `triple_click` → `tripleClick`.
+- Section **語意層操作（S3）**: `set_style(StyleEdit)` → `setStyle(StyleEdit)`.
+- Section **語意層操作（S3）**: `set_typing_style(TextStyle)` → `setTypingStyle(TextStyle)`.
+- Section **語意層操作（S3）**: `set_value` → `setValue`.
+- Section **語意層操作（S3）**: `set_text_align` → `setTextAlign`.
+- Section **語意層操作（S3）**: `Ui::open_context_menu` → `Ui::openContextMenu`.
+- Section **語意層操作（S3）**: `set_value(int)` → `setValue(int)`.
+- Section **語意層操作（S3）**: `SliderHandle::set_value` → `SliderHandle::setValue`.
+- Section **語意層操作（S3）**: `set_writing_mode(WritingMode)` → `setWritingMode(WritingMode)`.
+- Section **語意層操作（S3）**: `set_vertical_digits(int)` → `setVerticalDigits(int)`.
+- Section **語意層操作（S3）**: `set_justify_method` → `setJustifyMethod`.
+- Section **語意層操作（S3）**: `justify_method()` → `justifyMethod()`.
+- Section **語意層操作（S3）**: `set_writing_mode` → `setWritingMode`.
+- Section **語意層操作（S3）**: `set_vertical_digits` → `setVerticalDigits`.
+- Section **語意層操作（S3）**: `not_supported` → `notSupported`.
+- Section **語意層操作（S3）**: `Ui::close_context_menu` → `Ui::closeContextMenu`.
+- Section **語意層操作（S3）**: `Ui::invoke_menu_item` → `Ui::invokeMenuItem`.
+- Section **語意層操作（S3）**: `Ui::simulate_hover` → `Ui::simulateHover`.
+- Section **語意層操作（S3）**: `blocked_by_modal` → `blockedByModal`.
+- Section **語意層操作（S3）**: `not_found` → `notFound`.
+- Section **語意層操作（S3）**: `renderer_failed` → `rendererFailed`.
+- Section **語意層操作（S3）**: `invalid_value` → `invalidValue`.
+- Section **語意層操作（S3）**: `TextHandle::set_scroll_line` → `TextHandle::setScrollLine`.
+- Section **語意層操作（S3）**: `line_count` → `lineCount`.
+- Section **語意層操作（S3）**: `first_line` → `firstLine`.
+- Section **語意層操作（S3）**: `per_character` → `perCharacter`.
+- Section **語意層操作（S3）**: `NodeSnapshot::text_align` → `NodeSnapshot::textAlign`.
+- Section **語意層操作（S3）**: `justify_as_left` → `justifyAsLeft`.
+- Section **語意層操作（S3）**: `set_style` → `setStyle`.
+- Section **語意層操作（S3）**: `TextHandle::set_style` → `TextHandle::setStyle`.
+- Section **語意層操作（S3）**: `set_typing_style` → `setTypingStyle`.
+- Section **語意層操作（S3）**: `TextHandle::set_rich_value` → `TextHandle::setRichValue`.
+- Section **語意層操作（S3）**: `writing_mode` → `writingMode`.
+- Section **語意層操作（S3）**: `vertical_digits` → `verticalDigits`.
+- Section **語意層操作（S3）**: `writing_mode()` → `writingMode()`.
+- Section **語意層操作（S3）**: `vertical_digits()` → `verticalDigits()`.
+- Section **語意層操作（S3）**: `property_changed` → `propertyChanged`.
+- Section **語意層操作（S3）**: `set_word_segmentation` → `setWordSegmentation`.
+- Section **語意層操作（S3）**: `script_run` → `scriptRun`.
+- Section **語意層操作（S3）**: `TextHandle::set_word_segmentation` → `TextHandle::setWordSegmentation`.
+- Section **語意層操作（S3）**: `Frame::select_to` → `Frame::selectTo`.
+- Section **語意層操作（S3）**: `Ui::set_palette_overrides` → `Ui::setPaletteOverrides`.
+- Section **語意層操作（S3）**: `set_value(u"工作站 A")` → `setValue(u"工作站 A")`.
+- Section **語意層操作（S3）**: `SemanticTree::effective_palette()` → `SemanticTree::effectivePalette()`.
+- Section **語意層操作（S3）**: `Ui::effective_palette(appearance, variant)` → `Ui::effectivePalette(appearance, variant)`.
+- Section **語意層操作（S3）**: `wrong_thread` → `wrongThread`.
+- Section **語意層操作（S3）**: `Ui::bind_appearance` → `Ui::bindAppearance`.
+- Section **准入與結果**: `not_supported` → `notSupported`.
+- Section **准入與結果**: `wrong_thread` → `wrongThread`.
+- Section **准入與結果**: `not_found` → `notFound`.
+- Section **准入與結果**: `renderer_failed` → `rendererFailed`.
+- Section **准入與結果**: `set_value` → `setValue`.
+- Section **准入與結果**: `blocked_by_modal` → `blockedByModal`.
+- Section **准入與結果**: `read_only` → `readOnly`.
+- Section **准入與結果**: `invalid_value` → `invalidValue`.
+- Section **准入與結果**: `empty_history` → `emptyHistory`.
+- Section **變更通知（S3）**: `focus_changed` → `focusChanged`.
+- Section **變更通知（S3）**: `property_changed` → `propertyChanged`.
+- Section **變更通知（S3）**: `read_only` → `readOnly`.
+- Section **變更通知（S3）**: `blocked_by_modal` → `blockedByModal`.
+- Section **變更通知（S3）**: `numeric_value` → `numericValue`.
+- Section **變更通知（S3）**: `text_align` → `textAlign`.
+- Section **變更通知（S3）**: `line_spacing` → `lineSpacing`.
+- Section **變更通知（S3）**: `paragraph_spacing` → `paragraphSpacing`.
+- Section **變更通知（S3）**: `justify_method` → `justifyMethod`.
+- Section **變更通知（S3）**: `scroll_line` → `scrollLine`.
+- Section **變更通知（S3）**: `visible_lines` → `visibleLines`.
+- Section **變更通知（S3）**: `typing_style` → `typingStyle`.
+- Section **變更通知（S3）**: `text_changed` → `textChanged`.
+- Section **變更通知（S3）**: `writing_mode` → `writingMode`.
+- Section **變更通知（S3）**: `vertical_digits` → `verticalDigits`.
+- Section **變更通知（S3）**: `word_segmentation` → `wordSegmentation`.
+- Section **變更通知（S3）**: `menu_opened` → `menuOpened`.
+- Section **變更通知（S3）**: `menu_closed` → `menuClosed`.
+- Section **變更通知（S3）**: `structure_changed` → `structureChanged`.
+- Section **變更通知（S3）**: `text_selection_changed` → `textSelectionChanged`.
+- Section **變更通知（S3）**: `layout_changed` → `layoutChanged`.
+- Section **強制回應阻擋（以 V03 為例）**: `blocked_by_modal = true` → `blockedByModal = true`.
+- Section **強制回應阻擋（以 V03 為例）**: `blocked_by_modal` → `blockedByModal`.
+- Section **UIA provider（S4–S6）**: `access_key` → `accessKey`.
+- Section **UIA provider（S4–S6）**: `set_value` → `setValue`.
+- Section **UIA provider（S4–S6）**: `justify_as_left` → `justifyAsLeft`.
+- Section **UIA provider（S4–S6）**: `focus_changed` → `focusChanged`.
+- Section **UIA provider（S4–S6）**: `property_changed` → `propertyChanged`.
+- Section **UIA provider（S4–S6）**: `numeric_value` → `numericValue`.
+- Section **UIA provider（S4–S6）**: `structure_changed` → `structureChanged`.
+- Section **UIA provider（S4–S6）**: `text_changed` → `textChanged`.
+- Section **UIA provider（S4–S6）**: `text_selection_changed` → `textSelectionChanged`.
+- Section **UIA provider（S4–S6）**: `layout_changed` → `layoutChanged`.
+- Section **UIA provider（S4–S6）**: `menu_opened` → `menuOpened`.
+- Section **UIA provider（S4–S6）**: `menu_closed` → `menuClosed`.
+- Section **UIA provider（S4–S6）**: `text_revision` → `textRevision`.
+- Section **UIA provider（S4–S6）**: `line_count > visible_lines` → `lineCount > visibleLines`.
+- Section **UIA provider（S4–S6）**: `visible_lines` → `visibleLines`.
+- Section **UIA provider（S4–S6）**: `line_count` → `lineCount`.
+- Section **UIA provider（S4–S6）**: `first_line` → `firstLine`.
+- Section **UIA provider（S4–S6）**: `per_character` → `perCharacter`.
+- Section **UIA provider（S4–S6）**: `script_run` → `scriptRun`.
+- Section **UIA provider（S4–S6）**: `read_only` → `readOnly`.
+- Section **UIA provider（S4–S6）**: `set_word_segmentation／word_segmentation／word_segmentation_in_use／word_at／paragraph_at／next_word_stop／previous_word_stop／select_word／select_paragraph／double_click／triple_click` → `setWordSegmentation／wordSegmentation／wordSegmentationInUse／wordAt／paragraphAt／nextWordStop／previousWordStop／selectWord／selectParagraph／doubleClick／tripleClick`.
+- Section **實作順序與依賴**: `add_button({.id = "form.name"})` → `addButton({.id = "form.name"})`.
+- Section **實作順序與依賴**: `invalid_value` → `invalidValue`.
+- Section **實作順序與依賴**: `add_*` → `add*`.
+- Section **實作順序與依賴**: `add_dialog` → `addDialog`.
+- Section **實作順序與依賴**: `add_tooltip` → `addTooltip`.
+- Section **實作順序與依賴**: `blocked_by_modal` → `blockedByModal`.
+- Section **測試入口**: `edit_form::Form` → `editForm::Form`.
+- Section **語意層案例（GitHub `Core` 工作）**: `add_button({.id = "form.name"})` → `addButton({.id = "form.name"})`.
+- Section **語意層案例（GitHub `Core` 工作）**: `add_list({.id = ""})` → `addList({.id = ""})`.
+- Section **語意層案例（GitHub `Core` 工作）**: `invalid_value` → `invalidValue`.
+- Section **語意層案例（GitHub `Core` 工作）**: `not_found` → `notFound`.
+- Section **語意層案例（GitHub `Core` 工作）**: `not_supported` → `notSupported`.
+- Section **語意層案例（GitHub `Core` 工作）**: `set_value` → `setValue`.
+- Section **語意層案例（GitHub `Core` 工作）**: `wrong_thread` → `wrongThread`.
+- Section **語意層案例（GitHub `Core` 工作）**: `set_style` → `setStyle`.
+- Section **語意層案例（GitHub `Core` 工作）**: `set_typing_style` → `setTypingStyle`.
+- Section **語意層案例（GitHub `Core` 工作）**: `typing_style` → `typingStyle`.
+- Section **跨程序 UIA 案例（先試 GitHub `uia` 工作；同一套也由 `verify-idle.ps1 -Only uia` 執行）**: `fixture.offline_disabled` → `fixture.offlineDisabled`.
+- Section **已決事項**: `connect_confirmed` → `connectConfirmed`.
+- Section **已決事項**: `property_changed("scroll_line")` → `propertyChanged("scrollLine")`.
+- Section **已決事項**: `property_changed("visible_lines")` → `propertyChanged("visibleLines")`.
+- Section **已決事項**: `set_style` → `setStyle`.
+- Section **已決事項**: `set_typing_style` → `setTypingStyle`.
+- Section **已決事項**: `set_value` → `setValue`.
+- Section **已決事項**: `property_changed("styles")` → `propertyChanged("styles")`.
+- Section **已決事項**: `text_changed` → `textChanged`.
+- Section **已決事項**: `property_changed("typing_style")` → `propertyChanged("typingStyle")`.
+- Section **已決事項**: `empty_history` → `emptyHistory`.
+- Section **已決事項**: `not_supported` → `notSupported`.
+- Section **已決事項**: `wrong_thread` → `wrongThread`.
+- Section **已決事項**: `Status::renderer_failed` → `Status::rendererFailed`.
+- Section **已決事項**: `add_dialog` → `addDialog`.
+- Section **已決事項**: `add_tooltip` → `addTooltip`.
+## `v1-settings-demo-app.md`
+
+- Section **Problem Statement 問題**: `add_dialog` → `addDialog`.
+- Section **Solution 解法與交付範圍**: `DesktopConfig::on_renderer_failed` → `DesktopConfig::onRendererFailed`.
+- Section **Solution 解法與交付範圍**: `rebuild_renderer()` → `rebuildRenderer()`.
+- Section **Solution 解法與交付範圍**: `renderer_failed()` → `rendererFailed()`.
+- Section **Solution 解法與交付範圍**: `Status::renderer_failed` → `Status::rendererFailed`.
+- Section **Solution 解法與交付範圍**: `set_title()` → `setTitle()`.
+- Section **Solution 解法與交付範圍**: `native_window()` → `nativeWindow()`.
+- Section **Solution 解法與交付範圍**: `Ui::set_presentation` → `Ui::setPresentation`.
+- Section **Solution 解法與交付範圍**: `system_font_catalog()` → `systemFontCatalog()`.
+- Section **Solution 解法與交付範圍**: `add_*` → `add*`.
+- Section **User Stories 使用者情境**: `on_close_requested` → `onCloseRequested`.
+- Section **現況（main @ 5e03610）**: `Kind::navigation_list` → `Kind::navigationList`.
+- Section **現況（main @ 5e03610）**: `add_dialog` → `addDialog`.
+- Section **現況（main @ 5e03610）**: `std::invalid_argument` → `std::invalidArgument`.
+- Section **現況（main @ 5e03610）**: `Desktop::set_title()` → `Desktop::setTitle()`.
+- Section **與既有決定、程式或上游規格的出入**: `list_item` → `listItem`.
+- Section **四頁的控制項與識別碼**: `connect_confirmed` → `connectConfirmed`.
+- Section **四頁的控制項與識別碼**: `on_blur` → `onBlur`.
+- Section **四頁的控制項與識別碼**: `connect_immediate` → `connectImmediate`.
+- Section **四頁的控制項與識別碼**: `connect_rich_source` → `connectRichSource`.
+- Section **四頁的控制項與識別碼**: `connect_confirmation` → `connectConfirmation`.
+- Section **四頁的控制項與識別碼**: `toggle_style` → `toggleStyle`.
+- Section **四頁的控制項與識別碼**: `items.delete_dialog` → `items.deleteDialog`.
+- Section **四頁的控制項與識別碼**: `items.delete_dialog.cancel` → `items.deleteDialog.cancel`.
+- Section **四頁的控制項與識別碼**: `items.delete_dialog.confirm` → `items.deleteDialog.confirm`.
+- Section **四頁的控制項與識別碼**: `system_font_catalog().families()` → `systemFontCatalog().families()`.
+- Section **四頁的控制項與識別碼**: `display_name` → `displayName`.
+- Section **四頁的控制項與識別碼**: `requested_available == false` → `requestedAvailable == false`.
+- Section **四頁的控制項與識別碼**: `appearance.text_size` → `appearance.textSize`.
+- Section **四頁的控制項與識別碼**: `set_presentation` → `setPresentation`.
+- Section **四頁的控制項與識別碼**: `appearance.justify_left` → `appearance.justifyLeft`.
+- Section **四頁的控制項與識別碼**: `PresentationSettings::justify_as_left` → `PresentationSettings::justifyAsLeft`.
+- Section **四頁的控制項與識別碼**: `Ui::set_palette_overrides` → `Ui::setPaletteOverrides`.
+- Section **四頁的控制項與識別碼**: `appearance.focus_mode` → `appearance.focusMode`.
+- Section **四頁的控制項與識別碼**: `PresentationSettings::focus_indicator` → `PresentationSettings::focusIndicator`.
+- Section **四頁的控制項與識別碼**: `appearance.focus_width` → `appearance.focusWidth`.
+- Section **四頁的控制項與識別碼**: `focus_ring_width` → `focusRingWidth`.
+- Section **四頁的控制項與識別碼**: `appearance.focus_radius_same` → `appearance.focusRadiusSame`.
+- Section **四頁的控制項與識別碼**: `focus_ring_radius` → `focusRingRadius`.
+- Section **四頁的控制項與識別碼**: `appearance.focus_radius` → `appearance.focusRadius`.
+- Section **四頁的控制項與識別碼**: `appearance.focus_color` → `appearance.focusColor`.
+- Section **四頁的控制項與識別碼**: `focus_width` → `focusWidth`.
+- Section **四頁的控制項與識別碼**: `focus_radius_same` → `focusRadiusSame`.
+- Section **四頁的控制項與識別碼**: `focus_radius` → `focusRadius`.
+- Section **四頁的控制項與識別碼**: `focus_color` → `focusColor`.
+- Section **四頁的控制項與識別碼**: `ui.set_presentation(...)` → `ui.setPresentation(...)`.
+- Section **四頁的控制項與識別碼**: `app.close_dialog` → `app.closeDialog`.
+- Section **導覽清單（框架新元件類型，D1）**: `enum class ComponentKind { /* 規格 3 S1 後的值 */, navigation_list };` → `enum class ComponentKind { /* 規格 3 S1 後的值 */, navigationList };`.
+- Section **導覽清單（框架新元件類型，D1）**: `    Result enable_page(OptionValue page, bool enabled) const;` → `    Result enablePage(OptionValue page, bool enabled) const;`.
+- Section **導覽清單（框架新元件類型，D1）**: `    Result add_member(OptionValue page, ComponentHandle member) const;` → `    Result addMember(OptionValue page, ComponentHandle member) const;`.
+- Section **導覽清單（框架新元件類型，D1）**: `    Result on_page_change(std::function<void(OptionValue from, OptionValue to)> callback) const;` → `    Result onPageChange(std::function<void(OptionValue from, OptionValue to)> callback) const;`.
+- Section **導覽清單（框架新元件類型，D1）**: `Query<NavigationListHandle> add_navigation_list(ComponentConfig config, std::vector<NavigationPage> pages, OptionValue initial);` → `Query<NavigationListHandle> addNavigationList(ComponentConfig config, std::vector<NavigationPage> pages, OptionValue initial);`.
+- Section **導覽清單（框架新元件類型，D1）**: `invalid_value` → `invalidValue`.
+- Section **導覽清單（框架新元件類型，D1）**: `enable_page(目前頁, false)` → `enablePage(目前頁, false)`.
+- Section **導覽清單（框架新元件類型，D1）**: `blocked_by_modal` → `blockedByModal`.
+- Section **導覽清單（框架新元件類型，D1）**: `renderer_failed` → `rendererFailed`.
+- Section **導覽清單（框架新元件類型，D1）**: `structure_changed` → `structureChanged`.
+- Section **導覽清單（框架新元件類型，D1）**: `list_item` → `listItem`.
+- Section **導覽清單（框架新元件類型，D1）**: `focus_indicator` → `focusIndicator`.
+- Section **導覽清單（框架新元件類型，D1）**: `focus_ring_width` → `focusRingWidth`.
+- Section **導覽清單（框架新元件類型，D1）**: `focus_ring_radius` → `focusRingRadius`.
+- Section **多個對話框與應用快捷鍵（框架擴充，D2）**: `add_dialog` → `addDialog`.
+- Section **多個對話框與應用快捷鍵（框架擴充，D2）**: `Result Ui::add_shortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});` → `Result Ui::addShortcut(Shortcut chord, ButtonHandle target, ComponentHandle scope = {});`.
+- Section **多個對話框與應用快捷鍵（框架擴充，D2）**: `invalid_value` → `invalidValue`.
+- Section **文件模型、未儲存狀態與復原／重做（D6，示範應用程式碼）**: `SettingsDocument::focus_color` → `SettingsDocument::focusColor`.
+- Section **文件模型、未儲存狀態與復原／重做（D6，示範應用程式碼）**: `ui.set_presentation` → `ui.setPresentation`.
+- Section **settings.json（D7）**: `valid_multi_line` → `validMultiLine`.
+- Section **settings.json（D7）**: `"justify_as_left"` → `"justifyAsLeft"`.
+- Section **settings.json（D7）**: `valid_single_line` → `validSingleLine`.
+- Section **settings.json（D7）**: `normalize_rich_text` → `normalizeRichText`.
+- Section **settings.json（D7）**: `next_item_id` → `nextItemId`.
+- Section **settings.json（D7）**: `presentation.font_family` → `presentation.fontFamily`.
+- Section **settings.json（D7）**: `presentation.text_size` → `presentation.textSize`.
+- Section **settings.json（D7）**: `presentation.justify_as_left` → `presentation.justifyAsLeft`.
+- Section **settings.json（D7）**: `presentation.focus_indicator` → `presentation.focusIndicator`.
+- Section **settings.json（D7）**: `presentation.focus_ring_width` → `presentation.focusRingWidth`.
+- Section **settings.json（D7）**: `presentation.focus_ring_radius` → `presentation.focusRingRadius`.
+- Section **settings.json（D7）**: `presentation.focus_color` → `presentation.focusColor`.
+- Section **讀檔與存檔**: `system_font_catalog().contains()` → `systemFontCatalog().contains()`.
+- Section **讀檔與存檔**: `ui.set_presentation(...)` → `ui.setPresentation(...)`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `enum class CloseDecision { close, keep_open };` → `enum class CloseDecision { close, keepOpen };`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `    std::function<CloseDecision(Desktop&)> on_close_requested;  // 未設：收到關閉請求即關閉（維持現狀）` → `    std::function<CloseDecision(Desktop&)> onCloseRequested;  // 未設：收到關閉請求即關閉（維持現狀）`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `    Result close();                          // 不再經過關閉請求；只能在 UI 執行緒，否則 wrong_thread` → `    Result close();                          // 不再經過關閉請求；只能在 UI 執行緒，否則 wrongThread`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `    Result set_title(std::u16string title);  // 非合法單行回 invalid_value；渲染器失效中照常生效` → `    Result setTitle(std::u16string title);  // 非合法單行回 invalidValue；渲染器失效中照常生效`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `    void* native_window() const;             // HWND，供原生 MessageBox 指定擁有者` → `    void* nativeWindow() const;             // HWND，供原生 MessageBox 指定擁有者`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `keep_open` → `keepOpen`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `renderer_failed()` → `rendererFailed()`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `renderer_failed` → `rendererFailed`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `on_renderer_failed` → `onRendererFailed`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `app.close_dialog` → `app.closeDialog`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `app.close_dialog.save` → `app.closeDialog.save`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `app.close_dialog.discard` → `app.closeDialog.discard`.
+- Section **關閉請求（框架，D4）與示範應用的關閉流程**: `app.close_dialog.cancel` → `app.closeDialog.cancel`.
+- Section **渲染器失效時的示範應用**: `on_renderer_failed` → `onRendererFailed`.
+- Section **渲染器失效時的示範應用**: `MessageBoxW(native_window(), …)` → `MessageBoxW(nativeWindow(), …)`.
+- Section **渲染器失效時的示範應用**: `rebuild_renderer()` → `rebuildRenderer()`.
+- Section **關於頁與授權**: `lcars::framework_version` → `lcars::frameworkVersion`.
+- Section **關於頁與授權**: `about.settings_path` → `about.settingsPath`.
+- Section **關於頁與授權**: `lcars::third_party_notices()` → `lcars::thirdPartyNotices()`.
+- Section **程式位置與建置（規格提案）**: `settings_demo::App` → `settingsDemo::App`.
+- Section **程式位置與建置（規格提案）**: `on_close_requested` → `onCloseRequested`.
+- Section **程式位置與建置（規格提案）**: `on_renderer_failed` → `onRendererFailed`.
+- Section **實作順序與依賴**: `ComponentKind::navigation_list` → `ComponentKind::navigationList`.
+- Section **實作順序與依賴**: `add_*` → `add*`.
+- Section **實作順序與依賴**: `add_shortcut` → `addShortcut`.
+- Section **實作順序與依賴**: `Desktop::set_title` → `Desktop::setTitle`.
+- Section **實作順序與依賴**: `on_close_requested` → `onCloseRequested`.
+- Section **實作順序與依賴**: `native_window` → `nativeWindow`.
+- Section **實作順序與依賴**: `app.close_dialog` → `app.closeDialog`.
+- Section **實作順序與依賴**: `on_renderer_failed` → `onRendererFailed`.
+- Section **導覽清單（NL）**: `enable_page(目前頁, false)` → `enablePage(目前頁, false)`.
+- Section **導覽清單（NL）**: `invalid_value` → `invalidValue`.
+- Section **導覽清單（NL）**: `set_value` → `setValue`.
+- Section **導覽清單（NL）**: `blocked_by_modal` → `blockedByModal`.
+- Section **導覽清單（NL）**: `renderer_failed` → `rendererFailed`.
+- Section **導覽清單（NL）**: `focus_indicator` → `focusIndicator`.
+- Section **導覽清單（NL）**: `on_page_change` → `onPageChange`.
+- Section **導覽清單（NL）**: `list_item` → `listItem`.
+- Section **對話框與快捷鍵（MD、KS）**: `items.delete_dialog` → `items.deleteDialog`.
+- Section **對話框與快捷鍵（MD、KS）**: `app.close_dialog` → `app.closeDialog`.
+- Section **對話框與快捷鍵（MD、KS）**: `invalid_value` → `invalidValue`.
+- Section **對話框與快捷鍵（MD、KS）**: `blocked_by_modal` → `blockedByModal`.
+- Section **對話框與快捷鍵（MD、KS）**: `renderer_failed` → `rendererFailed`.
+- Section **項目清單（IT）**: `next_item_id` → `nextItemId`.
+- Section **settings.json（ST）**: `text_size` → `textSize`.
+- Section **settings.json（ST）**: `font_family` → `fontFamily`.
+- Section **關閉請求（CR，`render.yml` 宿主案例，另註明者除外）**: `app.close_dialog` → `app.closeDialog`.
+- Section **關閉請求（CR，`render.yml` 宿主案例，另註明者除外）**: `fail_rebuild_once` → `failRebuildOnce`.
+- Section **關閉請求（CR，`render.yml` 宿主案例，另註明者除外）**: `wrong_thread` → `wrongThread`.
+- Section **關閉請求（CR，`render.yml` 宿主案例，另註明者除外）**: `on_close_requested` → `onCloseRequested`.
+- Section **外觀與文字頁、長清單（AP、DD）**: `presentation().font_family == u"Consolas"` → `presentation().fontFamily == u"Consolas"`.
+- Section **關於頁（AB）**: `lcars::framework_version` → `lcars::frameworkVersion`.
+- Section **關於頁（AB）**: `third_party_notices()[0..2].text` → `thirdPartyNotices()[0..2].text`.
+- Section **語意、UIA 與 Axe（UA、AX，GitHub `uia` 工作；不穩定時走 `-Only demo-uia`）**: `app.close_dialog` → `app.closeDialog`.
+- Section **語意、UIA 與 Axe（UA、AX，GitHub `uia` 工作；不穩定時走 `-Only demo-uia`）**: `app.close_dialog.discard` → `app.closeDialog.discard`.
+- Section **語意、UIA 與 Axe（UA、AX，GitHub `uia` 工作；不穩定時走 `-Only demo-uia`）**: `items.delete_dialog` → `items.deleteDialog`.
+- Section **Further Notes 來源與接續**: `lcars::framework_version` → `lcars::frameworkVersion`.
+- Section **Further Notes 來源與接續**: `lcars::third_party_notices()` → `lcars::thirdPartyNotices()`.
+## `v1-text-and-presentation-settings.md`
+
+- Section **Solution 解法與交付範圍**: `Ui::set_presentation` → `Ui::setPresentation`.
+- Section **Solution 解法與交付範圍**: `system_font_catalog()` → `systemFontCatalog()`.
+- Section **現況（main @ 5e03610）**: `button_height` → `buttonHeight`.
+- Section **現況（main @ 5e03610）**: `button_padding` → `buttonPadding`.
+- Section **現況（main @ 5e03610）**: `text_size()` → `textSize()`.
+- Section **現況（main @ 5e03610）**: `appearance.text_size()` → `appearance.textSize()`.
+- Section **現況（main @ 5e03610）**: `sync_ime()` → `syncIme()`.
+- Section **設定的公開介面（規格提案）**: `    static ThemeVariant high_contrast();  // "high-contrast"：保留名稱，第一版回 not_supported` → `    static ThemeVariant highContrast();  // "high-contrast"：保留名稱，第一版回 notSupported`.
+- Section **設定的公開介面（規格提案）**: `inline constexpr int min_text_size = 12, max_text_size = 28;  // DIP` → `inline constexpr int minTextSize = 12, maxTextSize = 28;  // DIP`.
+- Section **設定的公開介面（規格提案）**: `inline constexpr int min_focus_ring_width = 2, max_focus_ring_width = 6;     // #90；DIP` → `inline constexpr int minFocusRingWidth = 2, maxFocusRingWidth = 6;     // #90；DIP`.
+- Section **設定的公開介面（規格提案）**: `inline constexpr int min_focus_ring_radius = 0, max_focus_ring_radius = 32;  // #90；DIP` → `inline constexpr int minFocusRingRadius = 0, maxFocusRingRadius = 32;  // #90；DIP`.
+- Section **設定的公開介面（規格提案）**: `    std::u16string font_family;   // 字型家族鍵；空字串＝預設（Segoe UI＋微軟正黑體）` → `    std::u16string fontFamily;   // 字型家族鍵；空字串＝預設（Segoe UI＋微軟正黑體）`.
+- Section **設定的公開介面（規格提案）**: `    int text_size = 16;           // 內文字級，DIP` → `    int textSize = 16;           // 內文字級，DIP`.
+- Section **設定的公開介面（規格提案）**: `    FocusIndicatorMode focus_indicator = FocusIndicatorMode::automatic;  // #72、#90` → `    FocusIndicatorMode focusIndicator = FocusIndicatorMode::automatic;  // #72、#90`.
+- Section **設定的公開介面（規格提案）**: `    std::optional<int> focus_ring_width;    // #90；DIP，2–6；空 = 外觀預設 3 DIP` → `    std::optional<int> focusRingWidth;    // #90；DIP，2–6；空 = 外觀預設 3 DIP`.
+- Section **設定的公開介面（規格提案）**: `    std::optional<int> focus_ring_radius;   // #90；DIP，0–32；空 = 元件本身的圓角（Web 6、Material 16）` → `    std::optional<int> focusRingRadius;   // #90；DIP，0–32；空 = 元件本身的圓角（Web 6、Material 16）`.
+- Section **設定的公開介面（規格提案）**: `    bool justify_as_left = false;                                     // #84；「左右對齊改為靠左」（WCAG 1.4.8），見下` → `    bool justifyAsLeft = false;                                     // #84；「左右對齊改為靠左」（WCAG 1.4.8），見下`.
+- Section **設定的公開介面（規格提案）**: `Result set_presentation(const PresentationSettings& settings);` → `Result setPresentation(const PresentationSettings& settings);`.
+- Section **設定的公開介面（規格提案）**: `bool focus_indicator_visible() const;               // #72：焦點標示目前是否顯示中` → `bool focusIndicatorVisible() const;               // #72：焦點標示目前是否顯示中`.
+- Section **設定的公開介面（規格提案）**: `Ui::focus_indicator_visible() const` → `Ui::focusIndicatorVisible() const`.
+- Section **設定的公開介面（規格提案）**: `focus_indicator` → `focusIndicator`.
+- Section **設定的公開介面（規格提案）**: `set_presentation` → `setPresentation`.
+- Section **設定的公開介面（規格提案）**: `justify_as_left` → `justifyAsLeft`.
+- Section **設定的公開介面（規格提案）**: `Ui::set_presentation` → `Ui::setPresentation`.
+- Section **設定的公開介面（規格提案）**: `text_align` → `textAlign`.
+- Section **設定的公開介面（規格提案）**: `focus_ring_width` → `focusRingWidth`.
+- Section **設定的公開介面（規格提案）**: `focus_ring_radius` → `focusRingRadius`.
+- Section **設定的公開介面（規格提案）**: `text_size` → `textSize`.
+- Section **設定的公開介面（規格提案）**: `invalid_value` → `invalidValue`.
+- Section **設定的公開介面（規格提案）**: `not_supported` → `notSupported`.
+- Section **設定的公開介面（規格提案）**: `not_found` → `notFound`.
+- Section **設定的公開介面（規格提案）**: `font_family` → `fontFamily`.
+- Section **設定的公開介面（規格提案）**: `wrong_thread` → `wrongThread`.
+- Section **設定的公開介面（規格提案）**: `    std::u16string display_name;  // 顯示用：有 zh-tw 名稱用之（如「微軟正黑體」），否則同 key` → `    std::u16string displayName;  // 顯示用：有 zh-tw 名稱用之（如「微軟正黑體」），否則同 key`.
+- Section **設定的公開介面（規格提案）**: `    std::u16string requested;              // PresentationSettings::font_family` → `    std::u16string requested;              // PresentationSettings::fontFamily`.
+- Section **設定的公開介面（規格提案）**: `    bool requested_available = true;       // false：要求的家族不在，已改用預設` → `    bool requestedAvailable = true;       // false：要求的家族不在，已改用預設`.
+- Section **設定的公開介面（規格提案）**: `const FontCatalog& system_font_catalog();  // 程序內第一次呼叫時建立快照；永不丟例外` → `const FontCatalog& systemFontCatalog();  // 程序內第一次呼叫時建立快照；永不丟例外`.
+- Section **設定的公開介面（規格提案）**: `system_font_catalog().contains()` → `systemFontCatalog().contains()`.
+- Section **設定的公開介面（規格提案）**: `ui.set_presentation(...)` → `ui.setPresentation(...)`.
+- Section **設定的公開介面（規格提案）**: `run_desktop(...)` → `runDesktop(...)`.
+- Section **設定的公開介面（規格提案）**: `display_name` → `displayName`.
+- Section **設定的公開介面（規格提案）**: `ui.set_presentation` → `ui.setPresentation`.
+- Section **系統字型目錄（A1）**: `system_styled_font_file(family, bold, italic)` → `systemStyledFontFile(family, bold, italic)`.
+- Section **系統字型目錄（A1）**: `system_font_catalog()` → `systemFontCatalog()`.
+- Section **字級（A4）**: `PresentationSettings::text_size` → `PresentationSettings::textSize`.
+- Section **字級（A4）**: `Appearance::text_size()` → `Appearance::textSize()`.
+- Section **字級（A4）**: `ShapedMeasure::line_height` → `ShapedMeasure::lineHeight`.
+- Section **字級（A4）**: `round(明確字級 × text_size ÷ 外觀預設字級)` → `round(明確字級 × textSize ÷ 外觀預設字級)`.
+- Section **深色／淺色（A5）**: `palette_roles()` → `paletteRoles()`.
+- Section **深色／淺色（A5）**: `Ui::set_palette_overrides` → `Ui::setPaletteOverrides`.
+- Section **深色／淺色（A5）**: `Palette::focus_color()` → `Palette::focusColor()`.
+- Section **深色／淺色（A5）**: `Ui::effective_palette` → `Ui::effectivePalette`.
+- Section **深色／淺色（A5）**: `set_palette_overrides` → `setPaletteOverrides`.
+- Section **深色／淺色（A5）**: `invalid_value` → `invalidValue`.
+- Section **密度（A6）**: `button_height` → `buttonHeight`.
+- Section **密度（A6）**: `button_padding` → `buttonPadding`.
+- Section **密度（A6）**: `component_presentation` → `componentPresentation`.
+- Section **密度（A6）**: `gap_small` → `gapSmall`.
+- Section **密度（A6）**: `row_padding` → `rowPadding`.
+- Section **密度（A6）**: `body_spacing` → `bodySpacing`.
+- Section **密度（A6）**: `slider_pad` → `sliderPad`.
+- Section **密度（A6）**: `slider_height` → `sliderHeight`.
+- Section **即時切換的一致性契約（A7）**: `set_presentation` → `setPresentation`.
+- Section **即時切換的一致性契約（A7）**: `sync_ime()` → `syncIme()`.
+- Section **元件展示頁 V04（A9，規格提案）**: `set_presentation` → `setPresentation`.
+- Section **實作順序與依賴**: `system_font_catalog()` → `systemFontCatalog()`.
+- Section **實作順序與依賴**: `Ui::set_presentation` → `Ui::setPresentation`.
+- Section **字型與文字（FN）**: `system_font_catalog()` → `systemFontCatalog()`.
+- Section **字型與文字（FN）**: `requested_available=false` → `requestedAvailable=false`.
+- Section **設定介面與即時切換（PS）**: `set_presentation` → `setPresentation`.
+- Section **設定介面與即時切換（PS）**: `caret_x(2)` → `caretX(2)`.
+- Section **設定介面與即時切換（PS）**: `composition_update(u"測", 1)` → `compositionUpdate(u"測", 1)`.
+- Section **設定介面與即時切換（PS）**: `test::popup_in_client` → `test::popupInClient`.
+- Section **設定介面與即時切換（PS）**: `blocked_by_modal` → `blockedByModal`.
+- Section **配色與密度（PV、DN）**: `check_palette_contrast` → `checkPaletteContrast`.
+- Section **配色與密度（PV、DN）**: `Ui::set_palette_overrides` → `Ui::setPaletteOverrides`.
+- Section **配色與密度（PV、DN）**: `invalid_value` → `invalidValue`.
+- Section **組合矩陣與作者機驗收（MX、PR）**: `set_presentation` → `setPresentation`.
+- Section **Out of Scope 本規格不交付**: `not_supported` → `notSupported`.
+- Section **Further Notes 來源與接續**: `system_font_catalog().families()` → `systemFontCatalog().families()`.
+- Section **Further Notes 來源與接續**: `Ui::set_presentation` → `Ui::setPresentation`.
+- Section **已決事項**: `FontResolution::requested_available` → `FontResolution::requestedAvailable`.
+- Section **已決事項**: `Ui::set_presentation` → `Ui::setPresentation`.
+
+## Names introduced by the other round-26d handoffs
+
+After applying #100, #101, #102, #104 and #106, apply this exact public-name map to C++ names and semantic property-event names they introduce in the sections listed above. Do not apply it to persisted JSON keys, palette role strings, file names, macro names, test case labels or other runtime text. Single-word names and types (including `CommonState`) remain unchanged.
+
+- `accelerator_key` → `acceleratorKey`.
+- `access_key` → `accessKey`.
+- `add_button` → `addButton`.
+- `add_checkbox` → `addCheckbox`.
+- `add_context_menu` → `addContextMenu`.
+- `add_dialog` → `addDialog`.
+- `add_dropdown` → `addDropdown`.
+- `add_item` → `addItem`.
+- `add_label` → `addLabel`.
+- `add_list` → `addList`.
+- `add_member` → `addMember`.
+- `add_navigation_list` → `addNavigationList`.
+- `add_progress` → `addProgress`.
+- `add_radio_group` → `addRadioGroup`.
+- `add_shortcut` → `addShortcut`.
+- `add_slider` → `addSlider`.
+- `add_tabs` → `addTabs`.
+- `add_text_field` → `addTextField`.
+- `add_tooltip` → `addTooltip`.
+- `anchor_id` → `anchorId`.
+- `anchor_item` → `anchorItem`.
+- `api_misuse` → `apiMisuse`.
+- `apply_style` → `applyStyle`.
+- `arrange_text_field` → `arrangeTextField`.
+- `backend_detail` → `backendDetail`.
+- `backend_detail_uninterpreted` → `backendDetailUninterpreted`.
+- `bind_appearance` → `bindAppearance`.
+- `blocked_by_modal` → `blockedByModal`.
+- `body_spacing` → `bodySpacing`.
+- `build_default` → `buildDefault`.
+- `builtin_appearance` → `builtinAppearance`.
+- `builtin_appearances` → `builtinAppearances`.
+- `button_height` → `buttonHeight`.
+- `button_padding` → `buttonPadding`.
+- `cancel_composition` → `cancelComposition`.
+- `caption_size` → `captionSize`.
+- `caret_rect` → `caretRect`.
+- `caret_upstream` → `caretUpstream`.
+- `caret_x` → `caretX`.
+- `caret_y` → `caretY`.
+- `cell_in_line` → `cellInLine`.
+- `check_palette_contrast` → `checkPaletteContrast`.
+- `checkbox_extra` → `checkboxExtra`.
+- `clear_simulated_hover` → `clearSimulatedHover`.
+- `close_context_menu` → `closeContextMenu`.
+- `column_layout` → `columnLayout`.
+- `component_id` → `componentId`.
+- `component_presentation` → `componentPresentation`.
+- `conflict_suffix` → `conflictSuffix`.
+- `connect_confirmation` → `connectConfirmation`.
+- `connect_confirmed` → `connectConfirmed`.
+- `connect_immediate` → `connectImmediate`.
+- `connect_rich_confirmed` → `connectRichConfirmed`.
+- `connect_rich_immediate` → `connectRichImmediate`.
+- `connect_rich_source` → `connectRichSource`.
+- `connect_source` → `connectSource`.
+- `context_creation` → `contextCreation`.
+- `context_menu` → `contextMenu`.
+- `context_menu_open` → `contextMenuOpen`.
+- `context_version` → `contextVersion`.
+- `contrast_ratio` → `contrastRatio`.
+- `debug_context` → `debugContext`.
+- `debug_messages` → `debugMessages`.
+- `default_max_text_length` → `defaultMaxTextLength`.
+- `delay_ms` → `delayMs`.
+- `described_by` → `describedBy`.
+- `description_lines` → `descriptionLines`.
+- `device_reset` → `deviceReset`.
+- `disabled_suffix` → `disabledSuffix`.
+- `disabled_tab_marker` → `disabledTabMarker`.
+- `dispatch_events` → `dispatchEvents`.
+- `display_name` → `displayName`.
+- `double_click` → `doubleClick`.
+- `dropdown_marker` → `dropdownMarker`.
+- `dropdown_marker_space` → `dropdownMarkerSpace`.
+- `dropdown_option` → `dropdownOption`.
+- `dropdown_panel` → `dropdownPanel`.
+- `effective_palette` → `effectivePalette`.
+- `empty_history` → `emptyHistory`.
+- `enable_item` → `enableItem`.
+- `enable_option` → `enableOption`.
+- `enable_page` → `enablePage`.
+- `error_lines` → `errorLines`.
+- `executing_suffix` → `executingSuffix`.
+- `first_failure` → `firstFailure`.
+- `first_line` → `firstLine`.
+- `first_visible_line` → `firstVisibleLine`.
+- `focus_changed` → `focusChanged`.
+- `focus_color` → `focusColor`.
+- `focus_indicator` → `focusIndicator`.
+- `focus_indicator_visible` → `focusIndicatorVisible`.
+- `focus_ring_radius` → `focusRingRadius`.
+- `focus_ring_width` → `focusRingWidth`.
+- `font_family` → `fontFamily`.
+- `frame_error` → `frameError`.
+- `framework_version` → `frameworkVersion`.
+- `framework_version_major` → `frameworkVersionMajor`.
+- `framework_version_minor` → `frameworkVersionMinor`.
+- `framework_version_patch` → `frameworkVersionPatch`.
+- `gap_small` → `gapSmall`.
+- `high_contrast` → `highContrast`.
+- `hit_in_line` → `hitInLine`.
+- `hover_alpha` → `hoverAlpha`.
+- `initial_focus` → `initialFocus`.
+- `invalid_tab_marker` → `invalidTabMarker`.
+- `invalid_value` → `invalidValue`.
+- `invoke_menu_item` → `invokeMenuItem`.
+- `is_open` → `isOpen`.
+- `is_read_only` → `isReadOnly`.
+- `justify_as_left` → `justifyAsLeft`.
+- `justify_method` → `justifyMethod`.
+- `keep_open` → `keepOpen`.
+- `label_kind` → `labelKind`.
+- `label_lines` → `labelLines`.
+- `labelled_by` → `labelledBy`.
+- `last_in_paragraph` → `lastInParagraph`.
+- `layout_changed` → `layoutChanged`.
+- `line_at` → `lineAt`.
+- `line_count` → `lineCount`.
+- `line_height` → `lineHeight`.
+- `line_of` → `lineOf`.
+- `line_spacing` → `lineSpacing`.
+- `list_item` → `listItem`.
+- `material_appearance` → `materialAppearance`.
+- `max_focus_ring_radius` → `maxFocusRingRadius`.
+- `max_focus_ring_width` → `maxFocusRingWidth`.
+- `max_length` → `maxLength`.
+- `max_line_spacing` → `maxLineSpacing`.
+- `max_paragraph_spacing` → `maxParagraphSpacing`.
+- `max_text_size` → `maxTextSize`.
+- `max_vertical_digits` → `maxVerticalDigits`.
+- `measure_apart` → `measureApart`.
+- `menu_bold` → `menuBold`.
+- `menu_closed` → `menuClosed`.
+- `menu_contains` → `menuContains`.
+- `menu_copy` → `menuCopy`.
+- `menu_cut` → `menuCut`.
+- `menu_delete` → `menuDelete`.
+- `menu_inner` → `menuInner`.
+- `menu_italic` → `menuItalic`.
+- `menu_item` → `menuItem`.
+- `menu_item_at` → `menuItemAt`.
+- `menu_maximum` → `menuMaximum`.
+- `menu_node_id` → `menuNodeId`.
+- `menu_opened` → `menuOpened`.
+- `menu_pad` → `menuPad`.
+- `menu_panel` → `menuPanel`.
+- `menu_paste` → `menuPaste`.
+- `menu_redo` → `menuRedo`.
+- `menu_rows` → `menuRows`.
+- `menu_select_all` → `menuSelectAll`.
+- `menu_separator` → `menuSeparator`.
+- `menu_target_id` → `menuTargetId`.
+- `menu_thumb` → `menuThumb`.
+- `menu_track` → `menuTrack`.
+- `menu_underline` → `menuUnderline`.
+- `menu_undo` → `menuUndo`.
+- `middle_dot` → `middleDot`.
+- `min_column` → `minColumn`.
+- `min_focus_ring_radius` → `minFocusRingRadius`.
+- `min_focus_ring_width` → `minFocusRingWidth`.
+- `min_line_spacing` → `minLineSpacing`.
+- `min_text_size` → `minTextSize`.
+- `modal_content` → `modalContent`.
+- `modal_panel` → `modalPanel`.
+- `native_code` → `nativeCode`.
+- `native_message` → `nativeMessage`.
+- `native_window` → `nativeWindow`.
+- `navigation_list` → `navigationList`.
+- `next_word_stop` → `nextWordStop`.
+- `no_items` → `noItems`.
+- `no_options` → `noOptions`.
+- `no_selection` → `noSelection`.
+- `normalize_rich_text` → `normalizeRichText`.
+- `not_found` → `notFound`.
+- `not_supported` → `notSupported`.
+- `numeric_value` → `numericValue`.
+- `offset_for_thumb` → `offsetForThumb`.
+- `omitted_before` → `omittedBefore`.
+- `on_accent` → `onAccent`.
+- `on_blur` → `onBlur`.
+- `on_change` → `onChange`.
+- `on_close_requested` → `onCloseRequested`.
+- `on_diagnostic` → `onDiagnostic`.
+- `on_page_change` → `onPageChange`.
+- `on_renderer_failed` → `onRendererFailed`.
+- `open_context_menu` → `openContextMenu`.
+- `operation_id` → `operationId`.
+- `option_at` → `optionAt`.
+- `option_start` → `optionStart`.
+- `page_down` → `pageDown`.
+- `page_up` → `pageUp`.
+- `palette_overrides` → `paletteOverrides`.
+- `palette_roles` → `paletteRoles`.
+- `palette_value` → `paletteValue`.
+- `paragraph_at` → `paragraphAt`.
+- `paragraph_spacing` → `paragraphSpacing`.
+- `paste_as_multi_line` → `pasteAsMultiLine`.
+- `paste_as_single_line` → `pasteAsSingleLine`.
+- `per_character` → `perCharacter`.
+- `preedit_caret` → `preeditCaret`.
+- `present_failed` → `presentFailed`.
+- `previous_word_stop` → `previousWordStop`.
+- `progress_fill` → `progressFill`.
+- `progress_track` → `progressTrack`.
+- `property_changed` → `propertyChanged`.
+- `radio_group` → `radioGroup`.
+- `radio_label_offset` → `radioLabelOffset`.
+- `radio_option` → `radioOption`.
+- `read_only` → `readOnly`.
+- `read_only_suffix` → `readOnlySuffix`.
+- `read_rich` → `readRich`.
+- `rebuild_renderer` → `rebuildRenderer`.
+- `received_at` → `receivedAt`.
+- `record_failure` → `recordFailure`.
+- `register_builtin_appearance` → `registerBuiltinAppearance`.
+- `remove_item` → `removeItem`.
+- `renderer_failed` → `rendererFailed`.
+- `requested_available` → `requestedAvailable`.
+- `reset_detection` → `resetDetection`.
+- `reset_to_source` → `resetToSource`.
+- `resource_failed` → `resourceFailed`.
+- `rich_value` → `richValue`.
+- `row_height` → `rowHeight`.
+- `row_padding` → `rowPadding`.
+- `row_y` → `rowY`.
+- `run_desktop` → `runDesktop`.
+- `scrim_alpha` → `scrimAlpha`.
+- `script_run` → `scriptRun`.
+- `scroll_height` → `scrollHeight`.
+- `scroll_line` → `scrollLine`.
+- `scroll_state` → `scrollState`.
+- `scroll_text` → `scrollText`.
+- `scroll_to` → `scrollTo`.
+- `scrollable_text` → `scrollableText`.
+- `select_paragraph` → `selectParagraph`.
+- `select_to` → `selectTo`.
+- `select_word` → `selectWord`.
+- `selected_marker` → `selectedMarker`.
+- `selection_changes` → `selectionChanges`.
+- `selection_required` → `selectionRequired`.
+- `sends_change` → `sendsChange`.
+- `set_colors` → `setColors`.
+- `set_error` → `setError`.
+- `set_items` → `setItems`.
+- `set_justify_method` → `setJustifyMethod`.
+- `set_line_spacing` → `setLineSpacing`.
+- `set_mode` → `setMode`.
+- `set_palette_overrides` → `setPaletteOverrides`.
+- `set_palette_value` → `setPaletteValue`.
+- `set_paragraph_spacing` → `setParagraphSpacing`.
+- `set_presentation` → `setPresentation`.
+- `set_rich_value` → `setRichValue`.
+- `set_scroll_line` → `setScrollLine`.
+- `set_style` → `setStyle`.
+- `set_text_align` → `setTextAlign`.
+- `set_title` → `setTitle`.
+- `set_typing_style` → `setTypingStyle`.
+- `set_value` → `setValue`.
+- `set_vertical_digits` → `setVerticalDigits`.
+- `set_visible_lines` → `setVisibleLines`.
+- `set_word_segmentation` → `setWordSegmentation`.
+- `set_writing_mode` → `setWritingMode`.
+- `shortcut_hint` → `shortcutHint`.
+- `sideways_only` → `sidewaysOnly`.
+- `simulate_hover` → `simulateHover`.
+- `slider_height` → `sliderHeight`.
+- `slider_pad` → `sliderPad`.
+- `slider_track` → `sliderTrack`.
+- `source_conflict` → `sourceConflict`.
+- `source_time` → `sourceTime`.
+- `start_composition` → `startComposition`.
+- `structure_changed` → `structureChanged`.
+- `system_font_catalog` → `systemFontCatalog`.
+- `tab_item` → `tabItem`.
+- `text_align` → `textAlign`.
+- `text_changed` → `textChanged`.
+- `text_color` → `textColor`.
+- `text_field` → `textField`.
+- `text_offset` → `textOffset`.
+- `text_revision` → `textRevision`.
+- `text_selection` → `textSelection`.
+- `text_selection_changed` → `textSelectionChanged`.
+- `text_size` → `textSize`.
+- `text_top` → `textTop`.
+- `text_unit` → `textUnit`.
+- `third_party_notices` → `thirdPartyNotices`.
+- `thumb_position` → `thumbPosition`.
+- `thumb_top` → `thumbTop`.
+- `toggle_style` → `toggleStyle`.
+- `triple_click` → `tripleClick`.
+- `typing_style` → `typingStyle`.
+- `ui_environment` → `uiEnvironment`.
+- `unselected_marker` → `unselectedMarker`.
+- `update_composition` → `updateComposition`.
+- `update_item` → `updateItem`.
+- `use_latest` → `useLatest`.
+- `valid_line_spacing` → `validLineSpacing`.
+- `valid_multi_line` → `validMultiLine`.
+- `valid_paragraph_spacing` → `validParagraphSpacing`.
+- `valid_single_line` → `validSingleLine`.
+- `vertical_digits` → `verticalDigits`.
+- `vertical_height` → `verticalHeight`.
+- `vertical_text` → `verticalText`.
+- `visible_caret` → `visibleCaret`.
+- `visible_lines` → `visibleLines`.
+- `web_appearance` → `webAppearance`.
+- `word_at` → `wordAt`.
+- `word_segmentation` → `wordSegmentation`.
+- `word_segmentation_in_use` → `wordSegmentationInUse`.
+- `word_stop` → `wordStop`.
+- `wrap_lines` → `wrapLines`.
+- `wrap_marked` → `wrapMarked`.
+- `write_rich` → `writeRich`.
+- `writing_mode` → `writingMode`.
+- `wrong_thread` → `wrongThread`.
+- `x_in_line` → `xInLine`.
+- Public `Frame::owner_` → `Frame::ownerState` (private `owner_` members stay unchanged).
+
+## Runtime strings and verification boundaries
+
+Only these 13 semantic property-event keys change: `read_only` → `readOnly`, `blocked_by_modal` → `blockedByModal`, `numeric_value` → `numericValue`, `text_align` → `textAlign`, `justify_method` → `justifyMethod`, `line_spacing` → `lineSpacing`, `paragraph_spacing` → `paragraphSpacing`, `typing_style` → `typingStyle`, `word_segmentation` → `wordSegmentation`, `scroll_line` → `scrollLine`, `visible_lines` → `visibleLines`, `writing_mode` → `writingMode`, `vertical_digits` → `verticalDigits`.
+
+The 165 `LCARS_OP` operation descriptions retain their original stringized text through explicit labels. Diagnostic text, test names, UIA names/case labels, palette role keys and settings.json keys remain byte-identical. `tests/uia/verify.ps1` consumes the stable UIA case labels and contains none of the renamed property keys; its expectations remain unchanged.
+
+`src/desktop_host.cpp`, `src/uia_provider.cpp` and `src/layout.cpp` differ only by the reviewed C++ renames and (in the UIA provider) the `numericValue` property-key rename. There is no additional behavior or layout change and no new idle-desktop run for #105. Earlier tickets' idle runs remain with the coordinator.

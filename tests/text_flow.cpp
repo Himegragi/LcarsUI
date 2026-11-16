@@ -362,7 +362,7 @@ void theSemanticLayerReadsAndWritesTheThreePropertiesLikeTheHandles() {
     check(bool(tree.perform({"l"}, Verb::setParagraphSpacing, 0)) && *handle.paragraphSpacing() == 0, "Semantic paragraph spacing reaches the typed read");
     check(bool(field.setTextAlign(TextAlign::center)) && tree.get({"t"})->textAlign == TextAlign::center, "A typed change reaches the semantic read");
     tree.dispatchEvents();
-    for (const char* name : {"text_align", "line_spacing", "paragraph_spacing"})
+    for (const char* name : {"textAlign", "lineSpacing", "paragraphSpacing"})
         check(std::count(changed.begin(), changed.end(), name) >= 1, "A change raises property_changed");
 
     check(tree.perform({"l"}, Verb::setLineSpacing, 3.1).status == field.setLineSpacing(3.1).status, "The same status for an out-of-range line spacing");

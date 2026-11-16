@@ -155,7 +155,7 @@ void aPropertyChangeIsAnnounced() {
     auto subscription = ui.semantics().subscribe([&](const SemanticEvent& e) { if (e.kind == SemanticEventKind::propertyChanged) changed.push_back(e.property); });
     label.setWritingMode(WritingMode::vertical);
     ui.semantics().dispatchEvents();
-    check(std::find(changed.begin(), changed.end(), "writing_mode") != changed.end(), "Changing the writing mode raises property_changed");
+    check(std::find(changed.begin(), changed.end(), "writingMode") != changed.end(), "Changing the writing mode raises property_changed");
 }
 
 // ---- layout: height, columns right to left, horizontal scrolling ----

@@ -337,6 +337,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 
 | Change | Idle-desktop runs |
 | --- | --- |
+| #105 camelCase C++ names (0.4.0) | none beyond CTest: host, UIA adapter and layout edits are renames only, including semantic property-event keys; `public_names` rejects new snake_case declarations, the installed consumer rejects old names, and all `demo_render_compare` artifacts stay byte-identical |
 | #72 focus indicator | `-Only dpi` (R08 real-window focus); toggle the Windows keyboard-cues setting once to see `WM_SETTINGCHANGE` re-read it; right press on empty space and a lone Alt with real input |
 | #73 slider drag interface | `-Only perf` (the report-only `slider-drag-text-size` plus PM01-PM05), `-Only dpi` |
 | #74 pointer hover | `lcars_host_verify --hover-only` (needs a real cursor position), look at both appearances; `-Only demo-uia` |

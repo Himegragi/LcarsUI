@@ -429,7 +429,7 @@ void theJustificationMethodIsReadableAndSettableEverywhere() {
     check(bool(tree.perform({"l"}, Verb::setJustifyMethod, JustifyMethod::perCharacter)) && *name.justifyMethod() == JustifyMethod::perCharacter, "The semantic write reaches the typed read");
     check(bool(field.setJustifyMethod(JustifyMethod::spaces)) && tree.get({"t"})->justifyMethod == JustifyMethod::spaces, "And the typed write reaches the semantic read");
     tree.dispatchEvents();
-    check(std::count(changed.begin(), changed.end(), "justify_method") >= 1, "A change raises property_changed");
+    check(std::count(changed.begin(), changed.end(), "justifyMethod") >= 1, "A change raises property_changed");
     check(tree.perform({"l"}, Verb::setJustifyMethod, static_cast<JustifyMethod>(7)).status == name.setJustifyMethod(static_cast<JustifyMethod>(7)).status, "The same status for an unknown method");
     check(tree.perform({"l"}, Verb::setJustifyMethod, 1).status == Status::invalidValue, "The wrong argument type is invalid");
     check(tree.perform({"l"}, Verb::setTextAlign, TextAlign::distribute).status == Status::ok && tree.get({"l"})->textAlign == TextAlign::distribute, "The semantic layer reads and writes both new alignments");

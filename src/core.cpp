@@ -3650,21 +3650,21 @@ void detail::UiState::semanticDiff() {
         if (node.focused && !old->focused && !focusedItem) emit(SemanticEventKind::focusChanged, node.ref);
         auto property = [&](bool changed, const char* name) { if (changed) emit(SemanticEventKind::propertyChanged, node.ref, name); };
         property(node.name != old->name, "name"); property(node.value != old->value, "value");
-        property(node.enabled != old->enabled, "enabled"); property(node.readOnly != old->readOnly, "read_only");
+        property(node.enabled != old->enabled, "enabled"); property(node.readOnly != old->readOnly, "readOnly");
         property(node.checked != old->checked, "checked"); property(node.selected != old->selected, "selected");
         property(node.expanded != old->expanded, "expanded"); property(node.invalid != old->invalid, "invalid");
-        property(node.blockedByModal != old->blockedByModal, "blocked_by_modal");
-        property(node.numericValue != old->numericValue, "numeric_value");
-        property(node.textAlign != old->textAlign, "text_align"); property(node.justifyMethod != old->justifyMethod, "justify_method");
-        property(node.lineSpacing != old->lineSpacing, "line_spacing");
-        property(node.paragraphSpacing != old->paragraphSpacing, "paragraph_spacing");
-        property(node.styles != old->styles, "styles"); property(node.typingStyle != old->typingStyle, "typing_style");
-        property(node.wordSegmentation != old->wordSegmentation, "word_segmentation");
+        property(node.blockedByModal != old->blockedByModal, "blockedByModal");
+        property(node.numericValue != old->numericValue, "numericValue");
+        property(node.textAlign != old->textAlign, "textAlign"); property(node.justifyMethod != old->justifyMethod, "justifyMethod");
+        property(node.lineSpacing != old->lineSpacing, "lineSpacing");
+        property(node.paragraphSpacing != old->paragraphSpacing, "paragraphSpacing");
+        property(node.styles != old->styles, "styles"); property(node.typingStyle != old->typingStyle, "typingStyle");
+        property(node.wordSegmentation != old->wordSegmentation, "wordSegmentation");
         if (node.scroll && old->scroll) {
-            property(node.scroll->firstLine != old->scroll->firstLine, "scroll_line");
-            property(node.scroll->visibleLines != old->scroll->visibleLines, "visible_lines");
+            property(node.scroll->firstLine != old->scroll->firstLine, "scrollLine");
+            property(node.scroll->visibleLines != old->scroll->visibleLines, "visibleLines");
         }
-        property(node.writingMode != old->writingMode, "writing_mode"); property(node.verticalDigits != old->verticalDigits, "vertical_digits");
+        property(node.writingMode != old->writingMode, "writingMode"); property(node.verticalDigits != old->verticalDigits, "verticalDigits");
         if (node.role == Role::textField && node.value != old->value) emit(SemanticEventKind::textChanged, node.ref);
         if (node.textSelection && old->textSelection && (node.textSelection->anchor != old->textSelection->anchor || node.textSelection->caret != old->textSelection->caret))
             emit(SemanticEventKind::textSelectionChanged, node.ref);
