@@ -14,18 +14,8 @@ static_assert(std::is_same_v<decltype(ComponentSnapshot::vertical_digits), std::
 static_assert(std::is_same_v<decltype(ComponentSnapshot::range), std::optional<SliderRange>>);
 static_assert(std::is_same_v<decltype(ComponentSnapshot::scroll), std::optional<TextFieldScroll>>);
 
-// #102 can replace this predicate with CommonState equality without changing any state driver.
 bool same_common_fields(const ComponentSnapshot& a, const NodeSnapshot& b) {
-    auto fields = [](const auto& s) {
-        return std::tie(s.name, s.value, s.description, s.error, s.enabled, s.read_only, s.focusable,
-                        s.focused, s.invalid, s.executing, s.visible, s.expanded, s.checked,
-                        s.numeric_value, s.writing_mode, s.vertical_digits, s.scroll, s.text_align,
-                        s.justify_method, s.line_spacing, s.paragraph_spacing, s.rich);
-    };
-    const auto range = [](const auto& s) {
-        return s.range ? std::optional{std::tuple{s.range->minimum, s.range->maximum, s.range->step}} : std::nullopt;
-    };
-    return fields(a) == fields(b) && range(a) == range(b) && a.verbs == b.verbs;
+    return static_cast<const CommonState&>(a) == static_cast<const CommonState&>(b);
 }
 
 Query<ComponentSnapshot> describe(const ComponentHandle& handle) {
@@ -246,11 +236,33 @@ void dropdown_open() {
         check(dropdown->describe()->expanded, "dropdown_open: expanded state reached");
     }
 }
+void component_equality() {
+    Ui ui;
+    const auto list = ui.add_list({.id = "list", .label = u"List"}, {{{"a"}, u"Alpha"}}).value.value();
+    const auto original = *list.describe();
+    auto changed = original;
+    check(original == changed, "component equality: a copied snapshot is equal");
+    changed.items.front().label = u"Changed";
+    check(!(original == changed), "component equality: items are part of the whole snapshot");
+}
+void node_equality() {
+    Ui ui;
+    const auto label = ui.add_label({.id = "label", .value = u"Displayed"}).value.value();
+    test::FakeMeasure measure; ScrollState scroll;
+    arrange(layout::component(label), ui, web_appearance(), measure, 300, 200, 1.f, scroll);
+    const auto original = *ui.semantics().get({"label"});
+    auto changed = original;
+    check(original == changed, "node equality: a copied snapshot is equal");
+    check(changed.bounds.has_value(), "node equality: the arranged label has bounds");
+    ++changed.bounds->x;
+    check(!(original == changed), "node equality: bounds are part of the whole snapshot");
+}
 }
 int main() {
     const test::Case cases[] = {{"normal", normal}, {"disabled", disabled}, {"read_only", read_only}, {"context_menu_open", context_menu_open},
                               {"attached_error_visible", attached_error_visible}, {"hidden", hidden}, {"blocked_by_modal", blocked_by_modal},
                               {"multiline_scrolled", multiline_scrolled}, {"scrolled_offscreen", scrolled_offscreen},
-                              {"errors", errors}, {"dropdown_open", dropdown_open}};
+                              {"errors", errors}, {"dropdown_open", dropdown_open}, {"component_equality", component_equality},
+                              {"node_equality", node_equality}};
     return test::run("snapshots", cases);
 }

@@ -70,6 +70,12 @@ public action vocabulary). Items stay in `ComponentSnapshot::items` and in seman
 `{component id, option value}`. Application-only fields such as `source_conflict`, `candidate` and `labels` stay in
 the component snapshot; bounds, instance identity and label relationships stay in the node snapshot.
 
+The 24 common fields are declared once in the owning `CommonState` base in `core.hpp`; both snapshots inherit it,
+so field access stays `snapshot.name` or `snapshot.verbs`. Each complete snapshot has its own defaulted `==`,
+including its base and its own fields (`items` for components, `bounds` for nodes). Comparing the two
+`const CommonState&` parts compares every common field, including ones added later. Snapshots keep their copied
+values after the queried component changes or is removed.
+
 - `visible` means there is positive on-screen area after the latest arrangement and the component is not hidden.
   Both snapshots use the same clipped bounds, including attached label lines. Before the first arrangement it is false.
 - A label's `name` and `value` both contain its displayed text. `focused` means keyboard input goes there now;
@@ -339,6 +345,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #96 public names follow the glossary; `add_x` sets the component type (0.3.0) | none: renames only (`src/desktop_host.cpp`, `src/desktop_host.hpp` and `src/uia_provider.cpp` change by type renames only, no host, layout or input change); the consumer example checks the new and removed names at compile time and the component type of every `add_x` at run time, and `demo_render_compare` stays byte-identical |
 | #99 list change record and label read source | none: the list write's parameter type and a second label connection (no host, layout or input change); `components` drives both through the handles, the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
 | #100 field and text-field public names | none: host and layout edits are pure renames, and the unused appearance method is removed; the consumer checks the new names and rejects the old ones, with all existing CTests and `demo_render_compare` retained |
+| #102 shared snapshot fields | none: owning `CommonState` extraction and complete snapshot equality only; no host or layout changes, and option-node values are preserved for #106; `snapshots` and `demo_render_compare` cover the refactor |
 | #101 aligned component and semantic snapshots (0.4.0) | `-Only uia,axe,demo-uia`: the UIA adapter combines item and parent `IsEnabled` and propagates parent availability events; `snapshots` is the core twin. No `desktop_host.cpp` or layout change. Check right-click and keyboard menus once with real input; component `focused` is false while the menu owns input. |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the

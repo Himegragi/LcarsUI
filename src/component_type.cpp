@@ -504,7 +504,7 @@ public:
         const auto& field = it->second;
         n.text_selection = field.session.selection; n.text_revision = field.session.revision;
         if (field.rich) {
-            n.rich = true; n.styles = field.spans;
+            n.styles = field.spans;
             n.typing_style = UiState::Internals::insertion_style(ui, field, field.session.begin(), field.session.end());
         }
         if (!ref.item) {

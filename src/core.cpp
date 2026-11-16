@@ -100,7 +100,7 @@ std::u16string EditSession::visible() const {
 }
 namespace {
 // A handle query that reads one member of the handle's own description: the description's failure, or the member.
-template <class Value> Query<Value> semantic_property(const Query<ComponentSnapshot>& semantics, Value ComponentSnapshot::*member) {
+template <class Value, class Owner> Query<Value> semantic_property(const Query<ComponentSnapshot>& semantics, Value Owner::*member) {
     if (!semantics) return {semantics.status, semantics.message, std::nullopt};
     return {Status::ok, {}, (*semantics).*member};
 }
@@ -3446,22 +3446,19 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
         return {Status::ok, {}, n};
     }
     if (u.removal_pending(ref.id)) return {Status::not_found, {}, {}};
-    auto s = *u.describe(ref.id); NodeSnapshot n; n.ref = ref; n.role = detail::component_type(c->kind).role();
+    const auto snapshot = u.describe(ref.id);
+    const auto& s = *snapshot;
+    NodeSnapshot n;
+    // Copy the owning common part once, keeping the complete source intact for the registry callbacks.
+    static_cast<CommonState&>(n) = static_cast<const CommonState&>(s);
+    n.ref = ref; n.role = detail::component_type(c->kind).role();
     auto [instance, inserted] = u.semantic_instances_.try_emplace(ref.id, 0);
     if (inserted) instance->second = ++u.next_semantic_instance_;
     n.instance = instance->second;
-    n.name = s.name; n.value = s.value; n.description = s.description; n.error = s.error;
-    n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused;
-    n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
-    n.range = s.range; n.numeric_value = s.numeric_value;
-    n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits; n.scroll = s.scroll; n.rich = s.rich;
-    n.verbs = s.verbs;
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
-    n.visible = s.visible;
     for (const auto& id : s.labels) { auto label = u.find(id); if (label && label->label_kind == LabelKind::name) n.labelled_by.push_back({id}); else if (label && (label->label_kind == LabelKind::description || label->label_kind == LabelKind::error)) n.described_by.push_back({id}); }
-    n.text_align = s.text_align; n.justify_method = s.justify_method; n.line_spacing = s.line_spacing; n.paragraph_spacing = s.paragraph_spacing;
     detail::component_type(c->kind).describe_node(u, *c, s, ref, n);
     if (ref.item) {
         auto it = std::find_if(s.items.begin(), s.items.end(), [&](const auto& o) { return o.value == *ref.item; });
