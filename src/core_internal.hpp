@@ -707,8 +707,8 @@ private:
     Result moveLineEdge(const Id& id, bool end, bool shift);
     Result notify();
     std::function<void()> changed_, invalidate_, relayout_;
-    struct TextFieldScroll { ScrollState* state; int maximum, lineHeight; bool horizontal = false; };
-    std::map<std::string, TextFieldScroll, std::less<>> textScrolls_;
+    struct TextScroll { ScrollState* state; int maximum, lineHeight; bool horizontal = false; };
+    std::map<std::string, TextScroll, std::less<>> textScrolls_;
     std::map<Id, ScrollState, std::less<>> verticalScrolls_;
     std::function<void(const Id&, const Id&)> focusMoved_;
     std::function<void()> beforeFocus_;

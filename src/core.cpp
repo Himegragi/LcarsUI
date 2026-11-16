@@ -2864,10 +2864,10 @@ Result detail::UiState::focusable(const Component& control) const {
     return {};
 }
 void detail::UiState::setScrollableText(std::string id, ScrollState& state, int maximum, int lineHeight) {
-    textScrolls_.insert_or_assign(std::move(id), TextFieldScroll{&state, maximum, std::max(1, lineHeight)});
+    textScrolls_.insert_or_assign(std::move(id), TextScroll{&state, maximum, std::max(1, lineHeight)});
 }
 void detail::UiState::setVerticalScroll(const Id& id, int maximum, int columnWidth) {
-    textScrolls_.insert_or_assign(id, TextFieldScroll{&verticalScrolls_[id], maximum, std::max(1, columnWidth), true});
+    textScrolls_.insert_or_assign(id, TextScroll{&verticalScrolls_[id], maximum, std::max(1, columnWidth), true});
 }
 void detail::UiState::clearVerticalScroll(const Id& id) {
     if (auto it = textScrolls_.find(id); it != textScrolls_.end() && it->second.horizontal) textScrolls_.erase(it);
