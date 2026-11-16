@@ -1,4 +1,5 @@
 #include "uia_client_helpers.hpp"
+#include "option_properties.hpp"
 #include <windows.h>
 #include <UIAutomation.h>
 #include <iostream>
@@ -318,12 +319,12 @@ int wmain(int argc, wchar_t** argv) {
         if (listItem) listItem->Release();
         listCase = listCase && SUCCEEDED(invokeId(automation, root, L"form.title.pages.v02.disable")) && selectId(automation, root, L"T008") == static_cast<HRESULT>(UIA_E_ELEMENTNOTENABLED);
         BSTR itemHelp = nullptr;
-        const bool itemHelpEmpty = first && SUCCEEDED(first->get_CurrentHelpText(&itemHelp)) && SysStringLen(itemHelp) == 0;
+        const bool itemHelpEmpty = first && SUCCEEDED(first->get_CurrentHelpText(&itemHelp)) && test::optionHelpTextIsEmpty(SysStringLen(itemHelp));
         SysFreeString(itemHelp);
         std::cout << "UIA09 option HelpText empty: " << (itemHelpEmpty ? "PASS" : "FAIL") << '\n'; pass &= itemHelpEmpty;
         auto disabledRow = findId(automation, root, L"T008"); BOOL rowFocusable = TRUE, rowEnabled = TRUE;
         const bool disabledNotFocusable = disabledRow && SUCCEEDED(disabledRow->get_CurrentIsEnabled(&rowEnabled)) && !rowEnabled &&
-            SUCCEEDED(disabledRow->get_CurrentIsKeyboardFocusable(&rowFocusable)) && !rowFocusable;
+            SUCCEEDED(disabledRow->get_CurrentIsKeyboardFocusable(&rowFocusable)) && test::disabledRowCannotTakeFocus(rowEnabled != FALSE, rowFocusable != FALSE);
         if (disabledRow) disabledRow->Release();
         std::cout << "UIA09 disabled row not focusable: " << (disabledNotFocusable ? "PASS" : "FAIL") << '\n'; pass &= disabledNotFocusable;
         listCase = listCase && SUCCEEDED(invokeId(automation, root, L"form.title.pages.v02.sort"));

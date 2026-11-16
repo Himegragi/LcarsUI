@@ -3,6 +3,7 @@
 #include "lcars/layout.hpp"
 #include "check.hpp"
 #include "fake_measure.hpp"
+#include "option_properties.hpp"
 using namespace lcars;
 using test::check;
 
@@ -79,6 +80,10 @@ void compareAll(World& w, const char* stateName, const State& state = {}) {
             const auto context = std::string(stateName) + "/" + subject.id + "/" + item.value.id;
             const auto node = w.ui.semantics().get({subject.id, item.value});
             check(bool(parent) && bool(node), (context + ": parent and option readable").c_str());
+            check(test::optionHelpTextIsEmpty(node->description.size()), (context + ": option HelpText is empty").c_str());
+            if (subject.row())
+                check(test::disabledRowCannotTakeFocus(parent->enabled && node->enabled, node->focusable),
+                      (context + ": disabled row cannot take keyboard focus").c_str());
             CommonState expected;
             expected.name = item.value.id == "a" ? u"Alpha" : u"Beta";
             expected.enabled = item.value.id == "a" || state.secondEnabled;
