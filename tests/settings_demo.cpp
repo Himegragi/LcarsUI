@@ -1192,11 +1192,11 @@ void item_note_is_a_multiline_field() {
     settings_demo::Demo demo; demo.nav.select({"items"});
     test::check(bool(demo.items_add.invoke()), "open the add item dialog");
     auto note = demo.ui.semantics().get({"items.dialog.note"});
-    test::check(note && note->role == Role::text && note->scroll && note->scroll->visible_lines == 3, "the note is a three-line multi-line text field");
+    test::check(note && note->role == Role::text_field && note->scroll && note->scroll->visible_lines == 3, "the note is a three-line multi-line text field");
     test::FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(demo.page(), demo.ui, web_appearance(), measure, 960, 720, 1, scroll);
     const auto* placed = frame.find(demo.item_note);
-    test::check(placed && placed->multiline && placed->view.visible == 3 && placed->field.editor.h == 3 * measure.line_height(placed->text_size), "it is arranged three lines tall");
+    test::check(placed && placed->multiline && placed->view.visible == 3 && placed->text_field.editor.h == 3 * measure.line_height(placed->text_size), "it is arranged three lines tall");
     test::check(demo.item_note.describe()->visible_lines == 3 && !demo.item_name.describe()->multiline, "the name beside it stays single-line");
     demo.item_note.focus();
     test::check(bool(detail::access(demo.ui).key_down({.key = Key::enter})) && *demo.item_dialog.is_open(), "Enter in the note breaks the line and the dialog stays open");

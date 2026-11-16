@@ -12,14 +12,14 @@ int checks=0;
 void check(bool condition,const char* name){++checks;if(!condition)throw std::runtime_error(name);}
 void core_behavior(){
     Ui ui;
-    auto name = ui.add_text({.id = "name", .value = u"\u7e41\u9ad4\u4e2d\u6587"}).value.value();
-    auto locked = ui.add_text({.id = "locked", .value = u"keep", .read_only = true}).value.value();
+    auto name = ui.add_text_field({.id = "name", .value = u"\u7e41\u9ad4\u4e2d\u6587"}).value.value();
+    auto locked = ui.add_text_field({.id = "locked", .value = u"keep", .read_only = true}).value.value();
     auto run = ui.add_button({.id = "run"}).value.value();
     ui.add_button({.id = "cancel", .page = "dialog"}).value.value();
     name.connect_source({[] { return std::u16string(u"\u7e41\u9ad4\u4e2d\u6587"); }, [](std::function<void()>) { return [] {}; }});
-    name.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    name.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     locked.connect_source({[] { return std::u16string(u"keep"); }, [](std::function<void()>) { return [] {}; }});
-    locked.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    locked.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     int calls=0;run.bind([&]{++calls;return Result{};});
     check(detail::access(ui).set_value("absent",u"x").status==Status::not_found,"Unknown ID must fail");
     check(locked.set_value(u"x").status==Status::read_only,"Read-only write must fail");
@@ -57,9 +57,9 @@ void core_behavior(){
 }
 void renderer_failure_admission() {
     Ui ui;
-    auto name = ui.add_text({.id="name", .value=u"draft"}).value.value();
+    auto name = ui.add_text_field({.id="name", .value=u"draft"}).value.value();
     name.connect_source({[] { return std::u16string(u"draft"); }, [](std::function<void()>) { return [] {}; }});
-    name.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    name.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     check(bool(detail::access(ui).focus("name")), "Initial focus succeeds");
     detail::access(ui).renderer_failed(true);
     check(renderer_failure_preserves_draft(name,u"draft"), "Failure rejects edits and preserves readable draft");
@@ -86,7 +86,8 @@ void renderer_failure_admission() {
 void appearances(){
     auto& a=web_appearance();auto& b=material_appearance();
     for(int size:{16,18,24,26,39}){
-        auto web=a.field({20,30,500,140},size),material=b.field({20,30,500,140},size);
+        TextFieldHeights heights{size + 8, 0, 0, size + 4};
+        auto web=a.arrange_text_field(500,heights,1.f),material=b.arrange_text_field(500,heights,1.f);
         check(web.label.y<web.surface.y,"Web label is outside the field surface");
         check(material.label.y>material.surface.y&&material.underline,"Material label is inside filled field");
         for(auto parts:{web,material}){

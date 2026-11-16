@@ -278,11 +278,11 @@ std::size_t laid_segments(Ui& ui, const LabelHandle& handle) {
 }
 
 // ---- Text fields ----------------------------------------------------------------------------------
-TextHandle field_of(Ui& ui, ComponentConfig control) {
+TextFieldHandle field_of(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
-    auto field = *ui.add_text(std::move(control));
+    auto field = *ui.add_text_field(std::move(control));
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-    check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
+    check(bool(field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
 ComponentConfig multi(std::string id, std::u16string value, TextAlign align, JustifyMethod method = JustifyMethod::automatic, unsigned lines = 3) {
@@ -390,8 +390,8 @@ void a_justified_single_line_field_looks_left_aligned() {
 
 void a_field_refuses_distribute_and_a_label_accepts_it() {
     Ui ui;
-    check(ui.add_text(single("bad", u"x", TextAlign::distribute)).status == Status::invalid_value, "A single-line field is not created distributed");
-    check(ui.add_text(multi("bad", u"x", TextAlign::distribute)).status == Status::invalid_value, "Nor a multi-line one");
+    check(ui.add_text_field(single("bad", u"x", TextAlign::distribute)).status == Status::invalid_value, "A single-line field is not created distributed");
+    check(ui.add_text_field(multi("bad", u"x", TextAlign::distribute)).status == Status::invalid_value, "Nor a multi-line one");
     check(ui.add_button({.id = "b", .text_align = TextAlign::justify}).status == Status::invalid_value, "A button has no alignment at all");
     check(ui.add_button({.id = "b2", .justify_method = JustifyMethod::spaces}).status == Status::invalid_value, "Nor a justification method");
     check(ui.add_label(label("bad", u"x", TextAlign::left, static_cast<JustifyMethod>(9))).status == Status::invalid_value, "An unknown method is invalid at creation");
@@ -474,12 +474,12 @@ void the_user_setting_draws_stretched_text_left_but_keeps_the_properties() {
 // spans below "bb cc" is bold and underlined (10 + 10 + 10 + 10 + 10 = 50 px) and the space after it is plain.
 const std::u16string words = u"aa bb cc dd ee ff gg hh ii jj kk ll mm nn oo pp";
 const std::vector<StyleSpan> rich_spans = {{.start = 3, .length = 5, .bold = true, .underline = true, .color = {}}, {.start = 27, .length = 5, .italic = true, .color = {}}};
-TextHandle rich_field_of(Ui& ui, ComponentConfig control, std::vector<StyleSpan> spans = rich_spans) {
+TextFieldHandle rich_field_of(Ui& ui, ComponentConfig control, std::vector<StyleSpan> spans = rich_spans) {
     control.rich = true;
     auto model = std::make_shared<RichText>(RichText{control.value, std::move(spans)});
-    auto field = *ui.add_text(std::move(control));
+    auto field = *ui.add_text_field(std::move(control));
     check(bool(field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a rich source");
-    check(bool(field.connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; })), "Connect a rich write");
+    check(bool(field.connect_rich_confirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; })), "Connect a rich write");
     return field;
 }
 // What a rich field painted: every styled draw call and every fill, with the role it was painted in.
@@ -538,7 +538,7 @@ void a_justified_rich_line_keeps_caret_selection_hits_glyphs_and_underline_toget
         // Drawn glyphs: every call starts at the caret stop of its first character, in the face of its run.
         auto semantics = *detail::access(ui).describe("t");
         StyledProbe probe(detail::access(ui), *p, semantics, web_appearance(), 1.f, true);
-        detail::component_type(ComponentKind::text).paint(probe);
+        detail::component_type(ComponentKind::text_field).paint(probe);
         unsigned offset = 0;
         bool drawn_where_stops_are = !probe.draws.empty(), faces_right = true;
         for (const auto& draw : probe.draws) {
@@ -769,13 +769,13 @@ Rows label_rows(Ui& ui, const LabelHandle& handle, const std::u16string& text, b
     }
     return out;
 }
-Rows field_rows(Ui& ui, const TextHandle& handle, const std::u16string& text, const Appearance& look) {
+Rows field_rows(Ui& ui, const TextFieldHandle& handle, const std::u16string& text, const Appearance& look) {
     FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(layout::component(handle), ui, look, measure, 300, 400, 1.f, scroll);
     const auto* p = frame.find(handle);
     Rows out;
     if (!p->multiline) {  // one line, the end of its paragraph
-        out.area = static_cast<float>(p->field.editor.w);
+        out.area = static_cast<float>(p->text_field.editor.w);
         const float origin = p->shift;
         out.rows.push_back({true, origin, origin + p->run.x(static_cast<unsigned>(text.find_last_not_of(u' ') + 1))});
         return out;

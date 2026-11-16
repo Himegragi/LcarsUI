@@ -79,8 +79,8 @@ void theme_switch_preserves_showcase_geometry() {
                 return true;
             };
             check(x.id == y.id && x.bounds == y.bounds && x.clip == y.clip && x.text_size == y.text_size &&
-                  x.field.label == y.field.label && x.field.surface == y.field.surface && x.field.editor == y.field.editor &&
-                  x.field.description == y.field.description && x.field.error == y.field.error && x.options == y.options &&
+                  x.text_field.label == y.text_field.label && x.text_field.surface == y.text_field.surface && x.text_field.editor == y.text_field.editor &&
+                  x.text_field.description == y.text_field.description && x.text_field.error == y.text_field.error && x.options == y.options &&
                   x.slider_track == y.slider_track && x.progress_track == y.progress_track && x.progress_fill == y.progress_fill &&
                   lines_equal(x.lines, y.lines) && lines_equal(x.label_lines, y.label_lines) &&
                   lines_equal(x.description_lines, y.description_lines) && lines_equal(x.error_lines, y.error_lines), "PV02 geometry unchanged");
@@ -382,7 +382,7 @@ void semantic_verb_drivers() {
                 using T = std::decay_t<decltype(h)>;
                 if constexpr (std::is_same_v<T, ButtonHandle>) { if (verb == Verb::invoke) return h.invoke().status; }
                 if constexpr (std::is_same_v<T, CheckboxHandle>) { if (verb == Verb::toggle) return h.toggle().status; }
-                if constexpr (std::is_same_v<T, TextHandle>) {
+                if constexpr (std::is_same_v<T, TextFieldHandle>) {
                     switch (verb) {
                     case Verb::set_value: return h.set_value(u"example").status;
                     case Verb::select: return h.select(0, 0).status;
@@ -467,7 +467,7 @@ void semantic_wrong_thread_drivers() {
                     if (verb == Verb::focus) { if constexpr (requires { h.focus(); }) return h.focus().status; }
                     if constexpr (std::is_same_v<T, ButtonHandle>) { if (verb == Verb::invoke) return h.invoke().status; }
                     if constexpr (std::is_same_v<T, CheckboxHandle>) { if (verb == Verb::toggle) return h.toggle().status; }
-                    if constexpr (std::is_same_v<T, TextHandle>) switch (verb) {
+                    if constexpr (std::is_same_v<T, TextFieldHandle>) switch (verb) {
                         case Verb::set_value: return h.set_value(u"x").status; case Verb::select: return h.select(0, 0).status;
                         case Verb::undo: return h.undo().status; case Verb::redo: return h.redo().status;
                         case Verb::copy: return h.copy().status; case Verb::cut: return h.cut().status;
@@ -637,7 +637,7 @@ void presentation_size_scales_explicit_and_default_text() {
 
 void compact_density_reflows_fields() {
     Ui ui;
-    auto field = ui.add_text({.id = "density.field", .label = u"Name"}).value.value();
+    auto field = ui.add_text_field({.id = "density.field", .label = u"Name"}).value.value();
     test::FakeMeasure measure; ScrollState scroll;
     auto root = layout::component(field);
     auto standard = arrange(root, ui, *appearance, measure, 400, 400, 1.f, scroll);
@@ -871,7 +871,7 @@ void ps08_large_text_wraps_without_overlap() {
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 640, 480, 1.f, form.scroll, ids.name);
     auto* field = frame.find(form.handles.name); auto* next = frame.find(form.handles.notices);
     check(field && next && field->error_lines.size() > 1, "PS08 large error wraps");
-    auto editor = field->field.editor; editor.x += field->bounds.x; editor.y += field->bounds.y;
+    auto editor = field->text_field.editor; editor.x += field->bounds.x; editor.y += field->bounds.y;
     for (const auto& line : field->label_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 label fits without editor overlap");
     for (const auto& line : field->description_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 help fits without editor overlap");
     for (const auto& line : field->error_lines) check(test::inside(line.bounds, field->bounds) && intersect(line.bounds, editor).h == 0, "PS08 error fits without editor overlap");
@@ -883,7 +883,7 @@ void long_field_label_and_error_keep_their_association() {
     Ui ui;
     const std::u16string title = u"這是一個需要在狹窄視窗內換行的非常長的欄位名稱";
     auto label = ui.add_label({.id = "label", .value = title, .target = "field", .label_kind = LabelKind::name}).value.value();
-    auto field = ui.add_text({.id = "field", .value = u"value"}).value.value();
+    auto field = ui.add_text_field({.id = "field", .value = u"value"}).value.value();
     auto error = ui.add_label({.id = "error", .target = "field", .label_kind = LabelKind::error}).value.value();
     auto next = ui.add_button({.id = "next", .label = u"Next"}).value.value();
     auto root = layout::column({layout::component(field), layout::component(next)}, 12);
@@ -1274,7 +1274,7 @@ void keyboard_reaches_every_entry_and_semantics_answer() {
     detail::access(ui).key_down(key(Key::tab, true));
     check(form.handles.apply.describe()->focused, "Shift+Tab walks back");
     auto name = form.handles.name.describe();
-    check(name->kind == ComponentKind::text && name->name == u"顯示名稱" && name->value == u"測試使用者" && !name->focused,
+    check(name->kind == ComponentKind::text_field && name->name == u"顯示名稱" && name->value == u"測試使用者" && !name->focused,
           "Name field answers identity, type, name and value");
     auto apply = form.handles.apply.describe();
     check(apply->kind == ComponentKind::button && apply->name == u"套用" && apply->focused, "Apply answers its name and focus");
@@ -1626,7 +1626,7 @@ void draw_command_state_matrix() {
             if(applicable) check(x04::drive_selected(entry), "Supported selection setup succeeds");
         }
         if(state_index==5) {
-            applicable=semantic->kind==ComponentKind::text && semantic->enabled && !semantic->read_only;
+            applicable=semantic->kind==ComponentKind::text_field && semantic->enabled && !semantic->read_only;
             if(applicable) {
                 check(x04::focus(form.ui, entry.handle), "Composition target can focus");
                 check(bool(ui.composition_update(u"preedit",3)), "Composition setup succeeds");
@@ -1651,7 +1651,7 @@ void draw_command_state_matrix() {
             });
             check(within,"DL03 focus cue intersects component bounds");
         }
-        if(state_index==2 && semantic->kind==ComponentKind::text && !semantic->read_only) check(probe.count(detail::PaintRole::caret)==1,"DL03 one caret");
+        if(state_index==2 && semantic->kind==ComponentKind::text_field && !semantic->read_only) check(probe.count(detail::PaintRole::caret)==1,"DL03 one caret");
         if(state_index==3 && semantic->invalid && !semantic->error.empty()) check(probe.count(detail::PaintRole::error_text)>0,"DL03 error text cue");
         if(state_index==5) check(probe.count(detail::PaintRole::composition)>0,"DL03 composition cue");
     }
@@ -2351,9 +2351,9 @@ void visible_text_agrees_with_semantics_on_each_page() {
                 value.erase(std::remove(value.begin(), value.end(), u'\n'), value.end());
                 return value.empty() || paint.drawn.find(value) != std::u16string::npos;
             };
-            if (item.kind == ComponentKind::label || item.kind == ComponentKind::text)
+            if (item.kind == ComponentKind::label || item.kind == ComponentKind::text_field)
                 check(contains(semantic->value), "X04 label or field value is sent to paint");
-            if (item.kind == ComponentKind::text || item.kind == ComponentKind::button || item.kind == ComponentKind::checkbox ||
+            if (item.kind == ComponentKind::text_field || item.kind == ComponentKind::button || item.kind == ComponentKind::checkbox ||
                 item.kind == ComponentKind::radio_group || item.kind == ComponentKind::dropdown || item.kind == ComponentKind::slider || item.kind == ComponentKind::progress)
                 check(contains(semantic->name), "X04 component name is sent to paint");
             if (item.kind == ComponentKind::dropdown || item.kind == ComponentKind::slider || item.kind == ComponentKind::progress)
@@ -2384,7 +2384,7 @@ void d01_text_survives_scale_change() {
         auto* session = host.edit(ids.name);
         check(field && session && session->text == u"ABCDE" && session->selection.anchor == 1 &&
               session->selection.caret == 3 && h.name.describe()->focused, "D01 scale change preserves text, selection and focus");
-        int x = field->caret_x(2), y = field->bounds.y + field->field.editor.y + field->field.editor.h / 2;
+        int x = field->caret_x(2), y = field->bounds.y + field->text_field.editor.y + field->text_field.editor.h / 2;
         auto* hit = moved.hit(x, y);
         check(hit && hit->id == ids.name && moved.text_offset(h.name, x) == 2, "D01 scaled field hits the expected caret position");
         check(bool(host.pointer_down(hit->id)) && bool(host.select(hit->id, moved.text_offset(h.name, x), moved.text_offset(h.name, x))) &&
@@ -2402,7 +2402,7 @@ void d01_text_survives_scale_change() {
         int start = field->caret_x(session->begin());
         int candidate = field->caret_x(session->visible_caret());
         check(moved.text_offset(h.name, start) == 1 && moved.text_offset(h.name, candidate) == 2 && candidate > start &&
-              field->field.editor.h > 0 && field->bounds.y + field->field.editor.y >= 0,
+              field->text_field.editor.h > 0 && field->bounds.y + field->text_field.editor.y >= 0,
               "D01 scaled frame exposes composition and candidate caret geometry");
     }
 }

@@ -44,13 +44,13 @@ static_assert(handle_kinds::equality_holds, "decisions 2 and 4: every handle kin
 // The shared predicate does fail a list with a kind that compares across kinds, or one without ==, so it is not vacuous.
 struct WithoutEquality {};
 static_assert(!handle_kinds::compare_within_their_kind_only(static_cast<std::tuple<int, long>*>(nullptr)) &&
-              !handle_kinds::compare_within_their_kind_only(static_cast<std::tuple<TextHandle, WithoutEquality>*>(nullptr)));
+              !handle_kinds::compare_within_their_kind_only(static_cast<std::tuple<TextFieldHandle, WithoutEquality>*>(nullptr)));
 static_assert(handle_kinds::construction_holds, "a user makes only empty handles");
 struct OpenConstruction { OpenConstruction() = default; OpenConstruction(detail::UiState*, std::weak_ptr<void>, std::string) {} };
 static_assert(!handle_kinds::made_only_by_the_framework(static_cast<std::tuple<OpenConstruction>*>(nullptr)));
-static_assert(!std::equality_comparable_with<TextHandle, CheckboxHandle>);
+static_assert(!std::equality_comparable_with<TextFieldHandle, CheckboxHandle>);
 static_assert(!std::equality_comparable_with<TabsHandle, NavigationListHandle>);  // one implementation inside, still two kinds
-static_assert(!std::equality_comparable_with<TextHandle, LabelHandle>);
+static_assert(!std::equality_comparable_with<TextFieldHandle, LabelHandle>);
 static_assert(std::equality_comparable<ComponentHandle> && std::equality_comparable<ConfirmField>);
 static_assert(state_private(static_cast<HandleTypes*>(nullptr)));
 // The two probes do see state that is reachable, so the check above is not vacuous.
@@ -71,7 +71,7 @@ StyleChange bold() { StyleChange change; change.bold = true; return change; }
 // operation that answers not_found does so because the component (or the Ui) is gone, not for want of a source.
 struct World {
     std::unique_ptr<Ui> ui = std::make_unique<Ui>();
-    TextHandle text;
+    TextFieldHandle text;
     ButtonHandle button;
     LabelHandle label;
     CheckboxHandle checkbox;
@@ -87,7 +87,7 @@ struct World {
     ContextMenuHandle menu;
     World() {
         auto accept = [](const auto&) { return Result{}; };
-        text = made(ui->add_text({.id = "text", .label = u"Text"}), "add_text");
+        text = made(ui->add_text_field({.id = "text", .label = u"Text"}), "add_text_field");
         wired(text.connect_source({[] { return std::u16string(u"x"); }, no_updates()}), "text.connect_source");
         wired(text.connect_immediate(accept), "text.connect_immediate");
         button = made(ui->add_button({.id = "button", .label = u"Button"}), "add_button");
@@ -155,11 +155,11 @@ std::vector<Op> text_ops(const World& w) {
             LCARS_OP(h, next_word_stop(0)), LCARS_OP(h, previous_word_stop(0)), LCARS_OP(h, select_word(0)), LCARS_OP(h, select_paragraph(0)),
             LCARS_OP(h, double_click(0)), LCARS_OP(h, triple_click(0)),
             LCARS_OP(h, connect_source({[] { return std::u16string(); }, no_updates()})),
-            LCARS_OP(h, connect_immediate([](const Change<TextHandle>&) { return Result{}; })),
-            LCARS_OP(h, connect_confirmed([](const Change<TextHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_immediate([](const Change<TextFieldHandle>&) { return Result{}; })),
+            LCARS_OP(h, connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })),
             LCARS_OP(h, connect_rich_source({[] { return RichText{}; }, no_updates()})),
-            LCARS_OP(h, connect_rich_immediate([](const Change<TextHandle, RichText>&) { return Result{}; })),
-            LCARS_OP(h, connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; })),
+            LCARS_OP(h, connect_rich_immediate([](const Change<TextFieldHandle, RichText>&) { return Result{}; })),
+            LCARS_OP(h, connect_rich_confirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; })),
             LCARS_OP(h, set_rich_value(RichText{u"r", {}})), LCARS_OP(h, rich_value()), LCARS_OP(h, set_style(0, 1, bold())),
             LCARS_OP(h, toggle_style(StyleAttribute::bold)), LCARS_OP(h, apply_style(bold())),
             LCARS_OP(h, typing_style()), LCARS_OP(h, set_typing_style(TextStyle{})), LCARS_OP(h, set_colors({})), LCARS_OP(h, colors()),
@@ -278,7 +278,7 @@ template <auto member> HandleKind kind(const char* name, const char16_t* gone, s
 }
 const std::vector<HandleKind>& kinds() {
     static const std::vector<HandleKind> list{
-        kind<&World::text>("TextHandle", u"Component no longer exists", text_ops),
+        kind<&World::text>("TextFieldHandle", u"Component no longer exists", text_ops),
         kind<&World::button>("ButtonHandle", u"Component no longer exists", button_ops),
         kind<&World::label>("LabelHandle", u"Component no longer exists", label_ops),
         kind<&World::checkbox>("CheckboxHandle", u"Component no longer exists", checkbox_ops),

@@ -91,7 +91,7 @@ inline bool hidden_retry(const lcars::ComponentHandle& value) {
     return std::visit([](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         using namespace lcars;
-        if constexpr (std::is_same_v<T, TextHandle>) return h.set_value(u"blocked").status == Status::hidden && h.focus().status == Status::hidden;
+        if constexpr (std::is_same_v<T, TextFieldHandle>) return h.set_value(u"blocked").status == Status::hidden && h.focus().status == Status::hidden;
         else if constexpr (std::is_same_v<T, ButtonHandle>) return h.invoke().status == Status::hidden && h.focus().status == Status::hidden;
         else if constexpr (std::is_same_v<T, CheckboxHandle>) return h.toggle().status == Status::hidden && h.focus().status == Status::hidden;
         else if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> || std::is_same_v<T, ListHandle>)
@@ -122,7 +122,7 @@ inline std::vector<std::u16string> normal_text(const lcars::ComponentSnapshot& s
     else {
         add(s.name);
         if (s.kind != ComponentKind::button && s.kind != ComponentKind::checkbox) add(s.value);
-        if (s.kind == ComponentKind::text) add(s.description);
+        if (s.kind == ComponentKind::text_field) add(s.description);
     }
     return result;
 }
@@ -148,7 +148,7 @@ inline bool focus(lcars::Ui& ui, const lcars::ComponentHandle& value) {
 inline bool disabled_retry(const lcars::ComponentHandle& value) {
     return std::visit([](const auto& h) {
         using T = std::decay_t<decltype(h)>; using namespace lcars;
-        if constexpr (std::is_same_v<T, TextHandle>) return h.set_value(u"blocked").status == Status::disabled && h.focus().status == Status::disabled;
+        if constexpr (std::is_same_v<T, TextFieldHandle>) return h.set_value(u"blocked").status == Status::disabled && h.focus().status == Status::disabled;
         else if constexpr (std::is_same_v<T, ButtonHandle>) return h.invoke().status == Status::disabled && h.focus().status == Status::disabled;
         else if constexpr (std::is_same_v<T, CheckboxHandle>) return h.toggle().status == Status::disabled && h.focus().status == Status::disabled;
         else if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> || std::is_same_v<T, ListHandle>)
@@ -216,7 +216,7 @@ inline bool restore_selected(edit_form::Form& form, const Entry& entry, const lc
 }
 // Applicability follows the application-owned connection, not component IDs.
 inline bool conflict_inapplicable(const edit_form::Form& form, const Entry& entry) {
-    auto field = std::get_if<lcars::TextHandle>(&entry.handle);
+    auto field = std::get_if<lcars::TextFieldHandle>(&entry.handle);
     if (field) return (form.list && form.list->search_connection().owns(*field)) || *field == form.handles.preview;
     auto semantic = describe(entry.handle);
     return semantic && (semantic->kind == lcars::ComponentKind::slider || semantic->kind == lcars::ComponentKind::checkbox) &&
@@ -350,7 +350,7 @@ inline const std::u16string error_message = u"X04 field error";
 inline bool error_supported(const lcars::ComponentSnapshot& s) {
     using namespace lcars;
     return (s.kind == ComponentKind::label && s.label_kind == LabelKind::error && !s.target.empty()) ||
-        s.kind == ComponentKind::text || s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radio_group ||
+        s.kind == ComponentKind::text_field || s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radio_group ||
         s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider || s.kind == ComponentKind::tabs;
 }
 inline bool drive_error(edit_form::Form& form, const Entry& entry) {
@@ -359,7 +359,7 @@ inline bool drive_error(edit_form::Form& form, const Entry& entry) {
     return std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.set_error(error_message));
-        else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(error_message));
+        else if constexpr (std::is_same_v<T, TextFieldHandle>) return bool(h.set_error(error_message));
         else if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle> ||
                            std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) {
             return bool(detail::access(form.ui).set_error(h.describe()->id, error_message));
@@ -374,7 +374,7 @@ inline bool error_semantics(edit_form::Form& form, const lcars::ComponentSnapsho
         return s.label_kind == LabelKind::error && s.value == error_message && s.target == target->id && target->invalid &&
             target->error == error_message && std::find(target->labels.begin(), target->labels.end(), s.id) != target->labels.end();
     }
-    if (s.kind == ComponentKind::text && s.id == form.handles.name.describe()->id) {
+    if (s.kind == ComponentKind::text_field && s.id == form.handles.name.describe()->id) {
         auto label = form.handles.name_error.describe();
         return s.invalid && s.error == error_message && label->label_kind == LabelKind::error && label->target == s.id &&
             label->value == s.error && std::find(s.labels.begin(), s.labels.end(), label->id) != s.labels.end();
@@ -386,7 +386,7 @@ inline bool restore_error(edit_form::Form& form, const Entry& entry) {
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.set_error(u""));
-        else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(u""));
+        else if constexpr (std::is_same_v<T, TextFieldHandle>) return bool(h.set_error(u""));
         else if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle> ||
                            std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) return bool(detail::access(form.ui).set_error(h.describe()->id, u""));
         else return false;

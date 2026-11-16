@@ -23,13 +23,13 @@ KeyPress ctrl(char16_t letter, bool shift = false) { return {.shift = shift, .ct
 KeyPress press(Key key, bool shift = false, bool control = false) { return {.key = key, .shift = shift, .ctrl = control}; }
 
 // Every field gets an explicit write timing, as an application would.
-TextHandle connect(Ui& ui, ComponentConfig control) {
+TextFieldHandle connect(Ui& ui, ComponentConfig control) {
     auto model = std::make_shared<std::u16string>(control.value);
-    auto query = ui.add_text(std::move(control));
+    auto query = ui.add_text_field(std::move(control));
     check(bool(query), "Create the text field");
     auto field = *query;
     check(bool(field.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }})), "Connect a source");
-    check(bool(field.connect_confirmed([](const Change<TextHandle>&) { return Result{}; })), "Connect a write");
+    check(bool(field.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })), "Connect a write");
     return field;
 }
 ComponentConfig multi(std::string id, std::u16string value = {}, unsigned lines = 3) {
@@ -39,12 +39,12 @@ std::u16string value_of(Ui& ui, std::string_view id) { return detail::access(ui)
 
 void multiline_values_allow_line_feed_and_reject_carriage_return() {
     Ui ui;
-    check(bool(ui.add_text(multi("ok", u"a\nb"))), "A multi-line field may start with a line feed");
-    check(ui.add_text(multi("cr", u"a\rb")).status == Status::invalid_value, "A carriage return is an invalid initial value");
-    check(ui.add_text(multi("tab", u"a\tb")).status == Status::invalid_value, "Other control characters stay invalid");
-    check(ui.add_text({.id = "single", .value = u"a\nb"}).status == Status::invalid_value,
+    check(bool(ui.add_text_field(multi("ok", u"a\nb"))), "A multi-line field may start with a line feed");
+    check(ui.add_text_field(multi("cr", u"a\rb")).status == Status::invalid_value, "A carriage return is an invalid initial value");
+    check(ui.add_text_field(multi("tab", u"a\tb")).status == Status::invalid_value, "Other control characters stay invalid");
+    check(ui.add_text_field({.id = "single", .value = u"a\nb"}).status == Status::invalid_value,
           "A single-line field still rejects a line feed");
-    check(ui.add_text(multi("zero", u"", 0)).status == Status::invalid_value, "A multi-line field needs at least one visible line");
+    check(ui.add_text_field(multi("zero", u"", 0)).status == Status::invalid_value, "A multi-line field needs at least one visible line");
     check(valid_multi_line(u"a\nb") && !valid_multi_line(u"a\r\nb") && !valid_multi_line(u"a\tb") && !valid_multi_line(u"ab", 1),
           "valid_multi_line allows only LF, within the length");
     check(!valid_single_line(u"a\nb"), "valid_single_line is unchanged");
@@ -120,7 +120,7 @@ void a_source_value_with_carriage_return_is_ignored() {
     Ui ui;
     auto model = std::make_shared<std::u16string>(u"a\nb");
     std::function<void()> notify;
-    auto field = *ui.add_text(multi("note", u"a\nb"));
+    auto field = *ui.add_text_field(multi("note", u"a\nb"));
     check(bool(field.connect_source({[model] { return *model; }, [&](std::function<void()> cb) { notify = cb; return [] {}; }})), "Connect a source");
     *model = u"c\rd"; notify();
     check(value_of(ui, "note") == u"a\nb", "An invalid source value is ignored like any invalid value");
@@ -131,7 +131,7 @@ void a_source_value_with_carriage_return_is_ignored() {
 // A form with a multi-line field, a single-line field and three shortcut targets.
 struct Form {
     Ui ui;
-    TextHandle note, name;
+    TextFieldHandle note, name;
     ButtonHandle plain_enter, ctrl_enter, scoped_enter;
     int plain = 0, with_ctrl = 0, scoped = 0;
     Form() {
@@ -229,7 +229,7 @@ constexpr int field_width = 200;
 struct Laid {
     FakeMeasure measure; ScrollState scroll; Frame frame;
     const Placement* field = nullptr;
-    Laid(Ui& ui, const TextHandle& handle, int width = field_width) {
+    Laid(Ui& ui, const TextFieldHandle& handle, int width = field_width) {
         frame = arrange(layout::component(handle), ui, web_appearance(), measure, width, 400, 1.f, scroll);
         field = frame.find(handle);
         check(field != nullptr && field->multiline, "The field is placed as a multi-line field");
@@ -248,7 +248,7 @@ void a_long_line_wraps_at_the_edge_and_the_height_stays_fixed() {
     Laid laid(ui, field);
     check(spans(*laid.field) == Spans{{0, 20}, {20, 40}, {40, 45}}, "45 characters wrap into 20 + 20 + 5");
     check(laid.field->view.lines[0].soft && laid.field->view.lines[1].soft && !laid.field->view.lines[2].soft, "Only wrapped pieces continue into the next line");
-    check(laid.field->field.editor.h == 3 * 24 && laid.field->view.visible == 3 && laid.field->view.line_height == 24, "The editor is exactly three lines tall");
+    check(laid.field->text_field.editor.h == 3 * 24 && laid.field->view.visible == 3 && laid.field->view.line_height == 24, "The editor is exactly three lines tall");
     Ui other;
     auto longer = connect(other, multi("note", std::u16string(400, u'a')));
     Laid tall(other, longer);
@@ -316,7 +316,7 @@ void a_caret_on_a_wrap_boundary_belongs_to_the_next_line_unless_upstream() {
 // ---- Cursor movement ----------------------------------------------------------------------
 // The host arranges after every input; so does this fixture, which is what keeps core's copy of the lines fresh.
 struct Editor {
-    Ui ui; TextHandle field; FakeMeasure measure; ScrollState scroll; Frame frame;
+    Ui ui; TextFieldHandle field; FakeMeasure measure; ScrollState scroll; Frame frame;
     explicit Editor(std::u16string value, unsigned lines = 3, int width = field_width) : width_(width) {
         field = connect(ui, multi("note", std::move(value), lines));
         host().focus("note");
@@ -429,7 +429,7 @@ std::u16string numbered_lines(int count) {
     for (int i = 0; i < count; ++i) { if (i) text += u'\n'; text += std::u16string(1, static_cast<char16_t>(u'0' + i % 10)); }
     return text;
 }
-unsigned scroll_line_of(const TextHandle& field) { return field.scroll_line().value.value(); }
+unsigned scroll_line_of(const TextFieldHandle& field) { return field.scroll_line().value.value(); }
 
 void typing_to_line_twenty_scrolls_the_field_to_the_caret() {
     Editor e(u"x", 3);
@@ -473,7 +473,7 @@ void the_wheel_scrolls_the_field_then_the_page() {
     auto node = layout::scroll(layout::column({layout::component(field), layout::component(tall)}, 8), outer, 200);
     auto frame = arrange(node, ui, web_appearance(), measure, 300, 400, 1.f, page);
     const auto* placed = frame.find(field);
-    check(placed != nullptr && frame.regions.size() == 2 && frame.regions.back().field == "note", "The field is an inner scroll region of the page");
+    check(placed != nullptr && frame.regions.size() == 2 && frame.regions.back().text_field == "note", "The field is an inner scroll region of the page");
     const int x = placed->view.text.x + 10, y = placed->view.text.y + 10;
     check(frame.wheel(ui, x, y, -48) && scroll_line_of(field) == 2 && outer.offset == 0, "One notch scrolls two lines of the field, not the page");
     while (frame.wheel(ui, x, y, -48) && scroll_line_of(field) < 7) {}
@@ -502,7 +502,7 @@ void a_dialog_scrolls_its_own_content_and_blocks_the_page() {
     const int x = placed->view.text.x + 10, y = placed->view.text.y + 10;
     check(frame.wheel(ui, x, y, -48) && scroll_line_of(note) == 2, "The wheel scrolls the field inside the dialog");
     check(!frame.wheel(ui, 5, 5, -48) && outer.offset == 0, "The page behind the dialog still does not scroll");
-    const auto& region = *std::find_if(frame.regions.begin(), frame.regions.end(), [](const ScrollRegion& r) { return r.field == "note"; });
+    const auto& region = *std::find_if(frame.regions.begin(), frame.regions.end(), [](const ScrollRegion& r) { return r.text_field == "note"; });
     check(region.modal_content && region.thumb.h > 0, "The field's scrollbar belongs to the dialog");
     const int travel = region.track.h - region.thumb.h;
     check(frame.scroll_to(ui, *region.state, region.offset_for_thumb(region.track.y + travel)) && scroll_line_of(note) == 7,
@@ -554,7 +554,7 @@ void the_visible_line_count_can_change_at_run_time() {
     const int before = e.placed().bounds.h;
     check(bool(e.field.set_visible_lines(5)) && e.field.visible_lines().value.value() == 5 && invalidations > 0, "Set five lines and ask for a new frame");
     e.layout();
-    check(e.placed().view.visible == 5 && e.placed().field.editor.h == 5 * 24 && e.placed().bounds.h == before + 2 * 24, "The field is two lines taller at once");
+    check(e.placed().view.visible == 5 && e.placed().text_field.editor.h == 5 * 24 && e.placed().bounds.h == before + 2 * 24, "The field is two lines taller at once");
     check(e.ui.semantics().get({"note"})->scroll->visible_lines == 5 && e.field.describe()->visible_lines == 5, "Semantics report the new height");
     check(bool(e.field.set_scroll_line(5)), "Five visible lines of ten leave six scroll positions");
     check(bool(e.field.set_visible_lines(2)) && scroll_line_of(e.field) == 5, "Shrinking keeps the position");

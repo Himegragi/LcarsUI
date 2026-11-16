@@ -5,13 +5,13 @@
 namespace list_page {
 using namespace lcars;
 
-Result ImmediateSearchConnection::connect(TextHandle field, std::function<Result()> refresh) {
+Result ImmediateSearchConnection::connect(TextFieldHandle field, std::function<Result()> refresh) {
     field_ = field;
     auto source = field_.connect_source({[this] { return value_; }, [this](auto changed) {
         changed_ = std::move(changed); return [this] { changed_ = {}; };
     }});
     if (!source) return source;
-    auto write = field_.connect_immediate([this, refresh = std::move(refresh)](const Change<TextHandle>& change) {
+    auto write = field_.connect_immediate([this, refresh = std::move(refresh)](const Change<TextFieldHandle>& change) {
         value_ = change.value; if (changed_) changed_(); return refresh();
     });
     connected_ = bool(write);
@@ -46,7 +46,7 @@ Page::Page(Ui* shared_ui, ScrollState* shared_scroll, std::string prefix)
     handles.sort = ui.add_button({.id = prefix + "sort", .label = u"反轉排序"}).value.value();
     handles.disable_eight = ui.add_button({.id = prefix + "disable", .label = u"停用／啟用 T008"}).value.value();
     handles.reset = ui.add_button({.id = prefix + "reset", .label = u"重設"}).value.value();
-    handles.search = ui.add_text({.id = prefix + "search", .label = u"搜尋名稱"}).value.value();
+    handles.search = ui.add_text_field({.id = prefix + "search", .label = u"搜尋名稱"}).value.value();
     handles.list = ui.add_list({.id = prefix + "list", .label = u"範本"}, {}).value.value();
     handles.erase = ui.add_button({.id = prefix + "erase", .label = u"刪除選中項", .enabled = false}).value.value();
     handles.detail = ui.add_label({.id = prefix + "detail"}).value.value();

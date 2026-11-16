@@ -14,7 +14,7 @@ void exercise() {
     check(semantic && semantic->role == Role::list && semantic->selection_required && option && option->role == Role::list_item && option->selected,
           "navigation list exposes list and list-item semantics");
     check(option && std::find(option->verbs.begin(), option->verbs.end(), Verb::select) != option->verbs.end(), "navigation item advertises select");
-    auto field = ui.add_text({.id="field", .value=u"draft"}).value.value();
+    auto field = ui.add_text_field({.id="field", .value=u"draft"}).value.value();
     check(bool(nav->add_member({"one"}, field)), "attach member");
     check(nav->selected()->id == "one", "initial page is selected");
     check(bool(ui.semantics().perform({"nav", OptionValue{"two"}}, Verb::select)) && nav->selected()->id == "two", "semantic navigation selects page");
@@ -66,7 +66,7 @@ void exercise() {
     check(nav->selected()->id == "one", "up selects preceding page");
     std::u16string value; std::function<void()> notify;
     Ui shortcuts;
-    auto text = shortcuts.add_text({.id="text"}).value.value();
+    auto text = shortcuts.add_text_field({.id="text"}).value.value();
     auto save = shortcuts.add_button({.id="save"}).value.value();
     int saves = 0;
     save.bind([&] { ++saves; return Result{}; });
@@ -93,7 +93,7 @@ void exercise() {
     check(detail::access(shortcuts).key_down({.ctrl=true,.letter=u'S'}).status == Status::disabled && saves==1, "disabled shortcut target rejected");
     save.enable(true);
     text.connect_source({[&] { return value; }, [&](auto callback) { notify=std::move(callback); return [&] { notify={}; }; }});
-    text.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    text.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     check(bool(detail::access(shortcuts).composition_update(u"x",1)), "composition starts");
     detail::access(shortcuts).key_down({.ctrl=true,.letter=u'S'});
     check(saves==1, "composition blocks shortcuts");
@@ -101,7 +101,7 @@ void exercise() {
     Ui dialog_ui;
     auto opener = dialog_ui.add_button({.id="opener"}).value.value();
     auto backup = dialog_ui.add_button({.id="backup"}).value.value();
-    auto input = dialog_ui.add_text({.id="input"}).value.value();
+    auto input = dialog_ui.add_text_field({.id="input"}).value.value();
     auto cancel = dialog_ui.add_button({.id="cancel"}).value.value();
     auto text_dialog = dialog_ui.add_dialog("text-dialog", {input,cancel}, input, backup, [](bool) {}).value.value();
     for (int i=0; i<4; ++i) {
@@ -120,7 +120,7 @@ void exercise() {
     auto pages = dialog_ui.add_navigation_list({.id="pages"}, {{{"a"},u"A",true,{}}}, {"a"}).value.value();
     check(pages.add_member({"a"},input).status == Status::invalid_value, "dialog member cannot also belong to page");
     Ui reentry;
-    auto source = reentry.add_text({.id="source"}).value.value();
+    auto source = reentry.add_text_field({.id="source"}).value.value();
     auto fallback2 = reentry.add_button({.id="backup"}).value.value();
     auto a = reentry.add_button({.id="a"}).value.value();
     auto b = reentry.add_button({.id="b"}).value.value();

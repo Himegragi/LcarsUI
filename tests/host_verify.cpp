@@ -207,11 +207,11 @@ void presentation_before_input(const Appearance& appearance, Report& report) {
     auto* field = f.host.frame().find(h.name);
     IMECHARPOSITION position{}; position.dwSize = sizeof(position);
     bool query = SendMessageW(f.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
-    POINT expected{field ? field->caret_x(1) : 0, field ? field->bounds.y + field->field.editor.y : 0};
+    POINT expected{field ? field->caret_x(1) : 0, field ? field->bounds.y + field->text_field.editor.y : 0};
     ClientToScreen(f.host.window(), &expected);
     bool geometry = field && field->text_size == 28 && query && position.pt.x == expected.x && position.pt.y == expected.y;
     int x = field ? field->caret_x(2) : 0;
-    int y = field ? field->bounds.y + field->field.editor.y + field->field.editor.h / 2 : 0;
+    int y = field ? field->bounds.y + field->text_field.editor.y + field->text_field.editor.h / 2 : 0;
     SendMessageW(f.host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
     SendMessageW(f.host.window(), WM_LBUTTONUP, 0, MAKELPARAM(x, y));
     auto* session = detail::access(f.form.ui).edit(f.ids.name);
@@ -1006,9 +1006,9 @@ void pointer_selection_and_clipboard(const Appearance& appearance, Report& repor
     f.host.paint();
     const Placement field = *detail::find_placement(f.host.frame(), f.ids.name);  // a copy: repaints replace the frame
     auto x_of = [&](unsigned offset) {
-        return field.bounds.x + field.field.editor.x + static_cast<int>(field.run.x(offset) - field.offset);
+        return field.bounds.x + field.text_field.editor.x + static_cast<int>(field.run.x(offset) - field.offset);
     };
-    int y = field.bounds.y + field.field.editor.y + field.field.editor.h / 2;
+    int y = field.bounds.y + field.text_field.editor.y + field.text_field.editor.h / 2;
     f.mouse(WM_LBUTTONDOWN, {x_of(5), y}, MK_LBUTTON);
     f.mouse(WM_LBUTTONUP, {x_of(5), y});
     auto placed = detail::access(ui).edit(f.ids.name)->selection;
@@ -1055,8 +1055,8 @@ void context_menu_native(const Appearance& appearance, Report& report) {
     core.set_value(field, u"Alpha 中文");
     f.settle();
     const Placement name = *detail::find_placement(f.host.frame(), field);
-    const int y = name.bounds.y + name.field.editor.y + name.field.editor.h / 2;
-    auto x_of = [&](unsigned offset) { return name.bounds.x + name.field.editor.x + static_cast<int>(name.run.x(offset) - name.offset); };
+    const int y = name.bounds.y + name.text_field.editor.y + name.text_field.editor.h / 2;
+    auto x_of = [&](unsigned offset) { return name.bounds.x + name.text_field.editor.x + static_cast<int>(name.run.x(offset) - name.offset); };
     auto panel = [&]() -> const Placement* { return f.host.frame().menu_panel(); };
     auto open = [&] { return core.menu_open(); };
     auto selection = [&] { return core.edit(field)->selection; };
@@ -1118,8 +1118,8 @@ void context_menu_native(const Appearance& appearance, Report& report) {
     // 6. Menu key opens at the caret; Down/Up walk; Escape closes and focus stays on the field.
     core.select(field, 3, 3); f.settle();
     f.tap(VK_APPS); f.settle();
-    const int caret_x = name.bounds.x + name.field.editor.x + static_cast<int>(std::lround(name.run.x(3) - name.offset));
-    const int line_bottom = name.bounds.y + name.field.editor.y + name.field.editor.h;
+    const int caret_x = name.bounds.x + name.text_field.editor.x + static_cast<int>(std::lround(name.run.x(3) - name.offset));
+    const int line_bottom = name.bounds.y + name.text_field.editor.y + name.text_field.editor.h;
     const bool at_caret = open() && panel() && panel()->bounds.x == caret_x && panel()->bounds.y == line_bottom;
     const std::string placed = panel() ? str(panel()->bounds) : "none";
     f.key(VK_DOWN); f.key(VK_DOWN); f.key(VK_DOWN); f.settle();
@@ -1278,9 +1278,9 @@ void vertical_label_native(const Appearance& appearance, Report& report, const s
 void multiline_native(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>();
-    auto note = ui.add_text({.id = "note", .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
+    auto note = ui.add_text_field({.id = "note", .label = u"Note", .multiline = true, .visible_lines = 3}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    note.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     DesktopConfig options; options.title = u"LcarsUI multi-line verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
@@ -1371,9 +1371,9 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
     Ui ui; ScrollState scroll;
     auto make = [&](const char* id, std::u16string value) {
         auto model = std::make_shared<RichText>(RichText{value, {}});
-        auto field = ui.add_text({.id = id, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
+        auto field = ui.add_text_field({.id = id, .label = u"Note", .value = std::move(value), .multiline = true, .visible_lines = 3, .rich = true}).value.value();
         field.connect_rich_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-        field.connect_rich_confirmed([](const Change<TextHandle, RichText>&) { return Result{}; });
+        field.connect_rich_confirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; });
         return field;
     };
     auto note = make("note", u"Alpha 重要 Beta");
@@ -1396,7 +1396,7 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
         state[VK_CONTROL] = 0; state[VK_SHIFT] = 0;
         SetKeyboardState(state);
     };
-    auto spans = [&](const TextHandle& field) { return field.rich_value()->spans; };
+    auto spans = [&](const TextFieldHandle& field) { return field.rich_value()->spans; };
 
     note.focus(); host.pump(); host.paint();
     note.select(0, 5);
@@ -1460,13 +1460,13 @@ void richtext_native(const Appearance& appearance, Report& report, const std::fi
 void word_select_native(const Appearance& appearance, Report& report) {
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(u"alpha beta,gamma");
-    auto field_handle = ui.add_text({.id = "line", .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
+    auto field_handle = ui.add_text_field({.id = "line", .label = u"Line", .value = u"alpha beta,gamma"}).value.value();
     field_handle.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    field_handle.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    field_handle.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     auto note_model = std::make_shared<std::u16string>(u"one two\nthree four\nfive");
-    auto note = ui.add_text({.id = "note", .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
+    auto note = ui.add_text_field({.id = "note", .label = u"Note", .value = u"one two\nthree four\nfive", .multiline = true, .visible_lines = 4}).value.value();
     note.connect_source({[note_model] { return *note_model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    note.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     field_handle.set_word_segmentation(WordSegmentation::per_character);
     note.set_word_segmentation(WordSegmentation::per_character);
     DesktopConfig options; options.title = u"LcarsUI word selection verification";
@@ -1489,7 +1489,7 @@ void word_select_native(const Appearance& appearance, Report& report) {
     auto placed = [&](const char* id) { return *detail::find_placement(host.frame(), id); };  // a copy: repaints replace the frame
     auto selection = [&](const char* id) { return detail::access(ui).edit(id)->selection; };
     // The middle of the character starting at `offset` in the single-line field, and of a row's first characters in the note.
-    auto at_char = [&](unsigned offset) { auto p = placed("line"); return POINT{(p.caret_x(offset) + p.caret_x(offset + 1)) / 2, p.bounds.y + p.field.editor.y + p.field.editor.h / 2}; };
+    auto at_char = [&](unsigned offset) { auto p = placed("line"); return POINT{(p.caret_x(offset) + p.caret_x(offset + 1)) / 2, p.bounds.y + p.text_field.editor.y + p.text_field.editor.h / 2}; };
     auto click = [&](POINT point) { post(WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(point.x, point.y)); post(WM_LBUTTONUP, 0, MAKELPARAM(point.x, point.y)); };
     auto range = [&](const char* id) { auto s = selection(id); return std::to_string(std::min(s.anchor, s.caret)) + ".." + std::to_string(std::max(s.anchor, s.caret)); };
     field_handle.focus(); host.pump(); host.paint();
@@ -1550,9 +1550,9 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(text);
     auto sample = ui.add_label({.id = "sample", .value = text, .text_align = TextAlign::justify}).value.value();
-    auto note = ui.add_text({.id = "note", .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
+    auto note = ui.add_text_field({.id = "note", .label = u"Note", .value = text, .multiline = true, .visible_lines = 6, .text_align = TextAlign::justify}).value.value();
     note.connect_source({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
-    note.connect_confirmed([](const Change<TextHandle>&) { return Result{}; });
+    note.connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     DesktopConfig options; options.title = u"LcarsUI justified text verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(sample), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
@@ -1635,7 +1635,7 @@ void justify_native(const Appearance& appearance, Report& report, const std::fil
     ui.set_presentation(settings); host.pump(); host.paint();
     label = placed("sample"); field = placed("note");
     bool left = std::all_of(label.lines.begin(), label.lines.end(), [](const Line& l) { return l.segments.empty(); }) &&
-                std::all_of(field.view.lines.begin(), field.view.lines.end(), [](const FieldLine& l) { return l.segments.empty() && l.shift == 0; });
+                std::all_of(field.view.lines.begin(), field.view.lines.end(), [](const TextFieldLine& l) { return l.segments.empty() && l.shift == 0; });
     report.check("JU05-user-setting", left && *sample.text_align() == TextAlign::justify && *note.text_align() == TextAlign::justify,
                  "With 'justified text as left' on both draw left-aligned and keep their property");
 }
@@ -3804,9 +3804,9 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
             auto comparison = live.host.compare_gpu(client.right, client.bottom, live.host.scale());
             const auto* text_field = live.host.frame().find(live.form.handles.name);
             Rect text_area{};
-            if (text_field) text_area = {text_field->bounds.x + text_field->field.editor.x,
-                text_field->bounds.y + text_field->field.editor.y,
-                text_field->field.editor.w, text_field->field.editor.h};
+            if (text_field) text_area = {text_field->bounds.x + text_field->text_field.editor.x,
+                text_field->bounds.y + text_field->text_field.editor.y,
+                text_field->text_field.editor.w, text_field->text_field.editor.h};
             auto text_compare = compare_images(comparison.reference, comparison.actual, {text_area});
             return text_field && text_area.w > 0 && text_area.h > 0 && bool(comparison) && text_compare.regions_ok;
         };
@@ -3824,8 +3824,8 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         bool state = field && session && session->text == u"測試使用者" && session->selection.anchor == 1 &&
                      session->selection.caret == 3 && detail::access(ui).focused() == ids.name && GetFocus() == live.host.window();
         // Field-part rectangles are relative to the containing placement.
-        int hit_x = field ? field->bounds.x + field->field.editor.x + field->field.editor.w / 2 : 0;
-        int hit_y = field ? field->bounds.y + field->field.editor.y + field->field.editor.h / 2 : 0;
+        int hit_x = field ? field->bounds.x + field->text_field.editor.x + field->text_field.editor.w / 2 : 0;
+        int hit_y = field ? field->bounds.y + field->text_field.editor.y + field->text_field.editor.h / 2 : 0;
         auto* hit_item = field ? live.host.frame().hit(hit_x, hit_y) : nullptr;
         bool hit = hit_item && hit_item->id == ids.name;
         unsigned expected_caret = hit ? live.host.frame().text_offset(live.form.handles.name, hit_x) : 0;
@@ -3846,8 +3846,8 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
         bool selection_back = field && session->text == u"\u6e2c\u8a66\u4f7f\u7528\u8005" &&
                               session->selection.anchor == 1 && session->selection.caret == 3 &&
                               detail::access(ui).focused() == ids.name && GetFocus() == live.host.window();
-        hit_x = field ? field->bounds.x + field->field.editor.x + field->field.editor.w / 2 : 0;
-        hit_y = field ? field->bounds.y + field->field.editor.y + field->field.editor.h / 2 : 0;
+        hit_x = field ? field->bounds.x + field->text_field.editor.x + field->text_field.editor.w / 2 : 0;
+        hit_y = field ? field->bounds.y + field->text_field.editor.y + field->text_field.editor.h / 2 : 0;
         hit_item = field ? live.host.frame().hit(hit_x, hit_y) : nullptr;
         hit = hit_item && hit_item->id == ids.name;
         expected_caret = hit ? live.host.frame().text_offset(live.form.handles.name, hit_x) : 0;
@@ -3886,14 +3886,14 @@ bool dpi_session(const Appearance& appearance, Report& report, bool presentation
             bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION,
                                       reinterpret_cast<LPARAM>(&position)) != 0;
             POINT caret{field ? field->caret_x(session->begin()) : 0,
-                        field ? field->bounds.y + field->field.editor.y : 0};
+                        field ? field->bounds.y + field->text_field.editor.y : 0};
             ClientToScreen(live.host.window(), &caret);
             CANDIDATEFORM candidate{}; bool candidate_ok = false;
             if (auto imc = ImmGetContext(live.host.window())) {
                 candidate.dwIndex = 0;
                 candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field &&
                                candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) &&
-                               candidate.ptCurrentPos.y == field->bounds.y + field->field.editor.y + field->field.editor.h;
+                               candidate.ptCurrentPos.y == field->bounds.y + field->text_field.editor.y + field->text_field.editor.h;
                 ImmReleaseContext(live.host.window(), imc);
             }
             bool caret_ok = query && position.pt.x == caret.x && position.pt.y == caret.y;
@@ -4169,12 +4169,12 @@ int run_presentation_idle(const std::filesystem::path& folder) {
                 auto* field = live.host.frame().find(live.form.handles.name);
                 IMECHARPOSITION position{}; position.dwSize = sizeof(position);
                 bool query = SendMessageW(live.host.window(), WM_IME_REQUEST, IMR_QUERYCHARPOSITION, reinterpret_cast<LPARAM>(&position)) != 0;
-                POINT caret{field ? field->caret_x(session->begin()) : 0, field ? field->bounds.y + field->field.editor.y : 0};
+                POINT caret{field ? field->caret_x(session->begin()) : 0, field ? field->bounds.y + field->text_field.editor.y : 0};
                 ClientToScreen(live.host.window(), &caret);
                 CANDIDATEFORM candidate{}; bool candidate_ok = false;
                 if (auto imc = ImmGetContext(live.host.window())) {
                     candidate.dwIndex = 0;
-                    candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field && candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) && candidate.ptCurrentPos.y == field->bounds.y + field->field.editor.y + field->field.editor.h;
+                    candidate_ok = ImmGetCandidateWindow(imc, 0, &candidate) && field && candidate.ptCurrentPos.x == field->caret_x(session->visible_caret()) && candidate.ptCurrentPos.y == field->bounds.y + field->text_field.editor.y + field->text_field.editor.h;
                     ImmReleaseContext(live.host.window(), imc);
                 }
                 positions &= session->composing && query && position.pt.x == caret.x && position.pt.y == caret.y && candidate_ok;

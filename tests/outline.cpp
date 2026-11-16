@@ -55,7 +55,7 @@ struct Page {
     Ui ui;
     std::vector<ComponentHandle> handles;
     Page() {
-        auto text = ui.add_text({.id = "text", .label = u"Name"}).value.value();
+        auto text = ui.add_text_field({.id = "text", .label = u"Name"}).value.value();
         auto dropdown = ui.add_dropdown({.id = "dropdown", .label = u"Region"}, {{{"north"}, u"North"}, {{"south"}, u"South"}}).value.value();
         auto box = ui.add_checkbox({.id = "box", .label = u"Box"}).value.value();
         auto radio = ui.add_radio_group({.id = "radio", .label = u"Mode"}, {{{"a"}, u"A"}, {{"b"}, u"B"}}).value.value();
@@ -66,13 +66,13 @@ struct Page {
         auto button = ui.add_button({.id = "button", .label = u"Go"}).value.value();
         auto nav = ui.add_navigation_list({.id = "nav"}, {{{"one"}, u"One", true, {}}, {{"two"}, u"Two", true, {}}}, {"one"}).value.value();
         // #79 multi-line field: 8 lines in a 2-line box, so it paints its own scrollbar thumb.
-        auto note = ui.add_text({.id = "note", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2}).value.value();
+        auto note = ui.add_text_field({.id = "note", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2}).value.value();
         // #80: aligned single-line fields (short text, so the alignment shift applies) and aligned multi-line ones
         // (8 lines in a 2-line box, with line and paragraph spacing, so a thumb is drawn and rows are taller).
-        auto text_center = ui.add_text({.id = "text_center", .label = u"Name", .value = u"ab", .text_align = TextAlign::center, .line_spacing = 1.5}).value.value();
-        auto text_right = ui.add_text({.id = "text_right", .label = u"Name", .value = u"ab", .text_align = TextAlign::right, .line_spacing = 2.0}).value.value();
-        auto note_center = ui.add_text({.id = "note_center", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::center, .line_spacing = 1.5, .paragraph_spacing = 8}).value.value();
-        auto note_right = ui.add_text({.id = "note_right", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::right, .line_spacing = 1.2, .paragraph_spacing = 4}).value.value();
+        auto text_center = ui.add_text_field({.id = "text_center", .label = u"Name", .value = u"ab", .text_align = TextAlign::center, .line_spacing = 1.5}).value.value();
+        auto text_right = ui.add_text_field({.id = "text_right", .label = u"Name", .value = u"ab", .text_align = TextAlign::right, .line_spacing = 2.0}).value.value();
+        auto note_center = ui.add_text_field({.id = "note_center", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::center, .line_spacing = 1.5, .paragraph_spacing = 8}).value.value();
+        auto note_right = ui.add_text_field({.id = "note_right", .label = u"Notes", .value = u"1\n2\n3\n4\n5\n6\n7\n8", .multiline = true, .visible_lines = 2, .text_align = TextAlign::right, .line_spacing = 1.2, .paragraph_spacing = 4}).value.value();
         handles = {text, dropdown, box, radio, slider, empty, valued, button, nav, note, text_center, text_right, note_center, note_right};
     }
     Frame frame(const Appearance& appearance) {

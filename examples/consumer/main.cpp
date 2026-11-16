@@ -26,26 +26,26 @@ static_assert(!std::is_convertible_v<bool, lcars::OptionValue>);
 // text field's plain and rich records share a field kind, and none of them converts into another.
 static_assert(!std::is_convertible_v<lcars::Change<lcars::RadioGroupHandle>, lcars::Change<lcars::DropdownHandle>>);
 static_assert(!std::is_convertible_v<lcars::Change<lcars::DropdownHandle>, lcars::Change<lcars::RadioGroupHandle>>);
-static_assert(!std::is_convertible_v<lcars::Change<lcars::TextHandle>, lcars::Change<lcars::TextHandle, lcars::RichText>>);
-static_assert(!std::is_convertible_v<lcars::Change<lcars::TextHandle, lcars::RichText>, lcars::Change<lcars::TextHandle>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::TextFieldHandle>, lcars::Change<lcars::TextFieldHandle, lcars::RichText>>);
+static_assert(!std::is_convertible_v<lcars::Change<lcars::TextFieldHandle, lcars::RichText>, lcars::Change<lcars::TextFieldHandle>>);
 // Each field kind's default value type, and the only combinations that can be spelled: those the framework sends (the
 // list's is checked below).
 template <class Field, class... Value> concept SpellsChange = requires { typename lcars::Change<Field, Value...>; };
 template <class Field, class Value> constexpr bool change_holds =
     SpellsChange<Field> && std::same_as<decltype(lcars::Change<Field>::value), Value> && std::same_as<decltype(lcars::Change<Field>::origin), Value> &&
     std::same_as<decltype(lcars::Change<Field>::field), Field> && std::same_as<lcars::Change<Field>, lcars::Change<Field, Value>>;
-static_assert(change_holds<lcars::TextHandle, std::u16string>);
+static_assert(change_holds<lcars::TextFieldHandle, std::u16string>);
 static_assert(change_holds<lcars::CheckboxHandle, bool>);
 static_assert(change_holds<lcars::RadioGroupHandle, std::optional<lcars::OptionValue>>);
 static_assert(change_holds<lcars::SliderHandle, int>);
 static_assert(change_holds<lcars::DropdownHandle, std::optional<lcars::OptionValue>>);
-static_assert(SpellsChange<lcars::TextHandle, lcars::RichText> && std::same_as<decltype(lcars::Change<lcars::TextHandle, lcars::RichText>::value), lcars::RichText>);
+static_assert(SpellsChange<lcars::TextFieldHandle, lcars::RichText> && std::same_as<decltype(lcars::Change<lcars::TextFieldHandle, lcars::RichText>::value), lcars::RichText>);
 static_assert(!SpellsChange<lcars::ButtonHandle>);
 static_assert(!SpellsChange<lcars::SliderHandle, bool>);
-static_assert(std::same_as<lcars::FieldChange, std::variant<lcars::Change<lcars::TextHandle>, lcars::Change<lcars::CheckboxHandle>,
-    lcars::Change<lcars::RadioGroupHandle>, lcars::Change<lcars::SliderHandle>, lcars::Change<lcars::DropdownHandle>, lcars::Change<lcars::TextHandle, lcars::RichText>>>);
+static_assert(std::same_as<lcars::ConfirmFieldChange, std::variant<lcars::Change<lcars::TextFieldHandle>, lcars::Change<lcars::CheckboxHandle>,
+    lcars::Change<lcars::RadioGroupHandle>, lcars::Change<lcars::SliderHandle>, lcars::Change<lcars::DropdownHandle>, lcars::Change<lcars::TextFieldHandle, lcars::RichText>>>);
 // A list's write hands a change record too (#99): the seventh combination, written immediately only, so it is in neither
-// FieldChange (above) nor ConfirmField. It shares its value type with the radio group and the dropdown and converts into
+// ConfirmFieldChange (above) nor ConfirmField. It shares its value type with the radio group and the dropdown and converts into
 // neither; it has no other value type; and the bare-value write callback of 0.2 is no longer accepted.
 static_assert(change_holds<lcars::ListHandle, std::optional<lcars::OptionValue>>);
 static_assert(!std::is_convertible_v<lcars::Change<lcars::ListHandle>, lcars::Change<lcars::RadioGroupHandle>>);
@@ -96,18 +96,18 @@ static_assert(Removed<TextChange> && Removed<RichTextChange> && Removed<BoolChan
 // stand-in result converts to whatever the callback must return, so only the field list decides the check: the same call
 // with the list of every field kind compiles (#96 gave that group the name).
 struct AnyResult { template <class R> operator R() const { return R{}; } };
-template <class T> concept HasTextOnlyConfirmation = requires(T& ui, lcars::ButtonHandle button, std::vector<lcars::TextHandle> fields) {
+template <class T> concept HasTextOnlyConfirmation = requires(T& ui, lcars::ButtonHandle button, std::vector<lcars::TextFieldHandle> fields) {
     ui.connect_confirmation(button, fields, [](const auto&) { return AnyResult{}; });
 };
 template <class T> concept HasConfirmation = requires(T& ui, lcars::ButtonHandle button, std::vector<lcars::ConfirmField> fields) {
-    ui.connect_confirmation(button, fields, [](const std::vector<lcars::FieldChange>&) { return AnyResult{}; });
+    ui.connect_confirmation(button, fields, [](const std::vector<lcars::ConfirmFieldChange>&) { return AnyResult{}; });
 };
 static_assert(!HasTextOnlyConfirmation<lcars::Ui>);
 static_assert(HasConfirmation<lcars::Ui>);
 static_assert(std::same_as<std::invoke_result_t<decltype(&lcars::Ui::connect_confirmation), lcars::Ui&, lcars::ButtonHandle, std::vector<lcars::ConfirmField>,
-    std::function<lcars::ConfirmationResult(const std::vector<lcars::FieldChange>&)>>, lcars::Result>);
-static_assert(std::same_as<decltype(lcars::ConfirmationResult::errors), std::vector<lcars::FieldError>>);
-static_assert(std::same_as<decltype(lcars::FieldError::field), lcars::ConfirmField> && std::same_as<decltype(lcars::FieldError::message), std::u16string>);
+    std::function<lcars::ConfirmationResult(const std::vector<lcars::ConfirmFieldChange>&)>>, lcars::Result>);
+static_assert(std::same_as<decltype(lcars::ConfirmationResult::errors), std::vector<lcars::ConfirmFieldError>>);
+static_assert(std::same_as<decltype(lcars::ConfirmFieldError::field), lcars::ConfirmField> && std::same_as<decltype(lcars::ConfirmFieldError::message), std::u16string>);
 
 // Public names follow the glossary (#96). Each new name, and the pre-0.3.0 name it replaces, which is gone without an alias.
 // A component type is a ComponentKind; add_x sets it, so the configuration has no kind field.
@@ -138,7 +138,7 @@ static_assert(std::same_as<decltype(lcars::MenuSnapshot::items), std::vector<lca
 static_assert(std::same_as<decltype(std::declval<lcars::Ui&>().context_menu()), lcars::Query<lcars::MenuSnapshot>>);
 static_assert(std::same_as<decltype(std::declval<lcars::ContextMenuHandle&>().items()), lcars::Query<std::vector<lcars::MenuItemSnapshot>>>);
 static_assert(std::same_as<decltype(std::declval<lcars::SemanticTree&>().get(lcars::NodeRef{})), lcars::Query<lcars::NodeSnapshot>>);
-static_assert(std::same_as<decltype(std::declval<lcars::TextHandle&>().describe()), lcars::Query<lcars::ComponentSnapshot>>);
+static_assert(std::same_as<decltype(std::declval<lcars::TextFieldHandle&>().describe()), lcars::Query<lcars::ComponentSnapshot>>);
 // A layout node's kind is a Node::Kind, and the node that places one component is made by layout::component.
 static_assert(std::same_as<decltype(lcars::layout::Node::kind), lcars::layout::Node::Kind>);
 static_assert(std::same_as<decltype(lcars::layout::component(lcars::ComponentHandle{})), lcars::layout::Node>);
@@ -170,6 +170,43 @@ static_assert(Removed<MixedFieldError> && Removed<MixedConfirmationResult>);
 namespace lcars::layout::consumer_probe {
 static_assert(std::same_as<decltype(control(lcars::ComponentHandle{})), ::removed_in_0_3::Name>);
 }
+// #100 separates writable fields from the text-field component, without keeping the old public names.
+// As above, lookup reaches a global stand-in only after the old declaration has been removed.
+namespace removed_by_100 { struct Name {}; }
+using FieldParts = removed_by_100::Name;
+using FieldText = removed_by_100::Name;
+using FieldLayout = removed_by_100::Name;
+using FieldLine = removed_by_100::Name;
+using FieldView = removed_by_100::Name;
+using FieldChange = removed_by_100::Name;
+using FieldError = removed_by_100::Name;
+using TextHandle = removed_by_100::Name;
+using TextScroll = removed_by_100::Name;
+namespace lcars::consumer_probe {
+template <class T> concept RemovedBy100 = std::same_as<T, ::removed_by_100::Name>;
+static_assert(RemovedBy100<FieldParts> && RemovedBy100<FieldText> && RemovedBy100<FieldLayout>);
+static_assert(RemovedBy100<FieldLine> && RemovedBy100<FieldView> && RemovedBy100<TextHandle> && RemovedBy100<TextScroll>);
+static_assert(RemovedBy100<FieldChange> && RemovedBy100<FieldError>);
+}
+template <class T> concept HasOldTextEnumerator = requires { T::text; };
+template <class T> concept HasOldAddText = requires(T& ui, lcars::ComponentConfig config) { ui.add_text(config); };
+template <class T> concept HasOldFieldMember = requires(T& value) { value.field; };
+template <class T> concept HasOldFieldAppearance = requires(const T& look) { look.field(lcars::Rect{}, 16); };
+template <class T> concept HasOldArrangeField = requires(const T& look) { look.arrange_field(240, {}, 1.f); };
+template <class T> concept HasOldArrangeFieldDensity = requires(const T& look) { look.arrange_field(240, {}, 1.f, lcars::Density::compact); };
+static_assert(!HasOldTextEnumerator<lcars::ComponentKind> && !HasOldTextEnumerator<lcars::Role>);
+static_assert(!HasOldAddText<lcars::Ui>);
+static_assert(!HasOldFieldMember<lcars::Placement> && !HasOldFieldMember<lcars::ScrollRegion>);
+static_assert(!HasOldFieldAppearance<lcars::Appearance> && !HasOldArrangeField<lcars::Appearance> && !HasOldArrangeFieldDensity<lcars::Appearance>);
+static_assert(std::same_as<decltype(std::declval<lcars::Ui&>().add_text_field(lcars::ComponentConfig{})), lcars::Query<lcars::TextFieldHandle>>);
+static_assert(lcars::ComponentKind::text_field != lcars::ComponentKind::label && lcars::Role::text_field != lcars::Role::label);
+static_assert(std::same_as<decltype(lcars::Placement::text_field), lcars::TextFieldLayout> &&
+              std::same_as<decltype(lcars::Placement::view), lcars::TextFieldView>);
+static_assert(std::same_as<decltype(lcars::TextFieldView::lines), std::vector<lcars::TextFieldLine>> &&
+              std::same_as<decltype(lcars::NodeSnapshot::scroll), std::optional<lcars::TextFieldScroll>>);
+static_assert(std::same_as<decltype(lcars::ScrollRegion::text_field), std::string>);
+static_assert(std::same_as<decltype(std::declval<const lcars::Appearance&>().arrange_text_field(240, lcars::TextFieldHeights{}, 1.f)), lcars::TextFieldLayout> &&
+              std::same_as<decltype(std::declval<const lcars::Appearance&>().arrange_text_field(240, lcars::TextFieldHeights{}, 1.f, lcars::Density::compact)), lcars::TextFieldLayout>);
 // The desktop module (when the package has it): creation parameters are a Config, creation hands back a Result, and a
 // diagnostic says which kind of problem it is.
 #if __has_include("lcars/desktop.hpp")
@@ -189,7 +226,7 @@ static_assert(handle_kinds::equality_holds);
 static_assert(handle_kinds::construction_holds);
 static_assert(std::tuple_size_v<handle_kinds::All> == 14);
 static_assert(std::equality_comparable<lcars::ComponentHandle> && std::equality_comparable<lcars::ConfirmField>);
-static_assert(!std::equality_comparable_with<lcars::TextHandle, lcars::CheckboxHandle>);  // one case of the list's rule, spelled out
+static_assert(!std::equality_comparable_with<lcars::TextFieldHandle, lcars::CheckboxHandle>);  // one case of the list's rule, spelled out
 // Applications use typed handles; string operations belong to the semantic layer, not Ui.
 template <class T> concept HasFind = requires(T& ui, std::string_view id) { ui.find(id); };
 static_assert(!HasFind<lcars::Ui>);
@@ -276,7 +313,7 @@ int main() {
     std::function<void()> changed;
     Ui ui;
     ui.add_label({.id = "profile.alias.caption", .value = u"Alias", .target = "profile.alias", .label_kind = LabelKind::name}).value.value();
-    auto alias = ui.add_text({.id = "profile.alias", .max_length = 12}).value.value();
+    auto alias = ui.add_text_field({.id = "profile.alias", .max_length = 12}).value.value();
     ui.add_label({.id = "profile.alias.problem", .target = "profile.alias", .label_kind = LabelKind::error}).value.value();
     auto save = ui.add_button({.id = "profile.save", .label = u"Save alias"}).value.value();
     auto summary = ui.add_label({.id = "profile.summary"}).value.value();
@@ -285,8 +322,8 @@ int main() {
         return [&] { changed = {}; };
     }});
     summary.connect_source([&] { return u"Saved " + profile.alias; });
-    ui.connect_confirmation(save, {alias}, [&](const std::vector<FieldChange>& changes) {
-        const auto& change = std::get<Change<TextHandle>>(changes[0]);
+    ui.connect_confirmation(save, {alias}, [&](const std::vector<ConfirmFieldChange>& changes) {
+        const auto& change = std::get<Change<TextFieldHandle>>(changes[0]);
         if (change.value.size() < 3) {
             return ConfirmationResult{{Status::invalid_value, u"At least three characters"}, {{change.field, u"At least three characters"}}};
         }
@@ -329,7 +366,7 @@ int main() {
     // add_x gives the component its type (#96): no configuration names it, and each component is what its add_x makes.
     Ui typed;
     const std::vector<OptionItem> items = {{{"a"}, u"Alpha"}, {{"b"}, u"Beta"}};
-    expect(kind_of(typed.add_text({.id = "typed.text"})) == ComponentKind::text, "add_text makes a text field");
+    expect(kind_of(typed.add_text_field({.id = "typed.text"})) == ComponentKind::text_field, "add_text_field makes a text field");
     expect(kind_of(typed.add_button({.id = "typed.button", .label = u"Go"})) == ComponentKind::button, "add_button makes a button");
     expect(kind_of(typed.add_label({.id = "typed.label", .value = u"Note"})) == ComponentKind::label, "add_label makes a label");
     expect(kind_of(typed.add_checkbox({.id = "typed.checkbox", .label = u"On"})) == ComponentKind::checkbox, "add_checkbox makes a checkbox");

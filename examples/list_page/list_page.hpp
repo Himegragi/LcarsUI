@@ -11,13 +11,13 @@ namespace list_page {
 class ImmediateSearchConnection {
     std::u16string value_;
     std::function<void()> changed_;
-    lcars::TextHandle field_;
+    lcars::TextFieldHandle field_;
     bool connected_ = false;
 public:
-    lcars::Result connect(lcars::TextHandle field, std::function<lcars::Result()> refresh);
+    lcars::Result connect(lcars::TextFieldHandle field, std::function<lcars::Result()> refresh);
     lcars::Result reset();
     const std::u16string& value() const { return value_; }
-    bool owns(lcars::TextHandle field) const { return connected_ && field_ == field; }
+    bool owns(lcars::TextFieldHandle field) const { return connected_ && field_ == field; }
 };
 class Page {
     std::vector<lcars::OptionItem> items_;
@@ -42,7 +42,7 @@ public:
     mutable lcars::ScrollState list_scroll;
     struct Handles {
         lcars::ListHandle list;
-        lcars::TextHandle search;
+        lcars::TextFieldHandle search;
         lcars::ButtonHandle zero, one, twenty, hundred, sort, erase, disable_eight, reset;
         lcars::LabelHandle title, detail;
     } handles;

@@ -30,14 +30,14 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         {{{"general"},u"一般",true,{}},{{"items"},u"項目清單",true,{}},{{"appearance"},u"外觀與文字",true,{}},{{"about"},u"關於",true,{}}}, {"general"}).value.value();
     title_ = ui.add_label({.id="app.page_title"}).value.value();
     name_label_ = ui.add_label({.id="general.name.label",.value=u"顯示名稱",.target="general.name",.label_kind=LabelKind::name}).value.value();
-    name = ui.add_text({.id="general.name",.value=name_value_,.max_length=64}).value.value();
+    name = ui.add_text_field({.id="general.name",.value=name_value_,.max_length=64}).value.value();
     name_help_ = ui.add_label({.id="general.name.help",.value=u"單行文字，可輸入繁體中文或英文。",.target="general.name",.label_kind=LabelKind::description}).value.value();
     name_error_ = ui.add_label({.id="general.name.error",.target="general.name",.label_kind=LabelKind::error}).value.value();
     notices = ui.add_checkbox({.id="general.notices",.label=u"啟用提示"}).value.value();
     mode = ui.add_radio_group({.id="general.mode",.label=u"模式"}, {{{"normal"},u"一般"},{{"focus"},u"專注"},{{"offline"},u"離線"}}).value.value();
     region = ui.add_dropdown({.id="general.region",.label=u"地區"}, {{{"north"},u"北區"},{{"central"},u"中區"},{{"south"},u"南區"}}).value.value();
     volume = ui.add_slider({.id="general.volume",.label=u"音量"},{0,100,5}).value.value();
-    items_search = ui.add_text({.id="items.search",.label=u"\u641c\u5c0b\u540d\u7a31"}).value.value();
+    items_search = ui.add_text_field({.id="items.search",.label=u"\u641c\u5c0b\u540d\u7a31"}).value.value();
     items_list = ui.add_list({.id="items.list",.label=u"\u9805\u76ee"}, {}).value.value();
     items_count_ = ui.add_label({.id="items.count"}).value.value();
     items_add = ui.add_button({.id="items.add",.label=u"\u65b0\u589e\u2026"}).value.value();
@@ -147,7 +147,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         items_.push_back({{id}, n==5 || n==6 ? u"\u5171\u7528\u7bc4\u672c" : u"\u7bc4\u672c " + std::u16string(number,number+2), {}});
     }
     items_search.connect_source({[this] { return search_value_; }, subscribe_to(search_changed_)});
-    items_search.connect_immediate([this](const Change<TextHandle>& c) {
+    items_search.connect_immediate([this](const Change<TextFieldHandle>& c) {
         search_value_=c.value;
         if (auto r=refresh_items(); !r) return r;
         if (search_changed_) search_changed_();
@@ -165,7 +165,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     for (ComponentHandle member : {ComponentHandle{name_label_}, ComponentHandle{name}, ComponentHandle{name_help_}, ComponentHandle{name_error_}, ComponentHandle{notices}, ComponentHandle{mode}, ComponentHandle{region}, ComponentHandle{volume}}) nav.add_member({"general"}, member);
     title_.connect_source([this] { auto id=nav.selected()->id; return id=="general"?u"一般":id=="items"?u"項目清單":id=="appearance"?u"外觀與文字":u"關於"; });
     name.connect_source({[this] { return name_value_; }, subscribe_to(name_changed_)});
-    name.connect_confirmed([this](const Change<TextHandle>& change) {
+    name.connect_confirmed([this](const Change<TextFieldHandle>& change) {
         if (std::all_of(change.value.begin(), change.value.end(), [](char16_t c) { return c==u' ' || c==u'\t' || c==u'　'; })) { name.set_error(u"請填寫顯示名稱"); return Result{Status::invalid_value,u"請填寫顯示名稱"}; }
         name.set_error(u""); if (name_value_ != change.value) { name_value_=change.value; if (name_changed_) name_changed_(); dirty(); } return Result{};
     });
@@ -188,14 +188,14 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     connect_slider(volume, "general.volume", [this](const Change<SliderHandle>& c, bool join) { volume_value_=c.value; if (volume_changed_) volume_changed_(); dirty(join); return Result{}; });
     item_title_ = ui.add_label({.id="items.dialog.title"}).value.value();
     item_name_label_ = ui.add_label({.id="items.dialog.name.label",.value=u"\u540d\u7a31",.target="items.dialog.name",.label_kind=LabelKind::name}).value.value();
-    item_name = ui.add_text({.id="items.dialog.name",.max_length=64}).value.value();
+    item_name = ui.add_text_field({.id="items.dialog.name",.max_length=64}).value.value();
     item_name_error_ = ui.add_label({.id="items.dialog.name.error",.target="items.dialog.name",.label_kind=LabelKind::error}).value.value();
     item_note_label_ = ui.add_label({.id="items.dialog.note.label",.value=u"\u8aaa\u660e\uff08\u9078\u586b\uff09",.target="items.dialog.note",.label_kind=LabelKind::name}).value.value();
     item_note_bold = ui.add_button({.id="items.dialog.note.bold",.label=u"粗體"}).value.value();
     item_note_italic = ui.add_button({.id="items.dialog.note.italic",.label=u"斜體"}).value.value();
     item_note_underline = ui.add_button({.id="items.dialog.note.underline",.label=u"底線"}).value.value();
     item_note_color = ui.add_dropdown({.id="items.dialog.note.color",.label=u"文字顏色"}, {{{"default"},u"預設"},{{"red"},u"紅"},{{"green"},u"綠"},{{"blue"},u"藍"}}).value.value();
-    item_note = ui.add_text({.id="items.dialog.note",.max_length=200,.multiline=true,.visible_lines=3,.rich=true}).value.value();
+    item_note = ui.add_text_field({.id="items.dialog.note",.max_length=200,.multiline=true,.visible_lines=3,.rich=true}).value.value();
     // The note's named colors, one value per theme, each readable on the surface of both appearances (see the settings demo tests).
     item_note.set_colors({{"red",{176,0,32},{255,138,148}},{"green",{20,96,48},{120,224,150}},{"blue",{28,60,170},{150,180,255}}});
     item_cancel_ = ui.add_button({.id="items.dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
@@ -236,8 +236,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     items_add.bind([open_item] { return open_item(false); });
     items_edit.bind([open_item] { return open_item(true); });
     item_cancel_.bind([this] { return item_dialog.settle(false); });
-    ui.connect_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<FieldChange>& changes) -> ConfirmationResult {
-        const auto& value=std::get<Change<TextHandle>>(changes[0]).value; const auto& rich=std::get<Change<TextHandle, RichText>>(changes[1]).value;
+    ui.connect_confirmation(item_ok, {item_name, item_note}, [this](const std::vector<ConfirmFieldChange>& changes) -> ConfirmationResult {
+        const auto& value=std::get<Change<TextFieldHandle>>(changes[0]).value; const auto& rich=std::get<Change<TextFieldHandle, RichText>>(changes[1]).value;
         if (std::all_of(value.begin(),value.end(),[](char16_t c) { return c==u' ' || c==u'\t' || c==u'\u3000'; })) {
             return {{Status::invalid_value,u"Name required"}, {{item_name,u"\u8acb\u586b\u5beb\u540d\u7a31"}}};
         }
