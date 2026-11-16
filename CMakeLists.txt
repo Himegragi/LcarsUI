@@ -72,6 +72,7 @@ target_include_directories(lcars_settings_demo PUBLIC "${PROJECT_SOURCE_DIR}/exa
 target_link_libraries(lcars_settings_demo PUBLIC lcars_core)
 if(LCARS_BUILD_TESTS)
   enable_testing()
+  add_test(NAME public_names COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/public_names_test.ps1")
   add_executable(lcars_perf_tests tests/perf.cpp)
   lcars_target(lcars_perf_tests)
   target_include_directories(lcars_perf_tests PRIVATE src)

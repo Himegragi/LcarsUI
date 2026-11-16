@@ -1,0 +1,11 @@
+namespace lcars {
+struct Fixture {
+    void deliberately_bad();
+    int component_id;
+    static constexpr int default_limit = 4;
+    enum class Kind { radio_group };
+    int publicTrailing_;
+private:
+    int still_snake_;
+};
+}
