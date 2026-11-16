@@ -273,7 +273,9 @@ Result page_release(UiState& ui, const PointerRelease& release) {
 }
 class Label final : public ComponentType {
 public:
-    void describe(const UiState&, const Component&, ComponentSnapshot& s) const override { s.name = s.value; }
+    void describe(const UiState&, const Component& c, ComponentSnapshot& s) const override {
+        s.name = s.value; s.writing_mode = c.writing_mode; s.vertical_digits = c.vertical_digits;
+    }
     bool supports_state(ComponentState state) const override { return supports(state, {S::normal}); }
     std::optional<std::u16string> display_text(const UiState& ui, const Component& c) const override {
         if (c.label_kind == LabelKind::error) {
@@ -286,9 +288,6 @@ public:
         return std::nullopt;
     }
     bool accepts_text_provider() const override { return true; }
-    void describe_node(const UiState&, const Component&, const ComponentSnapshot& s, const NodeRef&, NodeSnapshot& n) const override {
-        n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits;
-    }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { out.push_back(Verb::set_writing_mode); out.push_back(Verb::set_vertical_digits); }
         ComponentType::verbs(c, out);
@@ -471,15 +470,15 @@ public:
         return std::nullopt;
     }
     void describe(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
-        s.multiline = c.multiline; s.visible_lines = c.multiline ? c.visible_lines : 0;
+        s.multiline = c.multiline;
         auto& edits = UiState::Internals::edits(ui);
         auto it = edits.find(c.id);
         if (it == edits.end()) return;
         const auto& field = it->second;
         if (c.multiline) {
             const auto& m = field.multi;
-            s.scroll_line = m.pending_first.value_or(m.first);
-            s.line_count = m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0;
+            s.scroll = TextScroll{m.pending_first.value_or(m.first), c.visible_lines,
+                                  m.placed ? static_cast<unsigned>(m.view.lines.size()) : 0};
         }
         s.source_conflict = field.connected && (field.origin != field.source_value || field.origin_spans != field.source_spans) && !UiState::Internals::source_matches(ui, field);
         s.rich = field.rich;
@@ -508,7 +507,6 @@ public:
             n.rich = true; n.styles = field.spans;
             n.typing_style = UiState::Internals::insertion_style(ui, field, field.session.begin(), field.session.end());
         }
-        if (s.multiline && !ref.item) n.scroll = TextScroll{s.scroll_line, s.visible_lines, s.line_count};
         if (!ref.item) {
             n.word_segmentation = field.segmentation;
             n.word_segmentation_in_use = segmentation_in_use(field.segmentation, UiState::Internals::dictionary(ui));
@@ -1361,7 +1359,7 @@ public:
         auto it = numerics.find(c.id);
         if (it == numerics.end()) return;
         s.source_conflict = diverged(it->second.connected, it->second.origin, it->second.source_value, it->second.value);
-        s.slider_range = it->second.range; s.numeric_value = it->second.value;
+        s.range = it->second.range; s.numeric_value = it->second.value;
     }
     void describe_operations(const UiState& ui, const Component& c, ComponentSnapshot& s) const override {
         auto& numerics = UiState::Internals::numerics(ui);
@@ -1415,8 +1413,8 @@ public:
         paint_errors(c, item.error_lines, item.text_size, palette.error);
         auto track = item.slider_track; int thickness = scaled(c.scale, c.presentation().focus);
         c.fill({track.x, track.y + track.h / 2 - thickness / 2, track.w, thickness}, c.semantics.enabled ? palette.outline : palette.border);
-        if (c.semantics.slider_range && c.semantics.numeric_value) {
-            const auto range = *c.semantics.slider_range;
+        if (c.semantics.range && c.semantics.numeric_value) {
+            const auto range = *c.semantics.range;
             double ratio = (static_cast<double>(*c.semantics.numeric_value) - range.minimum) /
                            (static_cast<double>(range.maximum) - range.minimum);
             int x = track.x + static_cast<int>(std::lround(track.w * ratio));

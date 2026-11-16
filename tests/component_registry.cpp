@@ -245,7 +245,7 @@ public:
     Result pointer_up(detail::UiState&, const detail::PointerRelease& release) const override {
         ++releases; released_pressed_option = release.pressed_option; released_option = release.option; return {};
     }
-    void describe(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.numeric_value = value; s.slider_range = SliderRange{0, 10, 1}; }
+    void describe(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.numeric_value = value; s.range = SliderRange{0, 10, 1}; }
     void describe_operations(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.operations.push_back(Operation::edit); }
     void verbs(const detail::VerbContext& context, std::vector<Verb>& out) const override {
         if (!context.item && context.admits(Operation::edit)) out.push_back(Verb::set_value);

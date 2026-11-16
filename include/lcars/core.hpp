@@ -133,6 +133,8 @@ struct OptionValue { std::string id; bool operator==(const OptionValue&) const =
 // One option of a radio group, a dropdown or a list: its stable value, the text the user sees, and whether it can be chosen.
 struct OptionItem { OptionValue value; std::u16string label; bool enabled = true; };
 struct SliderRange { int minimum, maximum, step; };
+// Multi-line text fields: the vertical view in display lines. scroll takes the first visible line as an int.
+struct TextScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextScroll&) const = default; };
 struct OptionSnapshot { OptionValue value; std::u16string label; bool enabled = true, selected = false, invalid = false; };
 // Semantic snapshot from a handle or a host-side adapter.
 struct ComponentSnapshot {
@@ -143,15 +145,13 @@ struct ComponentSnapshot {
     bool visible = false; // intersects the clip in the latest arranged frame
     bool multiline = false;     // text fields: created multi-line
     bool rich = false;          // text fields: created with ComponentConfig::rich
-    unsigned visible_lines = 0; // multi-line text fields: configured height in lines
-    unsigned scroll_line = 0;   // multi-line text fields: index of the first visible display line
-    unsigned line_count = 0;    // multi-line text fields: display lines in the latest arranged frame, 0 before one
+    std::optional<TextScroll> scroll; // multi-line text fields: configured height and latest arranged display lines
     TextAlign text_align = TextAlign::left;  // labels and text fields; the defaults elsewhere. The property as set, even while the user's "justified text as left" setting shows it left-aligned
     JustifyMethod justify_method = JustifyMethod::automatic;
     double line_spacing = 1.0;
     int paragraph_spacing = 0;
     std::vector<OptionSnapshot> items;  // every option of a radio group, dropdown or list, every page of tabs or a navigation list, in order
-    std::optional<SliderRange> slider_range;
+    std::optional<SliderRange> range;
     std::optional<int> numeric_value;
     std::optional<bool> checked;  // present for a checkbox
     bool expanded = false;
@@ -160,8 +160,8 @@ struct ComponentSnapshot {
     LabelKind label_kind = LabelKind::plain;
     std::vector<std::string> labels;  // labels whose target is this component, in declaration order
     std::vector<Operation> operations;
-    WritingMode writing_mode = WritingMode::horizontal;  // labels only
-    int vertical_digits = max_vertical_digits;           // labels only
+    std::optional<WritingMode> writing_mode;  // labels only
+    std::optional<int> vertical_digits;       // labels only
 };
 // Platform-neutral keys. Hosts translate native events; Ctrl shortcuts carry their letter.
 // menu is the application/menu key (VK_APPS); Shift+F10 arrives as f10 with shift; alt is a lone Alt press.

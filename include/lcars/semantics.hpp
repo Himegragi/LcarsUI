@@ -46,8 +46,6 @@ public:
 private:
     std::function<void()> disconnect_;
 };
-// Multi-line text fields: the vertical view in display lines. scroll takes the first visible line as an int.
-struct TextScroll { unsigned first_line = 0, visible_lines = 0, line_count = 0; bool operator==(const TextScroll&) const = default; };
 struct NodeSnapshot {
     NodeRef ref; Role role = Role::label;
     std::uint64_t instance = 0; // Changes when an identifier is removed and reused.

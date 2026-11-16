@@ -555,7 +555,7 @@ void the_visible_line_count_can_change_at_run_time() {
     check(bool(e.field.set_visible_lines(5)) && e.field.visible_lines().value.value() == 5 && invalidations > 0, "Set five lines and ask for a new frame");
     e.layout();
     check(e.placed().view.visible == 5 && e.placed().field.editor.h == 5 * 24 && e.placed().bounds.h == before + 2 * 24, "The field is two lines taller at once");
-    check(e.ui.semantics().get({"note"})->scroll->visible_lines == 5 && e.field.describe()->visible_lines == 5, "Semantics report the new height");
+    check(e.ui.semantics().get({"note"})->scroll->visible_lines == 5 && e.field.describe()->scroll->visible_lines == 5, "Semantics report the new height");
     check(bool(e.field.set_scroll_line(5)), "Five visible lines of ten leave six scroll positions");
     check(bool(e.field.set_visible_lines(2)) && scroll_line_of(e.field) == 5, "Shrinking keeps the position");
     e.layout();

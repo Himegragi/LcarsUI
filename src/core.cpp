@@ -2160,7 +2160,6 @@ std::optional<ComponentSnapshot> detail::UiState::describe(std::string_view id) 
     s.executing = executing_ == control->id;
     s.name = control->label; s.value = text(id);
     s.text_align = control->text_align; s.justify_method = control->justify_method; s.line_spacing = control->line_spacing; s.paragraph_spacing = control->paragraph_spacing;
-    s.writing_mode = control->writing_mode; s.vertical_digits = control->vertical_digits;
     component_type(control->kind).describe(*this, *control, s);
     if (auto it = errors_.find(id); it != errors_.end()) s.error = it->second;
     s.invalid = !s.error.empty();
@@ -3443,7 +3442,8 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
     // While a context menu is open, keyboard focus belongs to its items (the component keeps core focus).
     n.enabled = s.enabled; n.read_only = s.read_only; n.focusable = s.focusable; n.focused = s.focused && !u.menu_;
     n.expanded = s.expanded; n.invalid = s.invalid; n.executing = s.executing; n.checked = s.checked;
-    n.range = s.slider_range; n.numeric_value = s.numeric_value;
+    n.range = s.range; n.numeric_value = s.numeric_value;
+    n.writing_mode = s.writing_mode; n.vertical_digits = s.vertical_digits; n.scroll = s.scroll; n.rich = s.rich;
     n.hidden = u.available(ref.id, true).status == Status::hidden;
     n.blocked_by_modal = u.modal_ && c->page != "dialog";
     if (!n.hidden) { auto bounds = u.semantic_bounds_.find(ref.id); if (bounds != u.semantic_bounds_.end()) n.bounds = bounds->second; }
