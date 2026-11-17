@@ -11,4 +11,10 @@ inline bool disabledRowCannotTakeFocus(bool enabled, bool focusable) { return en
 inline bool optionFocusMatches(bool focused, bool focusable, bool expected) {
     return focused == expected && (!focused || focusable);
 }
+inline bool focusPreservesSelection(bool originalSelected, bool targetSelected) {
+    return originalSelected && !targetSelected;
+}
+inline bool optionFocusabilityMatches(bool focusable, bool parentFocusable, bool enabled, bool popupAllowsFocus = true) {
+    return focusable == (parentFocusable && enabled && popupAllowsFocus);
+}
 }

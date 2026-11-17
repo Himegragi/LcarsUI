@@ -244,7 +244,9 @@ void programmaticFocus() {
             check(bool(h.focus({"b"})), (subject.id + "/b: typed focus").c_str());
             tree.dispatchEvents();
             check(events == std::vector<NodeRef>{{subject.id, OptionValue{"b"}}}, (subject.id + "/b: one focus event").c_str());
-            check(h.describe()->items[0].selected && !h.describe()->items[1].selected, (subject.id + "/b: focus preserves selection").c_str());
+            const auto snapshot = h.describe();
+            check(test::focusPreservesSelection(snapshot->items[0].selected, snapshot->items[1].selected),
+                  (subject.id + "/b: focus preserves selection").c_str());
             events.clear();
             check(bool(tree.perform({subject.id, OptionValue{"b"}}, Verb::focus)), (subject.id + "/b: semantic focus").c_str());
             tree.dispatchEvents();
@@ -270,7 +272,7 @@ void compareFocus(World& w, const char* state, const Subject& subject, std::opti
         const auto context = std::string(state) + "/" + subject.id + "/" + item.value.id;
         check(node && test::optionFocusMatches(node->focused, node->focusable, expected == item.value),
               (context + ": expected focus option and focused implies focusable").c_str());
-        check(node->focusable == (parent->focusable && item.enabled && (!subject.dropdown() || component.expanded)),
+        check(test::optionFocusabilityMatches(node->focusable, parent->focusable, item.enabled, !subject.dropdown() || component.expanded),
               (context + ": option focusability").c_str());
         focused += node->focused;
     }
@@ -296,6 +298,21 @@ void focusAdmissionAndReveal() {
     arrange(root, w.ui, webAppearance(), w.measure, 400, 300, 1.f, w.scroll);
     const auto target = w.ui.semantics().get({"dropdown", OptionValue{"29"}});
     check(target->focused && target->visible && !dropdown.draft()->has_value(), "focus reveals option without selecting it");
+}
+void pageFocusRechecksAfterBlur() {
+    for (bool navigation : {false, true}) {
+        World w;
+        auto previous = w.ui.addTextField({.id = "previous", .label = u"Previous"}).value.value();
+        for (const auto& subject : w.subjects) std::visit([&](auto h) {
+            if constexpr (std::is_same_v<decltype(h), TabsHandle> || std::is_same_v<decltype(h), NavigationListHandle>) {
+                if (std::holds_alternative<NavigationListHandle>(subject.handle) != navigation) return;
+                check(bool(previous.focus()) && bool(previous.onBlur([h] { h.enablePage({"b"}, false); })), "install page-disabling blur callback");
+                check(h.focus({"b"}).status == Status::disabled, (subject.id + "/b: blur-disabled focus target is rejected").c_str());
+                check(h.describe()->candidate == OptionValue{"a"}, (subject.id + ": rejected focus keeps enabled candidate").c_str());
+                compareFocus(w, "blur_disabled_target", subject, OptionValue{"a"});
+            }
+        }, subject.handle);
+    }
 }
 void focusStates() {
     for (const auto* state : {"unfocused", "selected", "keyboard_candidate", "closed_dropdown", "disabled_selection", "all_disabled"}) {
@@ -360,6 +377,7 @@ int main() {
                               {"hidden", hidden}, {"blocked_by_modal", blockedByModal}, {"errors", errors},
                               {"page_errors", pageErrors}, {"dropdown_open", dropdownOpen}, {"focus_events", focusEvents},
                               {"programmatic_focus", programmaticFocus}, {"focus_states", focusStates},
-                              {"focus_admission_and_reveal", focusAdmissionAndReveal}, {"context_menu_open", contextMenuOpen}};
+                              {"focus_admission_and_reveal", focusAdmissionAndReveal}, {"page_focus_after_blur", pageFocusRechecksAfterBlur},
+                              {"context_menu_open", contextMenuOpen}};
     return test::run("option_nodes", cases);
 }

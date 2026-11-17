@@ -99,10 +99,11 @@ bool optionFocusCase(IUIAutomation* automation, IUIAutomationElement* root, HWND
     events->expect(L"v02", UIA_TabItemControlTypeId); key(VK_RIGHT);
     ok = received(L"v02", UIA_TabItemControlTypeId) && ok;
     auto tabs = findId(automation, root, L"form.title.pages.tabs");
-    ok = selectedIdIs(tabs, L"v01") && ok;
+    ok = test::focusPreservesSelection(selectedIdIs(tabs, L"v01"), selectedIdIs(tabs, L"v02")) && ok;
     events->expect(L"v03", UIA_TabItemControlTypeId);
     ok = focus(L"v03") && ok;
-    ok = received(L"v03", UIA_TabItemControlTypeId) && selectedIdIs(tabs, L"v01") && ok;
+    ok = received(L"v03", UIA_TabItemControlTypeId) &&
+        test::focusPreservesSelection(selectedIdIs(tabs, L"v01"), selectedIdIs(tabs, L"v03")) && ok;
     if (tabs) tabs->Release();
     ok = focus(L"form.region") && ok;
     events->expect(L"north", UIA_ListItemControlTypeId); key(VK_RETURN);
@@ -112,7 +113,8 @@ bool optionFocusCase(IUIAutomation* automation, IUIAutomationElement* root, HWND
     events->expect(L"form.region", UIA_ComboBoxControlTypeId); key(VK_ESCAPE);
     ok = received(L"form.region", UIA_ComboBoxControlTypeId) && ok;
     auto closedOption = findId(automation, root, L"north"); BOOL focusable = TRUE;
-    ok = closedOption && SUCCEEDED(closedOption->get_CurrentIsKeyboardFocusable(&focusable)) && !focusable && ok;
+    ok = closedOption && SUCCEEDED(closedOption->get_CurrentIsKeyboardFocusable(&focusable)) &&
+        test::optionFocusabilityMatches(focusable != FALSE, true, true, false) && ok;
     if (closedOption) closedOption->Release();
     ok = focus(L"form.mode") && ok;
     events->expect(L"focus", UIA_RadioButtonControlTypeId); key(VK_DOWN);

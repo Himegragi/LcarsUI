@@ -1529,6 +1529,9 @@ Result detail::UiState::focusPage(const Id& id, OptionValue page) {
     if (!target->enabled) return {Status::disabled, {}};
     const auto index = static_cast<std::size_t>(target - t.pages.begin());
     if (auto r = focus(id); !r) return r;
+    // Blur callbacks can change page admission while focus moves.
+    if (auto r = availableOption(id, page); !r) return r;
+    if (!target->enabled) return {Status::disabled, {}};
     t.candidate = index;
     if (revealRequested_) revealRequested_(id);
     if (invalidate_) invalidate_();

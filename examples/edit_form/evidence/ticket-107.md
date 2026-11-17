@@ -42,6 +42,29 @@ Only a change in the deepest focused node raises a focus event.
 - Targeted `components`, `edit_form`, `option_nodes`, `focus_ring`, `navigation`: 5/5 PASS.
 - Required `verify-idle` selections: `uia`, `axe`, `demo-uia`, Web and Material: all six PASS.
   UIA23 passed in both appearances. No WSL process was launched during these selections.
+- After review fixes: rebuilt and reran six affected core suites, 6/6 PASS; rebuilt the
+  desktop host and client and reran `uia_web` / `uia_material`, 2/2 PASS. Logs:
+  `.scratch/107-review-fixes-core.log`, `.scratch/107-review-fixes-uia.log`.
+
+## Standards
+
+- P2: `focusPage` cached a page's enabled state across synchronous blur callbacks, so a
+  callback could disable the page before the candidate was assigned. Fixed by rechecking
+  admission and enabled state after `focus(id)`. The new tabs/navigation regression failed
+  before the fix (`tabs/b: blur-disabled focus target is rejected`).
+- P3: selection preservation and closed-dropdown focusability had separate core and UIA
+  assertions, contrary to `CODING_STANDARDS.md`'s shared-predicate rule. Both seams now use
+  the additional predicates in `tests/option_properties.hpp`.
+
+Two findings; worst severity P2. Both addressed. No additional actionable heuristic smells.
+
+## Spec
+
+- P2: the same callback issue violated decision 3 (focus options must be enabled) and
+  decision 6 (disabled pages return `Status::disabled`). The post-callback admission check
+  addresses both tabs and navigation lists.
+
+One finding; worst severity P2. Addressed. No other actionable gaps or scope creep found.
 
 ## Reproduction
 
