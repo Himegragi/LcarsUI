@@ -1,9 +1,9 @@
 #pragma once
 // Internal host, layout, legacy prototype and regression driver interface.
-// Applications use lcars/core.hpp and typed handles instead.
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/semantics.hpp"
+// Applications use isoduo/core.hpp and typed handles instead.
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/semantics.hpp"
 #include "animation.hpp"
 #include "word_break.hpp"
 #include <array>
@@ -13,7 +13,7 @@
 #include <type_traits>
 #include <utility>
 
-namespace lcars {
+namespace isoduo {
 using Id = std::string;
 namespace detail {
 struct TextHit { unsigned offset = 0; bool upstream = false; };
@@ -28,7 +28,7 @@ struct Component : ComponentConfig {
 bool validTextControl(const Component& control);
 // UI-thread-owned controls addressed by logical IDs, never visual part paths.
 class UiState {
-    friend class lcars::SemanticTree;
+    friend class isoduo::SemanticTree;
 public:
     using Action = std::function<Result()>;
     // Nest public operations and callbacks; structural changes commit after the outermost returns.
@@ -406,20 +406,20 @@ public:
     std::optional<Query<NodeSnapshot>> menuNode(const NodeRef& ref);
     std::optional<std::vector<NodeRef>> menuChildren(const NodeRef& parent) const;
 private:
-    friend class ::lcars::ContextMenuHandle;
-    friend class ::lcars::TabsHandle;
-    friend class ::lcars::NavigationListHandle;
-    friend class ::lcars::TextFieldHandle;
-    friend class ::lcars::ButtonHandle;
-    friend class ::lcars::LabelHandle;
-    friend class ::lcars::CheckboxHandle;
-    friend class ::lcars::RadioGroupHandle;
-    friend class ::lcars::SliderHandle;
-    friend class ::lcars::ProgressHandle;
-    friend class ::lcars::DropdownHandle;
-    friend class ::lcars::ListHandle;
-    friend class ::lcars::DialogHandle;
-    friend class ::lcars::TooltipHandle;
+    friend class ::isoduo::ContextMenuHandle;
+    friend class ::isoduo::TabsHandle;
+    friend class ::isoduo::NavigationListHandle;
+    friend class ::isoduo::TextFieldHandle;
+    friend class ::isoduo::ButtonHandle;
+    friend class ::isoduo::LabelHandle;
+    friend class ::isoduo::CheckboxHandle;
+    friend class ::isoduo::RadioGroupHandle;
+    friend class ::isoduo::SliderHandle;
+    friend class ::isoduo::ProgressHandle;
+    friend class ::isoduo::DropdownHandle;
+    friend class ::isoduo::ListHandle;
+    friend class ::isoduo::DialogHandle;
+    friend class ::isoduo::TooltipHandle;
     std::map<Id, std::function<void()>, std::less<>> blurCallbacks_;
     Result configurationAccess(std::string_view id, bool readOnly = false) const;
     // A text field's read source: plain, or rich for a field created with Component::rich (#95: one place for both).

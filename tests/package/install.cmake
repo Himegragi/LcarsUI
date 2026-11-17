@@ -3,7 +3,7 @@ execute_process(COMMAND "${CMAKE_COMMAND}" --install "${BUILD_DIR}" --config "${
 if(result)
   message(FATAL_ERROR "Package installation failed: ${result}")
 endif()
-file(GLOB configs "${BUILD_DIR}/package-prefix/lib/cmake/LcarsUI/*.cmake")
+file(GLOB configs "${BUILD_DIR}/package-prefix/lib/cmake/Isoduo/*.cmake")
 foreach(config IN LISTS configs)
   file(READ "${config}" content)
   foreach(path IN ITEMS "${BUILD_DIR}" "${SOURCE_DIR}")
@@ -16,18 +16,18 @@ endforeach()
 file(GLOB_RECURSE actual RELATIVE "${BUILD_DIR}/package-prefix" "${BUILD_DIR}/package-prefix/*")
 string(TOLOWER "${CONFIG}" config_lower)
 set(expected
-  include/lcars/appearance.hpp include/lcars/core.hpp include/lcars/semantics.hpp include/lcars/presentation.hpp include/lcars/layout.hpp include/lcars/version.hpp
-  lib/lcars_core.lib lib/lcars_appearance_web.lib lib/lcars_appearance_material.lib
-  lib/cmake/LcarsUI/LcarsUIConfig.cmake lib/cmake/LcarsUI/LcarsUIConfigVersion.cmake
-  lib/cmake/LcarsUI/LcarsUICoreTargets.cmake lib/cmake/LcarsUI/LcarsUICoreTargets-${config_lower}.cmake
-  lib/cmake/LcarsUI/LcarsUIAppearanceWebTargets.cmake lib/cmake/LcarsUI/LcarsUIAppearanceWebTargets-${config_lower}.cmake
-  lib/cmake/LcarsUI/LcarsUIAppearanceMaterialTargets.cmake lib/cmake/LcarsUI/LcarsUIAppearanceMaterialTargets-${config_lower}.cmake
-  share/doc/LcarsUI/LICENSE share/doc/LcarsUI/THIRD_PARTY_NOTICES.txt)
+  include/isoduo/appearance.hpp include/isoduo/core.hpp include/isoduo/semantics.hpp include/isoduo/presentation.hpp include/isoduo/layout.hpp include/isoduo/version.hpp
+  lib/isoduo_core.lib lib/isoduo_appearance_web.lib lib/isoduo_appearance_material.lib
+  lib/cmake/Isoduo/IsoduoConfig.cmake lib/cmake/Isoduo/IsoduoConfigVersion.cmake
+  lib/cmake/Isoduo/IsoduoCoreTargets.cmake lib/cmake/Isoduo/IsoduoCoreTargets-${config_lower}.cmake
+  lib/cmake/Isoduo/IsoduoAppearanceWebTargets.cmake lib/cmake/Isoduo/IsoduoAppearanceWebTargets-${config_lower}.cmake
+  lib/cmake/Isoduo/IsoduoAppearanceMaterialTargets.cmake lib/cmake/Isoduo/IsoduoAppearanceMaterialTargets-${config_lower}.cmake
+  share/doc/Isoduo/LICENSE share/doc/Isoduo/THIRD_PARTY_NOTICES.txt)
 if(DESKTOP)
-  list(APPEND expected include/lcars/desktop.hpp include/lcars/diagnostics.hpp include/lcars/fonts.hpp include/lcars/third_party_notices.hpp lib/lcars_desktop.lib lib/lcars_diagnostics.lib lib/lcars_render.lib lib/lcars_freetype.lib lib/lcars_harfbuzz.lib lib/cmake/LcarsUI/LcarsUIDesktopTargets.cmake lib/cmake/LcarsUI/LcarsUIDesktopTargets-${config_lower}.cmake lib/cmake/LcarsUI/LcarsUIDiagnosticsTargets.cmake lib/cmake/LcarsUI/LcarsUIDiagnosticsTargets-${config_lower}.cmake)
+  list(APPEND expected include/isoduo/desktop.hpp include/isoduo/diagnostics.hpp include/isoduo/fonts.hpp include/isoduo/third_party_notices.hpp lib/isoduo_desktop.lib lib/isoduo_diagnostics.lib lib/isoduo_render.lib lib/isoduo_freetype.lib lib/isoduo_harfbuzz.lib lib/cmake/Isoduo/IsoduoDesktopTargets.cmake lib/cmake/Isoduo/IsoduoDesktopTargets-${config_lower}.cmake lib/cmake/Isoduo/IsoduoDiagnosticsTargets.cmake lib/cmake/Isoduo/IsoduoDiagnosticsTargets-${config_lower}.cmake)
 endif()
 if(CONFIG STREQUAL "Debug")
-  list(TRANSFORM expected REPLACE "(lcars_(core|appearance_web|appearance_material|desktop|diagnostics|render|freetype|harfbuzz))\\.lib$" "\\1d.lib")
+  list(TRANSFORM expected REPLACE "(isoduo_(core|appearance_web|appearance_material|desktop|diagnostics|render|freetype|harfbuzz))\\.lib$" "\\1d.lib")
 endif()
 list(SORT actual)
 list(SORT expected)
@@ -35,19 +35,19 @@ if(NOT actual STREQUAL expected)
   message(FATAL_ERROR "Unexpected installed files: ${actual}; expected ${expected}")
 endif()
 
-execute_process(COMMAND "${CMAKE_COMMAND}" -E compare_files "${SOURCE_DIR}/THIRD_PARTY_NOTICES.txt" "${BUILD_DIR}/package-prefix/share/doc/LcarsUI/THIRD_PARTY_NOTICES.txt" RESULT_VARIABLE difference)
+execute_process(COMMAND "${CMAKE_COMMAND}" -E compare_files "${SOURCE_DIR}/THIRD_PARTY_NOTICES.txt" "${BUILD_DIR}/package-prefix/share/doc/Isoduo/THIRD_PARTY_NOTICES.txt" RESULT_VARIABLE difference)
 if(difference)
   message(FATAL_ERROR "Installed notices differ from source")
 endif()
 if(DESKTOP)
-  file(READ "${BUILD_DIR}/package-prefix/lib/cmake/LcarsUI/LcarsUIDesktopTargets.cmake" exports)
-  string(REGEX MATCHALL "add_library[(]LcarsUI::[A-Za-z_]+ STATIC IMPORTED[)]" found_targets "${exports}")
+  file(READ "${BUILD_DIR}/package-prefix/lib/cmake/Isoduo/IsoduoDesktopTargets.cmake" exports)
+  string(REGEX MATCHALL "add_library[(]Isoduo::[A-Za-z_]+ STATIC IMPORTED[)]" found_targets "${exports}")
   list(LENGTH found_targets target_count)
   if(NOT target_count EQUAL 4)
     message(FATAL_ERROR "Unexpected Desktop exports: ${found_targets}")
   endif()
   foreach(target Desktop internal_render internal_freetype internal_harfbuzz)
-    if(NOT exports MATCHES "add_library[(]LcarsUI::${target} STATIC IMPORTED[)]")
+    if(NOT exports MATCHES "add_library[(]Isoduo::${target} STATIC IMPORTED[)]")
       message(FATAL_ERROR "Missing exported target ${target}")
     endif()
   endforeach()

@@ -1,7 +1,7 @@
 // Palette overrides for the built-in appearances (#78): behavior through Ui, SemanticTree and the paint seam.
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/semantics.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "check.hpp"
@@ -10,7 +10,7 @@
 #include <cmath>
 #include <memory>
 #include <thread>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 namespace {
 const Appearance* const builtins[] = {&webAppearance(), &materialAppearance()};

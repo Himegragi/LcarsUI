@@ -5,7 +5,7 @@
 #include <cstdlib>
 #include <map>
 #include <tuple>
-namespace lcars::detail {
+namespace isoduo::detail {
 enum class BitmapMode { gray, mono, bgra, unsupported };
 inline std::vector<unsigned char> bitmapCoverage(BitmapMode mode, unsigned width, unsigned height, int pitch, const unsigned char* buffer) {
     if (mode == BitmapMode::unsupported || !width || !height || !buffer) return {};

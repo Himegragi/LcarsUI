@@ -6,7 +6,7 @@
 
 // Context menu: one window-wide menu opened beside a component. It never moves core focus; the
 // component keeps it, so "focus returns to the component" is a property of closing, not an action.
-namespace lcars {
+namespace isoduo {
 namespace {
 char16_t fold(char16_t ch) { return ch >= u'a' && ch <= u'z' ? static_cast<char16_t>(ch - u'a' + u'A') : ch; }
 bool reservedId(std::string_view id) { return id.starts_with("lcars."); }
@@ -67,7 +67,7 @@ Result detail::UiState::validateMenuItems(const std::vector<MenuItem>& items) co
     for (const auto& item : items) {
         if (item.separator) continue;
         if (item.id.empty() || reservedId(item.id) || !ids.insert(item.id).second)
-            return {Status::invalidValue, u"選單項目識別碼必須唯一、不能為空，也不能以 lcars. 開頭"};
+            return {Status::invalidValue, u"選單項目識別碼必須唯一、不能為空，也不能以 isoduo. 開頭"};
     }
     return {};
 }

@@ -5,10 +5,10 @@
 #include "check.hpp"
 #include "fake_measure.hpp"
 #include "geometry.hpp"
-#include "lcars/core.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/semantics.hpp"
 #include <algorithm>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 using test::inside;
 
@@ -375,7 +375,7 @@ void otherComponentsHaveNoMenuUntilOneIsAttached() {
     auto bad = ui.addButton({.id = "c"}).value.value();
     check(ui.addContextMenu(bad, {command("x", u"x", 0), command("x", u"y", 0)}).status == Status::invalidValue, "duplicate ids are refused");
     check(ui.addContextMenu(bad, {command("", u"x", 0)}).status == Status::invalidValue, "an item needs an id");
-    check(ui.addContextMenu(bad, {command("lcars.cut", u"x", 0)}).status == Status::invalidValue, "the lcars. prefix is reserved");
+    check(ui.addContextMenu(bad, {command("lcars.cut", u"x", 0)}).status == Status::invalidValue, "the isoduo. prefix is reserved");
     check(bool(ui.addContextMenu(bad, {})) , "an empty attachment is allowed (it is not a menu yet)");
     check(ui.openContextMenu(bad).status == Status::notSupported, "and opens nothing");
 }

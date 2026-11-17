@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <cmath>
 #include <vector>
-namespace lcars::detail {
+namespace isoduo::detail {
 struct PerfSummary { size_t count=0, overBudget=0; double p50=0, p95=0, p99=0, maximum=0; };
 class PerfSamples {
     std::vector<double> warm_, steady_;

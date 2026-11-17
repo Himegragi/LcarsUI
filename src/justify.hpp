@@ -3,13 +3,13 @@
 // width may go; every piece is drawn on its own at its own x, so ligatures and kerning never span a
 // cut. The caret stops are rebuilt from the pieces, so drawing, caret, hit testing, selection and the
 // input method all read the same stretched positions.
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
 #include <optional>
 #include <string_view>
 #include <vector>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 struct Justified {
     std::vector<TextSegment> segments;  // pieces in order, together the whole line
     TextRun run;                        // caret stops of the stretched line; width is the stretched content width

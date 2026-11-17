@@ -2,14 +2,14 @@
 #include "settings_store.hpp"
 #include "desktop_host.hpp"
 #include "core_internal.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/semantics.hpp"
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
-using namespace lcars;
+using namespace isoduo;
 using namespace settingsDemo;
 static void check(bool b, const char* message) { if (!b) throw std::runtime_error(message); }
 static std::function<void()> scheduled;
@@ -52,7 +52,7 @@ struct Fixture {
     std::unique_ptr<Desktop> desktop;
     int requests=0;
     explicit Fixture(const Appearance& appearance, std::string suffix, bool fail=false)
-        : path(std::filesystem::temp_directory_path()/("lcars-close-host-"+std::to_string(GetCurrentProcessId())+"-"+suffix)), store(path), controller(demo) {
+        : path(std::filesystem::temp_directory_path()/("isoduo-close-host-"+std::to_string(GetCurrentProcessId())+"-"+suffix)), store(path), controller(demo) {
         std::filesystem::remove_all(path);
         check(store.save(demo.document()).empty(), "write baseline");
         demo.onSave([this](const auto& doc) { return store.save(doc); });

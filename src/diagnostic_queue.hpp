@@ -1,11 +1,11 @@
 ﻿#pragma once
-#include "lcars/diagnostics.hpp"
-#include "lcars/fonts.hpp"
+#include "isoduo/diagnostics.hpp"
+#include "isoduo/fonts.hpp"
 #include <deque>
 #include <functional>
 #include <mutex>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 class DiagnosticQueue {
 public:
     using Callback = std::function<void(const RenderDiagnostic&)>;

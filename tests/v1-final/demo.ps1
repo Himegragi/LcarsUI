@@ -11,7 +11,7 @@ if ($DryRun) {
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
 # Run every part even after a failure, so one idle session reports all of them.
 $failed=@()
-$exe=Join-Path $PSScriptRoot '../../build/Release/lcars_demo_keyboard.exe'
+$exe=Join-Path $PSScriptRoot '../../build/Release/isoduo_demo_keyboard.exe'
 $ErrorActionPreference='Continue'
 & $exe --real --evidence $OutDir
 if ($LASTEXITCODE -ne 0) { $failed+='KW02/CR09-real' }

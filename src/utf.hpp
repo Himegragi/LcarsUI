@@ -3,7 +3,7 @@
 #include <locale>
 #include <string>
 #include <string_view>
-namespace lcars::detail {
+namespace isoduo::detail {
 inline std::u16string utf16FromUtf8(std::string_view value) {
     if (value.empty()) return {};
     std::wstring_convert<std::codecvt_utf8_utf16<char16_t>, char16_t> conversion;

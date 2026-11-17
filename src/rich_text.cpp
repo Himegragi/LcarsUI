@@ -2,7 +2,7 @@
 #include "utf.hpp"
 #include <algorithm>
 
-namespace lcars {
+namespace isoduo {
 namespace {
 bool lowSurrogate(char16_t c) { return c >= 0xdc00 && c <= 0xdfff; }
 bool highSurrogate(char16_t c) { return c >= 0xd800 && c <= 0xdbff; }

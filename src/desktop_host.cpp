@@ -16,13 +16,13 @@
 #include <stdexcept>
 #include <type_traits>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 namespace {
 bool systemKeyboardCues() {
     BOOL on = FALSE;
     return SystemParametersInfoW(SPI_GETKEYBOARDCUES, 0, &on, 0) && on;
 }
-const wchar_t* windowClass = L"LcarsUI.DesktopHost";
+const wchar_t* windowClass = L"Isoduo.DesktopHost";
 constexpr UINT_PTR tooltipTimer = 1;
 constexpr UINT_PTR dragScrollTimer = 2;  // keeps a text drag scrolling while the pointer rests outside the field
 constexpr UINT_PTR animationTimer = 3;    // distinct from the other timer ids: they run side by side
@@ -103,7 +103,7 @@ LRESULT CALLBACK windowProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     if (!host) return DefWindowProcW(window, msg, w, l);
     // Extension or backend failure: stop this UI instead of letting C++ unwind into Win32.
     auto stop = [&](const char* what) {
-        std::cerr << "LcarsUI host: " << what << '\n';
+        std::cerr << "Isoduo host: " << what << '\n';
         SetWindowLongPtrW(window, GWLP_USERDATA, 0);
         PostQuitMessage(1);
         return LRESULT{0};
@@ -432,7 +432,7 @@ void DesktopHost::pump() {
 Frame DesktopHost::arrange(int width, int height, float scale) {
     if (atlasScale_ && atlasScale_ != scale) text_.clearAtlas();
     atlasScale_ = scale;
-    return lcars::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
+    return isoduo::arrange(page_(), ui_, appearance_, measure_, width, height, scale, scroll_, reveal_);
 }
 void DesktopHost::paint() {
     if (rendererFailure_ || painting_) return;
@@ -491,7 +491,7 @@ void DesktopHost::paint() {
     PostMessageW(window_,WM_APP+43,0,0);
 }
 Frame DesktopHost::layout(int width, int height, float s, ScrollState& scroll, std::string_view reveal) {
-    auto frame=lcars::arrange(page_(), ui_, appearance_, measure_, width, height, s, scroll, reveal);
+    auto frame=isoduo::arrange(page_(), ui_, appearance_, measure_, width, height, s, scroll, reveal);
     diagnostics_.drain(); return frame;
 }
 Frame DesktopHost::render(int width, int height, float s, const std::filesystem::path& bmp, Image* copy) {
@@ -1266,7 +1266,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
 }
 }
 
-namespace lcars {
+namespace isoduo {
 struct Desktop::Impl {
     std::unique_ptr<detail::DesktopHost> host;
     DesktopConfig options;

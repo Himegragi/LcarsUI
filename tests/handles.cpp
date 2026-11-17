@@ -7,7 +7,7 @@
 //     Handles of different kinds do not compare at all (a compile error, checked with static_assert).
 // A new handle kind is one more World member, one more entry in `kinds` (with every public operation it has) and one
 // more type in handleKinds::All (examples/consumer/handle_kinds.hpp, shared with the consumer example).
-#include "lcars/core.hpp"
+#include "isoduo/core.hpp"
 #include "check.hpp"
 #include "../examples/consumer/handle_kinds.hpp"
 #include <concepts>
@@ -20,7 +20,7 @@
 #include <utility>
 #include <variant>
 #include <vector>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 
 // Every handle kind, for the compile-time checks: the one list the consumer example asserts too.
@@ -139,118 +139,118 @@ struct Op {
     std::function<Answer()> run;
     const char16_t* gone = nullptr;
 };
-#define LCARS_OP(handle, call, description) Op{description, [handle] { return answer(handle.call); }}
+#define ISODUO_OP(handle, call, description) Op{description, [handle] { return answer(handle.call); }}
 
 std::vector<Op> textOps(const World& w) {
     auto h = w.text;
-    return {LCARS_OP(h, setValue(u"y"), "set_value(u\"y\")"), LCARS_OP(h, undo(), "undo()"), LCARS_OP(h, redo(), "redo()"), LCARS_OP(h, select(0, 1), "select(0, 1)"), LCARS_OP(h, copy(), "copy()"),
-            LCARS_OP(h, cut(), "cut()"), LCARS_OP(h, paste(u"p"), "paste(u\"p\")"), LCARS_OP(h, focus(), "focus()"), LCARS_OP(h, onBlur([] {}), "on_blur([] {})"), LCARS_OP(h, setError(u"e"), "set_error(u\"e\")"),
-            LCARS_OP(h, resetToSource(), "reset_to_source()"), LCARS_OP(h, enable(true), "enable(true)"), LCARS_OP(h, readOnly(false), "read_only(false)"),
-            LCARS_OP(h, setVisibleLines(2), "set_visible_lines(2)"), LCARS_OP(h, visibleLines(), "visible_lines()"), LCARS_OP(h, setScrollLine(0), "set_scroll_line(0)"), LCARS_OP(h, scrollLine(), "scroll_line()"),
-            LCARS_OP(h, setTextAlign(TextAlign::center), "set_text_align(TextAlign::center)"), LCARS_OP(h, textAlign(), "text_align()"),
-            LCARS_OP(h, setJustifyMethod(JustifyMethod::spaces), "set_justify_method(JustifyMethod::spaces)"), LCARS_OP(h, justifyMethod(), "justify_method()"),
-            LCARS_OP(h, setLineSpacing(1.5), "set_line_spacing(1.5)"), LCARS_OP(h, lineSpacing(), "line_spacing()"), LCARS_OP(h, setParagraphSpacing(4), "set_paragraph_spacing(4)"), LCARS_OP(h, paragraphSpacing(), "paragraph_spacing()"),
-            LCARS_OP(h, setWordSegmentation(WordSegmentation::scriptRun), "set_word_segmentation(WordSegmentation::script_run)"), LCARS_OP(h, wordSegmentation(), "word_segmentation()"),
-            LCARS_OP(h, wordSegmentationInUse(), "word_segmentation_in_use()"), LCARS_OP(h, wordAt(0), "word_at(0)"), LCARS_OP(h, paragraphAt(0), "paragraph_at(0)"),
-            LCARS_OP(h, nextWordStop(0), "next_word_stop(0)"), LCARS_OP(h, previousWordStop(0), "previous_word_stop(0)"), LCARS_OP(h, selectWord(0), "select_word(0)"), LCARS_OP(h, selectParagraph(0), "select_paragraph(0)"),
-            LCARS_OP(h, doubleClick(0), "double_click(0)"), LCARS_OP(h, tripleClick(0), "triple_click(0)"),
-            LCARS_OP(h, connectSource({[] { return std::u16string(); }, noUpdates()}), "connect_source({[] { return std::u16string(); }, no_updates()})"),
-            LCARS_OP(h, connectImmediate([](const Change<TextFieldHandle>&) { return Result{}; }), "connect_immediate([](const Change<TextFieldHandle>&) { return Result{}; })"),
-            LCARS_OP(h, connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; }), "connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })"),
-            LCARS_OP(h, connectRichSource({[] { return RichText{}; }, noUpdates()}), "connect_rich_source({[] { return RichText{}; }, no_updates()})"),
-            LCARS_OP(h, connectRichImmediate([](const Change<TextFieldHandle, RichText>&) { return Result{}; }), "connect_rich_immediate([](const Change<TextFieldHandle, RichText>&) { return Result{}; })"),
-            LCARS_OP(h, connectRichConfirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; }), "connect_rich_confirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; })"),
-            LCARS_OP(h, setRichValue(RichText{u"r", {}}), "set_rich_value(RichText{u\"r\", {}})"), LCARS_OP(h, richValue(), "rich_value()"), LCARS_OP(h, setStyle(0, 1, bold()), "set_style(0, 1, bold())"),
-            LCARS_OP(h, toggleStyle(StyleAttribute::bold), "toggle_style(StyleAttribute::bold)"), LCARS_OP(h, applyStyle(bold()), "apply_style(bold())"),
-            LCARS_OP(h, typingStyle(), "typing_style()"), LCARS_OP(h, setTypingStyle(TextStyle{}), "set_typing_style(TextStyle{})"), LCARS_OP(h, setColors({}), "set_colors({})"), LCARS_OP(h, colors(), "colors()"),
-            LCARS_OP(h, confirm(), "confirm()"), LCARS_OP(h, sourceConflict(), "source_conflict()"), LCARS_OP(h, useLatest(), "use_latest()"), LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, describe(), "describe()"), LCARS_OP(h, draft(), "draft()")};
+    return {ISODUO_OP(h, setValue(u"y"), "set_value(u\"y\")"), ISODUO_OP(h, undo(), "undo()"), ISODUO_OP(h, redo(), "redo()"), ISODUO_OP(h, select(0, 1), "select(0, 1)"), ISODUO_OP(h, copy(), "copy()"),
+            ISODUO_OP(h, cut(), "cut()"), ISODUO_OP(h, paste(u"p"), "paste(u\"p\")"), ISODUO_OP(h, focus(), "focus()"), ISODUO_OP(h, onBlur([] {}), "on_blur([] {})"), ISODUO_OP(h, setError(u"e"), "set_error(u\"e\")"),
+            ISODUO_OP(h, resetToSource(), "reset_to_source()"), ISODUO_OP(h, enable(true), "enable(true)"), ISODUO_OP(h, readOnly(false), "read_only(false)"),
+            ISODUO_OP(h, setVisibleLines(2), "set_visible_lines(2)"), ISODUO_OP(h, visibleLines(), "visible_lines()"), ISODUO_OP(h, setScrollLine(0), "set_scroll_line(0)"), ISODUO_OP(h, scrollLine(), "scroll_line()"),
+            ISODUO_OP(h, setTextAlign(TextAlign::center), "set_text_align(TextAlign::center)"), ISODUO_OP(h, textAlign(), "text_align()"),
+            ISODUO_OP(h, setJustifyMethod(JustifyMethod::spaces), "set_justify_method(JustifyMethod::spaces)"), ISODUO_OP(h, justifyMethod(), "justify_method()"),
+            ISODUO_OP(h, setLineSpacing(1.5), "set_line_spacing(1.5)"), ISODUO_OP(h, lineSpacing(), "line_spacing()"), ISODUO_OP(h, setParagraphSpacing(4), "set_paragraph_spacing(4)"), ISODUO_OP(h, paragraphSpacing(), "paragraph_spacing()"),
+            ISODUO_OP(h, setWordSegmentation(WordSegmentation::scriptRun), "set_word_segmentation(WordSegmentation::script_run)"), ISODUO_OP(h, wordSegmentation(), "word_segmentation()"),
+            ISODUO_OP(h, wordSegmentationInUse(), "word_segmentation_in_use()"), ISODUO_OP(h, wordAt(0), "word_at(0)"), ISODUO_OP(h, paragraphAt(0), "paragraph_at(0)"),
+            ISODUO_OP(h, nextWordStop(0), "next_word_stop(0)"), ISODUO_OP(h, previousWordStop(0), "previous_word_stop(0)"), ISODUO_OP(h, selectWord(0), "select_word(0)"), ISODUO_OP(h, selectParagraph(0), "select_paragraph(0)"),
+            ISODUO_OP(h, doubleClick(0), "double_click(0)"), ISODUO_OP(h, tripleClick(0), "triple_click(0)"),
+            ISODUO_OP(h, connectSource({[] { return std::u16string(); }, noUpdates()}), "connect_source({[] { return std::u16string(); }, no_updates()})"),
+            ISODUO_OP(h, connectImmediate([](const Change<TextFieldHandle>&) { return Result{}; }), "connect_immediate([](const Change<TextFieldHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; }), "connect_confirmed([](const Change<TextFieldHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, connectRichSource({[] { return RichText{}; }, noUpdates()}), "connect_rich_source({[] { return RichText{}; }, no_updates()})"),
+            ISODUO_OP(h, connectRichImmediate([](const Change<TextFieldHandle, RichText>&) { return Result{}; }), "connect_rich_immediate([](const Change<TextFieldHandle, RichText>&) { return Result{}; })"),
+            ISODUO_OP(h, connectRichConfirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; }), "connect_rich_confirmed([](const Change<TextFieldHandle, RichText>&) { return Result{}; })"),
+            ISODUO_OP(h, setRichValue(RichText{u"r", {}}), "set_rich_value(RichText{u\"r\", {}})"), ISODUO_OP(h, richValue(), "rich_value()"), ISODUO_OP(h, setStyle(0, 1, bold()), "set_style(0, 1, bold())"),
+            ISODUO_OP(h, toggleStyle(StyleAttribute::bold), "toggle_style(StyleAttribute::bold)"), ISODUO_OP(h, applyStyle(bold()), "apply_style(bold())"),
+            ISODUO_OP(h, typingStyle(), "typing_style()"), ISODUO_OP(h, setTypingStyle(TextStyle{}), "set_typing_style(TextStyle{})"), ISODUO_OP(h, setColors({}), "set_colors({})"), ISODUO_OP(h, colors(), "colors()"),
+            ISODUO_OP(h, confirm(), "confirm()"), ISODUO_OP(h, sourceConflict(), "source_conflict()"), ISODUO_OP(h, useLatest(), "use_latest()"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()"), ISODUO_OP(h, draft(), "draft()")};
 }
 std::vector<Op> buttonOps(const World& w) {
     auto h = w.button;
-    return {LCARS_OP(h, invoke(), "invoke()"), LCARS_OP(h, focus(), "focus()"), LCARS_OP(h, bind([] { return Result{}; }), "bind([] { return Result{}; })"), LCARS_OP(h, enable(true), "enable(true)"),
-            LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, executing(), "executing()"), LCARS_OP(h, describe(), "describe()")};
+    return {ISODUO_OP(h, invoke(), "invoke()"), ISODUO_OP(h, focus(), "focus()"), ISODUO_OP(h, bind([] { return Result{}; }), "bind([] { return Result{}; })"), ISODUO_OP(h, enable(true), "enable(true)"),
+            ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, executing(), "executing()"), ISODUO_OP(h, describe(), "describe()")};
 }
 std::vector<Op> labelOps(const World& w) {
     auto h = w.label;
-    return {LCARS_OP(h, connectSource([] { return std::u16string(u"l"); }), "connect_source([] { return std::u16string(u\"l\"); })"),
-            LCARS_OP(h, setTextAlign(TextAlign::distribute), "set_text_align(TextAlign::distribute)"), LCARS_OP(h, textAlign(), "text_align()"),
-            LCARS_OP(h, setJustifyMethod(JustifyMethod::perCharacter), "set_justify_method(JustifyMethod::per_character)"), LCARS_OP(h, justifyMethod(), "justify_method()"),
-            LCARS_OP(h, setLineSpacing(2.0), "set_line_spacing(2.0)"), LCARS_OP(h, lineSpacing(), "line_spacing()"), LCARS_OP(h, setParagraphSpacing(8), "set_paragraph_spacing(8)"), LCARS_OP(h, paragraphSpacing(), "paragraph_spacing()"),
-            LCARS_OP(h, setWritingMode(WritingMode::vertical), "set_writing_mode(WritingMode::vertical)"), LCARS_OP(h, writingMode(), "writing_mode()"),
-            LCARS_OP(h, setVerticalDigits(2), "set_vertical_digits(2)"), LCARS_OP(h, verticalDigits(), "vertical_digits()"), LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, describe(), "describe()")};
+    return {ISODUO_OP(h, connectSource([] { return std::u16string(u"l"); }), "connect_source([] { return std::u16string(u\"l\"); })"),
+            ISODUO_OP(h, setTextAlign(TextAlign::distribute), "set_text_align(TextAlign::distribute)"), ISODUO_OP(h, textAlign(), "text_align()"),
+            ISODUO_OP(h, setJustifyMethod(JustifyMethod::perCharacter), "set_justify_method(JustifyMethod::per_character)"), ISODUO_OP(h, justifyMethod(), "justify_method()"),
+            ISODUO_OP(h, setLineSpacing(2.0), "set_line_spacing(2.0)"), ISODUO_OP(h, lineSpacing(), "line_spacing()"), ISODUO_OP(h, setParagraphSpacing(8), "set_paragraph_spacing(8)"), ISODUO_OP(h, paragraphSpacing(), "paragraph_spacing()"),
+            ISODUO_OP(h, setWritingMode(WritingMode::vertical), "set_writing_mode(WritingMode::vertical)"), ISODUO_OP(h, writingMode(), "writing_mode()"),
+            ISODUO_OP(h, setVerticalDigits(2), "set_vertical_digits(2)"), ISODUO_OP(h, verticalDigits(), "vertical_digits()"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
 }
 std::vector<Op> checkboxOps(const World& w) {
     auto h = w.checkbox;
-    return {LCARS_OP(h, toggle(), "toggle()"), LCARS_OP(h, useLatest(), "use_latest()"), LCARS_OP(h, focus(), "focus()"), LCARS_OP(h, enable(true), "enable(true)"),
-            LCARS_OP(h, connectSource({[] { return true; }, noUpdates()}), "connect_source({[] { return true; }, no_updates()})"),
-            LCARS_OP(h, connectImmediate([](const Change<CheckboxHandle>&) { return Result{}; }), "connect_immediate([](const Change<CheckboxHandle>&) { return Result{}; })"),
-            LCARS_OP(h, connectConfirmed([](const Change<CheckboxHandle>&) { return Result{}; }), "connect_confirmed([](const Change<CheckboxHandle>&) { return Result{}; })"),
-            LCARS_OP(h, confirm(), "confirm()"), LCARS_OP(h, draft(), "draft()"), LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, describe(), "describe()")};
+    return {ISODUO_OP(h, toggle(), "toggle()"), ISODUO_OP(h, useLatest(), "use_latest()"), ISODUO_OP(h, focus(), "focus()"), ISODUO_OP(h, enable(true), "enable(true)"),
+            ISODUO_OP(h, connectSource({[] { return true; }, noUpdates()}), "connect_source({[] { return true; }, no_updates()})"),
+            ISODUO_OP(h, connectImmediate([](const Change<CheckboxHandle>&) { return Result{}; }), "connect_immediate([](const Change<CheckboxHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, connectConfirmed([](const Change<CheckboxHandle>&) { return Result{}; }), "connect_confirmed([](const Change<CheckboxHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, confirm(), "confirm()"), ISODUO_OP(h, draft(), "draft()"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
 }
 std::vector<Op> radioOps(const World& w) {
     auto h = w.radio;
-    return {LCARS_OP(h, select({"b"}), "select({\"b\"})"), LCARS_OP(h, useLatest(), "use_latest()"), LCARS_OP(h, focus(), "focus()"), LCARS_OP(h, enable(true), "enable(true)"),
-            LCARS_OP(h, enableOption({"b"}, false), "enable_option({\"b\"}, false)"),
-            LCARS_OP(h, connectSource({[] { return std::optional<OptionValue>{}; }, noUpdates()}), "connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})"),
-            LCARS_OP(h, connectImmediate([](const Change<RadioGroupHandle>&) { return Result{}; }), "connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; })"),
-            LCARS_OP(h, connectConfirmed([](const Change<RadioGroupHandle>&) { return Result{}; }), "connect_confirmed([](const Change<RadioGroupHandle>&) { return Result{}; })"),
-            LCARS_OP(h, confirm(), "confirm()"), LCARS_OP(h, draft(), "draft()"), LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, describe(), "describe()")};
+    return {ISODUO_OP(h, select({"b"}), "select({\"b\"})"), ISODUO_OP(h, useLatest(), "use_latest()"), ISODUO_OP(h, focus(), "focus()"), ISODUO_OP(h, enable(true), "enable(true)"),
+            ISODUO_OP(h, enableOption({"b"}, false), "enable_option({\"b\"}, false)"),
+            ISODUO_OP(h, connectSource({[] { return std::optional<OptionValue>{}; }, noUpdates()}), "connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})"),
+            ISODUO_OP(h, connectImmediate([](const Change<RadioGroupHandle>&) { return Result{}; }), "connect_immediate([](const Change<RadioGroupHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, connectConfirmed([](const Change<RadioGroupHandle>&) { return Result{}; }), "connect_confirmed([](const Change<RadioGroupHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, confirm(), "confirm()"), ISODUO_OP(h, draft(), "draft()"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
 }
 std::vector<Op> sliderOps(const World& w) {
     auto h = w.slider;
-    return {LCARS_OP(h, onBlur([] {}), "on_blur([] {})"), LCARS_OP(h, setValue(30), "set_value(30)"), LCARS_OP(h, useLatest(), "use_latest()"), LCARS_OP(h, focus(), "focus()"), LCARS_OP(h, enable(true), "enable(true)"),
-            LCARS_OP(h, connectSource({[] { return 40; }, noUpdates()}), "connect_source({[] { return 40; }, no_updates()})"),
-            LCARS_OP(h, connectImmediate([](const Change<SliderHandle>&) { return Result{}; }), "connect_immediate([](const Change<SliderHandle>&) { return Result{}; })"),
-            LCARS_OP(h, connectConfirmed([](const Change<SliderHandle>&) { return Result{}; }), "connect_confirmed([](const Change<SliderHandle>&) { return Result{}; })"),
-            LCARS_OP(h, confirm(), "confirm()"), LCARS_OP(h, draft(), "draft()"), LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, describe(), "describe()")};
+    return {ISODUO_OP(h, onBlur([] {}), "on_blur([] {})"), ISODUO_OP(h, setValue(30), "set_value(30)"), ISODUO_OP(h, useLatest(), "use_latest()"), ISODUO_OP(h, focus(), "focus()"), ISODUO_OP(h, enable(true), "enable(true)"),
+            ISODUO_OP(h, connectSource({[] { return 40; }, noUpdates()}), "connect_source({[] { return 40; }, no_updates()})"),
+            ISODUO_OP(h, connectImmediate([](const Change<SliderHandle>&) { return Result{}; }), "connect_immediate([](const Change<SliderHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, connectConfirmed([](const Change<SliderHandle>&) { return Result{}; }), "connect_confirmed([](const Change<SliderHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, confirm(), "confirm()"), ISODUO_OP(h, draft(), "draft()"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
 }
 std::vector<Op> progressOps(const World& w) {
     auto h = w.progress;
-    return {LCARS_OP(h, connectSource({[] { return 50; }, noUpdates()}), "connect_source({[] { return 50; }, no_updates()})"), LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, describe(), "describe()")};
+    return {ISODUO_OP(h, connectSource({[] { return 50; }, noUpdates()}), "connect_source({[] { return 50; }, no_updates()})"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
 }
 std::vector<Op> dropdownOps(const World& w) {
     auto h = w.dropdown;
-    return {LCARS_OP(h, open(), "open()"), LCARS_OP(h, cancel(), "cancel()"), LCARS_OP(h, select({"b"}), "select({\"b\"})"), LCARS_OP(h, setItems(twoOptions()), "set_items(two_options())"),
-            LCARS_OP(h, useLatest(), "use_latest()"), LCARS_OP(h, focus(), "focus()"), LCARS_OP(h, enable(true), "enable(true)"),
-            LCARS_OP(h, connectSource({[] { return std::optional<OptionValue>{}; }, noUpdates()}), "connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})"),
-            LCARS_OP(h, connectImmediate([](const Change<DropdownHandle>&) { return Result{}; }), "connect_immediate([](const Change<DropdownHandle>&) { return Result{}; })"),
-            LCARS_OP(h, connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; }), "connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })"),
-            LCARS_OP(h, confirm(), "confirm()"), LCARS_OP(h, draft(), "draft()"), LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, describe(), "describe()")};
+    return {ISODUO_OP(h, open(), "open()"), ISODUO_OP(h, cancel(), "cancel()"), ISODUO_OP(h, select({"b"}), "select({\"b\"})"), ISODUO_OP(h, setItems(twoOptions()), "set_items(two_options())"),
+            ISODUO_OP(h, useLatest(), "use_latest()"), ISODUO_OP(h, focus(), "focus()"), ISODUO_OP(h, enable(true), "enable(true)"),
+            ISODUO_OP(h, connectSource({[] { return std::optional<OptionValue>{}; }, noUpdates()}), "connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})"),
+            ISODUO_OP(h, connectImmediate([](const Change<DropdownHandle>&) { return Result{}; }), "connect_immediate([](const Change<DropdownHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; }), "connect_confirmed([](const Change<DropdownHandle>&) { return Result{}; })"),
+            ISODUO_OP(h, confirm(), "confirm()"), ISODUO_OP(h, draft(), "draft()"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
 }
 std::vector<Op> tabsOps(const World& w) {
     auto h = w.tabs;
-    return {LCARS_OP(h, activate({"b"}), "activate({\"b\"})"), LCARS_OP(h, enablePage({"b"}, false), "enable_page({\"b\"}, false)"), LCARS_OP(h, addMember({"a"}, ComponentHandle{}), "add_member({\"a\"}, ComponentHandle{})"),
-            LCARS_OP(h, focus(), "focus()"), LCARS_OP(h, active(), "active()"), LCARS_OP(h, describe(), "describe()"), LCARS_OP(h, onPageChange([](OptionValue, OptionValue) {}), "on_page_change([](OptionValue, OptionValue) {})")};
+    return {ISODUO_OP(h, activate({"b"}), "activate({\"b\"})"), ISODUO_OP(h, enablePage({"b"}, false), "enable_page({\"b\"}, false)"), ISODUO_OP(h, addMember({"a"}, ComponentHandle{}), "add_member({\"a\"}, ComponentHandle{})"),
+            ISODUO_OP(h, focus(), "focus()"), ISODUO_OP(h, active(), "active()"), ISODUO_OP(h, describe(), "describe()"), ISODUO_OP(h, onPageChange([](OptionValue, OptionValue) {}), "on_page_change([](OptionValue, OptionValue) {})")};
 }
 std::vector<Op> navigationOps(const World& w) {
     auto h = w.navigation;
-    return {LCARS_OP(h, select({"b"}), "select({\"b\"})"), LCARS_OP(h, enablePage({"b"}, false), "enable_page({\"b\"}, false)"), LCARS_OP(h, addMember({"a"}, ComponentHandle{}), "add_member({\"a\"}, ComponentHandle{})"),
-            LCARS_OP(h, focus(), "focus()"), LCARS_OP(h, selected(), "selected()"), LCARS_OP(h, describe(), "describe()"), LCARS_OP(h, onPageChange([](OptionValue, OptionValue) {}), "on_page_change([](OptionValue, OptionValue) {})")};
+    return {ISODUO_OP(h, select({"b"}), "select({\"b\"})"), ISODUO_OP(h, enablePage({"b"}, false), "enable_page({\"b\"}, false)"), ISODUO_OP(h, addMember({"a"}, ComponentHandle{}), "add_member({\"a\"}, ComponentHandle{})"),
+            ISODUO_OP(h, focus(), "focus()"), ISODUO_OP(h, selected(), "selected()"), ISODUO_OP(h, describe(), "describe()"), ISODUO_OP(h, onPageChange([](OptionValue, OptionValue) {}), "on_page_change([](OptionValue, OptionValue) {})")};
 }
 std::vector<Op> listOps(const World& w) {
     auto h = w.list;
-    auto focusRow = LCARS_OP(h, focus(OptionValue{"a"}), "focus(OptionValue{\"a\"})");
+    auto focusRow = ISODUO_OP(h, focus(OptionValue{"a"}), "focus(OptionValue{\"a\"})");
     focusRow.gone = u"";  // this one operation of today answers notFound without text
-    return {LCARS_OP(h, select({"b"}), "select({\"b\"})"), LCARS_OP(h, setItems(twoOptions()), "set_items(two_options())"), LCARS_OP(h, focus(), "focus()"), std::move(focusRow),
-            LCARS_OP(h, enable(true), "enable(true)"), LCARS_OP(h, connectSource({[] { return std::optional<OptionValue>{}; }, noUpdates()}), "connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})"),
-            LCARS_OP(h, connectImmediate([](const Change<ListHandle>&) { return Result{}; }), "connect_immediate([](const Change<ListHandle>&) { return Result{}; })"), LCARS_OP(h, remove(), "remove()"), LCARS_OP(h, describe(), "describe()")};
+    return {ISODUO_OP(h, select({"b"}), "select({\"b\"})"), ISODUO_OP(h, setItems(twoOptions()), "set_items(two_options())"), ISODUO_OP(h, focus(), "focus()"), std::move(focusRow),
+            ISODUO_OP(h, enable(true), "enable(true)"), ISODUO_OP(h, connectSource({[] { return std::optional<OptionValue>{}; }, noUpdates()}), "connect_source({[] { return std::optional<OptionValue>{}; }, no_updates()})"),
+            ISODUO_OP(h, connectImmediate([](const Change<ListHandle>&) { return Result{}; }), "connect_immediate([](const Change<ListHandle>&) { return Result{}; })"), ISODUO_OP(h, remove(), "remove()"), ISODUO_OP(h, describe(), "describe()")};
 }
 std::vector<Op> dialogOps(const World& w) {
     auto h = w.dialog;
     const ComponentHandle opener{w.text};  // a real opener, so the live call is not refused for want of one
-    return {Op{"open(opener)", [h, opener] { return answer(h.open(opener)); }}, LCARS_OP(h, open(), "open()"), LCARS_OP(h, settle(true), "settle(true)"), LCARS_OP(h, isOpen(), "is_open()")};
+    return {Op{"open(opener)", [h, opener] { return answer(h.open(opener)); }}, ISODUO_OP(h, open(), "open()"), ISODUO_OP(h, settle(true), "settle(true)"), ISODUO_OP(h, isOpen(), "is_open()")};
 }
 std::vector<Op> tooltipOps(const World& w) {
     auto h = w.tooltip;
-    return {LCARS_OP(h, visible(), "visible()")};
+    return {ISODUO_OP(h, visible(), "visible()")};
 }
 std::vector<Op> menuOps(const World& w) {
     auto h = w.menu;
-    return {LCARS_OP(h, setMode(MenuMode::replace), "set_mode(MenuMode::replace)"), LCARS_OP(h, setItems({}), "set_items({})"), LCARS_OP(h, addItem(command("app.two", u"Two")), "add_item(command(\"app.two\", u\"Two\"))"),
-            LCARS_OP(h, removeItem("app.one"), "remove_item(\"app.one\")"), LCARS_OP(h, updateItem(command("app.one", u"Uno")), "update_item(command(\"app.one\", u\"Uno\"))"),
-            LCARS_OP(h, enableItem("app.one", false), "enable_item(\"app.one\", false)"), LCARS_OP(h, items(), "items()")};
+    return {ISODUO_OP(h, setMode(MenuMode::replace), "set_mode(MenuMode::replace)"), ISODUO_OP(h, setItems({}), "set_items({})"), ISODUO_OP(h, addItem(command("app.two", u"Two")), "add_item(command(\"app.two\", u\"Two\"))"),
+            ISODUO_OP(h, removeItem("app.one"), "remove_item(\"app.one\")"), ISODUO_OP(h, updateItem(command("app.one", u"Uno")), "update_item(command(\"app.one\", u\"Uno\"))"),
+            ISODUO_OP(h, enableItem("app.one", false), "enable_item(\"app.one\", false)"), ISODUO_OP(h, items(), "items()")};
 }
-#undef LCARS_OP
+#undef ISODUO_OP
 
 // The one list of handle kinds. `gone` is the notFound text the kind's operations give today once the Ui is gone.
 // The comparisons are filled in from the World member, so a kind is listed once and every driver sees it.

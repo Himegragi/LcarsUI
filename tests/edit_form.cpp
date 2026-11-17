@@ -1,6 +1,6 @@
 #include "presentation_matrix.hpp"
 #include "x04_drivers.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/semantics.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "render.hpp"
@@ -18,7 +18,7 @@
 #include "utf.hpp"
 #include <locale>
 #include <stdexcept>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 
 namespace {
@@ -747,7 +747,7 @@ void v04SliderUpdatesGlobalTextSize() {
 
 void v04FontChoiceAppliesAndReportsFallback() {
     editForm::Form form(ids, true, [](std::u16string_view family) {
-        lcars::FontResolution r; r.requested = family; r.requestedAvailable = family != u"Missing test font";
+        isoduo::FontResolution r; r.requested = family; r.requestedAvailable = family != u"Missing test font";
         r.primary = family.empty() || !r.requestedAvailable ? u"Segoe UI" : std::u16string(family); return r;
     });
     auto& h = form.handles; h.tabs.activate({"v04"});

@@ -5,13 +5,13 @@ param([Parameter(Mandatory)][string]$OutDir, [string]$SettingsDir, [string]$BinD
 $ErrorActionPreference='Stop'
 . "$PSScriptRoot/settings-sandbox.ps1"
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-$directory=if ($SettingsDir) { $SettingsDir } else { Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'LcarsUI/SettingsDemo' }
+$directory=if ($SettingsDir) { $SettingsDir } else { Join-Path ([Environment]::GetFolderPath('ApplicationData')) 'Isoduo/SettingsDemo' }
 $demoArgs=if ($SettingsDir) { @('--settings-dir', $SettingsDir) } else { @() }
 $rows=[Collections.Generic.List[object]]::new()
 function Find-Id($root,$id) { $root.FindFirst([System.Windows.Automation.TreeScope]::Descendants, (New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::AutomationIdProperty,$id))) }
 function Wait-Id($root,$id) { for($i=0;$i -lt 100;$i++){ $v=Find-Id $root $id; if($v){return $v}; Start-Sleep -Milliseconds 100 }; throw "Element not found: $id" }
 function Start-Demo($appearance) {
- $p=if ($demoArgs.Count) { Start-Process -FilePath (Join-Path $BinDir "lcars_settings_demo_$appearance.exe") -ArgumentList $demoArgs -PassThru } else { Start-Process -FilePath (Join-Path $BinDir "lcars_settings_demo_$appearance.exe") -PassThru }
+ $p=if ($demoArgs.Count) { Start-Process -FilePath (Join-Path $BinDir "isoduo_settings_demo_$appearance.exe") -ArgumentList $demoArgs -PassThru } else { Start-Process -FilePath (Join-Path $BinDir "isoduo_settings_demo_$appearance.exe") -PassThru }
  for($i=0;$i -lt 100 -and $p.MainWindowHandle -eq [IntPtr]::Zero;$i++){Start-Sleep -Milliseconds 100;$p.Refresh()}
  if($p.MainWindowHandle -eq [IntPtr]::Zero){ if(!$p.HasExited){Stop-Process -Id $p.Id -Force}; throw 'Demo window unavailable' }
  return $p

@@ -4,13 +4,13 @@
 // this suite pins every Placement rectangle so that sharing it changes nothing.
 //
 // Seams under test (confirmed by the ticket's Agent Brief):
-//   - lcars::arrange(layout::column(...), ui, appearance, measure, ...) -> Placement rectangles
+//   - isoduo::arrange(layout::column(...), ui, appearance, measure, ...) -> Placement rectangles
 //   - Ui::add_* handles, connectSource (a conflict) and detail::UiState::setError (an error)
 //
 // The expected values are not computed here. They are the rectangles the layout produced before
-// the refactor, recorded by `lcars_error_lines_tests --dump` into error_lines_expected.hpp.
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
+// the refactor, recorded by `isoduo_error_lines_tests --dump` into error_lines_expected.hpp.
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
 #include "core_internal.hpp"
 #include "check.hpp"
 #include "fake_measure.hpp"
@@ -25,7 +25,7 @@
 #include <optional>
 #include <string>
 #include <vector>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 namespace {
 // One long message: it wraps to several lines in the narrow column, so line stacking shows.
@@ -184,7 +184,7 @@ void everyErrorAndConflictLayoutIsUnchanged() {
 }
 int main(int argc, char** argv) {
     if (argc > 1 && std::strcmp(argv[1], "--dump") == 0) {
-        std::puts("// Recorded by `lcars_error_lines_tests --dump` before the refactor of #92; see error_lines.cpp.");
+        std::puts("// Recorded by `isoduo_error_lines_tests --dump` before the refactor of #92; see error_lines.cpp.");
         std::puts("#pragma once");
         std::puts("#include <cstddef>");
         std::puts("namespace {");

@@ -1,6 +1,6 @@
 #pragma once
 #include <string_view>
 namespace settingsDemo {
-inline constexpr std::u16string_view frameworkLicense = uR"LCARS_LICENSE(@framework_license@)LCARS_LICENSE";
-inline constexpr std::u16string_view jsonLicense = uR"LCARS_LICENSE(@json_license@)LCARS_LICENSE";
+inline constexpr std::u16string_view frameworkLicense = uR"ISODUO_LICENSE(@framework_license@)ISODUO_LICENSE";
+inline constexpr std::u16string_view jsonLicense = uR"ISODUO_LICENSE(@json_license@)ISODUO_LICENSE";
 }

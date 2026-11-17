@@ -1,7 +1,7 @@
 #include "diagnostic_queue.hpp"
 #include <stdexcept>
-using namespace lcars;
-using namespace lcars::detail;
+using namespace isoduo;
+using namespace isoduo::detail;
 static void check(bool v) { if (!v) throw std::runtime_error("diagnostic queue"); }
 int main() {
     std::size_t count=0, omitted=0; bool nested=false;

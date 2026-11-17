@@ -9,7 +9,7 @@
 #include <filesystem>
 #include <iostream>
 #include <stdexcept>
-using namespace lcars;
+using namespace isoduo;
 using namespace settingsDemo;
 static std::ofstream* eventLog = nullptr;
 static void check(bool value, const char* message) { if(eventLog) *eventLog << (value ? "PASS\t" : "FAIL\t") << message << '\n'; if(!value) throw std::runtime_error(message); }
@@ -45,7 +45,7 @@ struct Walk {
         }
     }
     static AboutInfo info() {
-        AboutInfo i; i.licenses={{{"lcars"},u"First",u"License"},{{"freetype"},u"Second",u"Other"}};
+        AboutInfo i; i.licenses={{{"isoduo"},u"First",u"License"},{{"freetype"},u"Second",u"Other"}};
         for(int n=0;n<35;++n) { auto x=std::to_string(n); std::u16string v=u"Font "; v.append(x.begin(),x.end()); i.fonts.push_back({v,v}); }
         return i;
     }
@@ -106,8 +106,8 @@ static void run(const Appearance& appearance, const std::filesystem::path& path)
 int wmain(int argc,wchar_t** argv) {
     std::filesystem::path evidence; bool com=false, failed=false;
     try {
-        if(argc>1) { check(argc==4 && std::wstring_view(argv[1])==L"--real" && std::wstring_view(argv[2])==L"--evidence","Usage: lcars_demo_keyboard [--real --evidence DIR]"); realInput=true; evidence=argv[3]; std::filesystem::create_directories(evidence); check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,"DPI awareness unavailable"); check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed"); com=true; profiles=new Profiles; profiles->us(); }
-        auto base=std::filesystem::temp_directory_path()/("lcars-keyboard-"+std::to_string(GetCurrentProcessId()));
+        if(argc>1) { check(argc==4 && std::wstring_view(argv[1])==L"--real" && std::wstring_view(argv[2])==L"--evidence","Usage: isoduo_demo_keyboard [--real --evidence DIR]"); realInput=true; evidence=argv[3]; std::filesystem::create_directories(evidence); check(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=0,"DPI awareness unavailable"); check(SUCCEEDED(CoInitializeEx(nullptr,COINIT_APARTMENTTHREADED)),"COM initialization failed"); com=true; profiles=new Profiles; profiles->us(); }
+        auto base=std::filesystem::temp_directory_path()/("isoduo-keyboard-"+std::to_string(GetCurrentProcessId()));
         std::ofstream kw,cr,events;
         if(realInput) { kw.open(evidence/"KW02.tsv"); cr.open(evidence/"CR09-real.tsv"); events.open(evidence/"demo-events.log"); eventLog=&events; kw<<"case\tappearance\tstatus\tdetail\n"; cr<<"case\tappearance\tstatus\tdetail\n"; wchar_t path[]=L"C:\\Windows\\System32\\IME\\IMETC\\IMTCTIP.DLL"; DWORD ignored=0; DWORD size=GetFileVersionInfoSizeW(path,&ignored); std::vector<char> data(size); VS_FIXEDFILEINFO* info=nullptr; UINT len=0; if(size && GetFileVersionInfoW(path,0,size,data.data()) && VerQueryValueW(data.data(),L"\\",reinterpret_cast<void**>(&info),&len)) events<<"IMTCTIP.DLL "<<HIWORD(info->dwFileVersionMS)<<'.'<<LOWORD(info->dwFileVersionMS)<<'.'<<HIWORD(info->dwFileVersionLS)<<'.'<<LOWORD(info->dwFileVersionLS)<<'\n'; else events<<"IMTCTIP.DLL version unknown\n"; }
         for(auto* appearance:{&webAppearance(),&materialAppearance()}) {

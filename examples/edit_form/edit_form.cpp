@@ -4,7 +4,7 @@
 #include <utility>
 
 namespace editForm {
-using namespace lcars;
+using namespace isoduo;
 namespace {
 const std::u16string requiredName = u"\u8acb\u586b\u5beb\u986f\u793a\u540d\u7a31";
 const std::u16string initialName = u"測試使用者";
@@ -16,7 +16,7 @@ const std::u16string longIntro = shortIntro +
 
 // #84: Chinese, English words, digits and punctuation in one paragraph, long enough to wrap in a normal window.
 const std::u16string justifySampleText =
-    u"LcarsUI 是面向一般桌面應用的 UI 框架，並以讓 AI 操作應用程式作為未來整合方向。這一段中英數混排的文字，用來比較靠左、置中、靠右、"
+    u"Isoduo 是面向一般桌面應用的 UI 框架，並以讓 AI 操作應用程式作為未來整合方向。這一段中英數混排的文字，用來比較靠左、置中、靠右、"
     u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字，都可以在不同視窗寬度下，觀察每一行的兩端是否切齊。";
 
 bool blank(std::u16string_view text) {

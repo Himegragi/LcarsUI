@@ -1,7 +1,7 @@
 param([string[]]$Headers)
 $ErrorActionPreference = 'Stop'
 if (-not $Headers) {
-    $Headers = @(Get-ChildItem (Join-Path $PSScriptRoot '../include/lcars') -Filter *.hpp -Recurse |
+    $Headers = @(Get-ChildItem (Join-Path $PSScriptRoot '../include/isoduo') -Filter *.hpp -Recurse |
         ForEach-Object FullName)
     # This public header is generated at configure time.
     $Headers += Join-Path $PSScriptRoot '../cmake/version.hpp.in'

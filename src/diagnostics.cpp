@@ -1,5 +1,5 @@
-#include "lcars/diagnostics.hpp"
-namespace lcars {
+#include "isoduo/diagnostics.hpp"
+namespace isoduo {
 Diagnostics::Diagnostics(std::size_t capacity) : capacity_(capacity) {}
 void Diagnostics::record(const RenderDiagnostic& event) {
     if (!capacity_) return;
@@ -26,7 +26,7 @@ const std::deque<RenderDiagnostic>& Diagnostics::recent() const { return recent_
 #include <iomanip>
 #include <charconv>
 
-namespace lcars {
+namespace isoduo {
 namespace {
 std::uint32_t crc32(const std::string& text) {
     std::uint32_t crc = 0xffffffffu;

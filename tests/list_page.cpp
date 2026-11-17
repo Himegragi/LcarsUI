@@ -1,7 +1,7 @@
 #include "list_page.hpp"
 #include "core_internal.hpp"
 #include "check.hpp"
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 
 void duplicateNamesSurviveSorting() {

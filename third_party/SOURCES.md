@@ -44,7 +44,7 @@ two files, update `cmake/ThirdPartyManifest.cmake`, rerun the generator and rege
 
 # CI-only tools
 
-- mesa-dist-win 26.2.5 MSVC, used only for Windows llvmpipe CI, not distributed with LcarsUI:
+- mesa-dist-win 26.2.5 MSVC, used only for Windows llvmpipe CI, not distributed with Isoduo:
   https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
   SHA256 `997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2`
   Version 26.2.6's MSVC package omits OpenGL because of its documented build regression.

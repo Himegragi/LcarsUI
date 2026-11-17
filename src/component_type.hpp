@@ -13,26 +13,26 @@
 //
 // A type that applications configure from code also needs, outside this file (names follow CODING_STANDARDS.md,
 // "公開名稱": one word for the enumerator, the addX suffix and the handle prefix):
-//   - its ComponentKind enumerator, and its typed XxxHandle class and the ComponentHandle variant, in include/lcars/core.hpp;
+//   - its ComponentKind enumerator, and its typed XxxHandle class and the ComponentHandle variant, in include/isoduo/core.hpp;
 //   - Ui::addX (core.cpp), which gives the component its ComponentKind (the caller's ComponentConfig names none), and
 //     UiState::addX with its kind check, which registers the component and its state;
 //   - its state: a field struct and map in UiState (core_internal.hpp) with an accessor in UiState::Internals
 //     (defined in component_type.cpp), and, when the state holds a source subscription, a line in the UiState destructor's
 //     disconnect loop, and a retire() override that releases its state and source subscription at removal;
-//   - a Role in include/lcars/semantics.hpp and its UIA mapping, only if no existing Role fits.
+//   - a Role in include/isoduo/semantics.hpp and its UIA mapping, only if no existing Role fits.
 // A type that is created as data (UiState constructor, UiState::seedTestControls) needs none of this but its ComponentKind
 // value (a test type takes one no built-in has), named in each detail::Component it is given: the class and its
 // registration are enough, and adopt() registers whatever state it keeps.
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/semantics.hpp"
 #include "core_internal.hpp"
 #include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 class UiState;
 struct ComponentLayout {
     UiState& ui;

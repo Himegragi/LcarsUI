@@ -1,6 +1,6 @@
 #pragma once
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
 #include <memory>
 #include <map>
 
@@ -11,46 +11,46 @@ namespace listPage {
 class ImmediateSearchConnection {
     std::u16string value_;
     std::function<void()> changed_;
-    lcars::TextFieldHandle field_;
+    isoduo::TextFieldHandle field_;
     bool connected_ = false;
 public:
-    lcars::Result connect(lcars::TextFieldHandle field, std::function<lcars::Result()> refresh);
-    lcars::Result reset();
+    isoduo::Result connect(isoduo::TextFieldHandle field, std::function<isoduo::Result()> refresh);
+    isoduo::Result reset();
     const std::u16string& value() const { return value_; }
-    bool owns(lcars::TextFieldHandle field) const { return connected_ && field_ == field; }
+    bool owns(isoduo::TextFieldHandle field) const { return connected_ && field_ == field; }
 };
 class Page {
-    std::vector<lcars::OptionItem> items_;
-    std::optional<lcars::OptionValue> selection_;
+    std::vector<isoduo::OptionItem> items_;
+    std::optional<isoduo::OptionValue> selection_;
     ImmediateSearchConnection search_;
     bool descending_ = false, disabledEight_ = false;
     std::string clipPaddingId_;
     std::u16string clipPaddingText_;
-    std::map<std::string, std::function<lcars::Result()>, std::less<>> fixtureActions_;
-    lcars::Result bindAction(lcars::ButtonHandle button, std::function<lcars::Result()> action);
+    std::map<std::string, std::function<isoduo::Result()>, std::less<>> fixtureActions_;
+    isoduo::Result bindAction(isoduo::ButtonHandle button, std::function<isoduo::Result()> action);
     std::function<void()> selectionChanged_;
-    lcars::Result refresh();
-    lcars::Result sample(int count);
-    std::unique_ptr<lcars::Ui> ownedUi_;
-    lcars::ScrollState ownedScroll_;
+    isoduo::Result refresh();
+    isoduo::Result sample(int count);
+    std::unique_ptr<isoduo::Ui> ownedUi_;
+    isoduo::ScrollState ownedScroll_;
 public:
-    explicit Page(lcars::Ui* sharedUi = nullptr, lcars::ScrollState* sharedScroll = nullptr, std::string prefix = {});
+    explicit Page(isoduo::Ui* sharedUi = nullptr, isoduo::ScrollState* sharedScroll = nullptr, std::string prefix = {});
     Page(const Page&) = delete;
     Page& operator=(const Page&) = delete;
-    lcars::Ui& ui;
-    lcars::ScrollState& scroll;
-    mutable lcars::ScrollState listScroll;
+    isoduo::Ui& ui;
+    isoduo::ScrollState& scroll;
+    mutable isoduo::ScrollState listScroll;
     struct Handles {
-        lcars::ListHandle list;
-        lcars::TextFieldHandle search;
-        lcars::ButtonHandle zero, one, twenty, hundred, sort, erase, disableEight, reset;
-        lcars::LabelHandle title, detail;
+        isoduo::ListHandle list;
+        isoduo::TextFieldHandle search;
+        isoduo::ButtonHandle zero, one, twenty, hundred, sort, erase, disableEight, reset;
+        isoduo::LabelHandle title, detail;
     } handles;
-    lcars::layout::Node page() const;
-    lcars::Result restoreFixtureAction(lcars::ButtonHandle button) const;
-    lcars::Result setClipPadding(lcars::LabelHandle label, std::u16string text);
+    isoduo::layout::Node page() const;
+    isoduo::Result restoreFixtureAction(isoduo::ButtonHandle button) const;
+    isoduo::Result setClipPadding(isoduo::LabelHandle label, std::u16string text);
     void clearClipPadding();
-    std::optional<lcars::OptionValue> selection() const { return selection_; }
+    std::optional<isoduo::OptionValue> selection() const { return selection_; }
     const ImmediateSearchConnection& searchConnection() const { return search_; }
 };
 }

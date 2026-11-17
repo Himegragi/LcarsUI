@@ -1,6 +1,14 @@
-# LcarsUI
+# Isoduo
 
 A C++20 desktop UI framework. The public API is still evolving.
+
+This project was renamed from LcarsUI to Isoduo. Consumers now use `<isoduo/...>`,
+`isoduo::`, `find_package(Isoduo)` and `Isoduo::` CMake targets; build options use
+`ISODUO_*`. Configure a fresh build directory and install into a clean prefix.
+The settings-demo data directory is now `%APPDATA%/Isoduo/SettingsDemo`; copy an
+existing `%APPDATA%/LcarsUI/SettingsDemo` there before first launch to retain settings.
+Serialized settings, rich clipboard data, diagnostic files and built-in menu IDs
+keep their original format identifiers for data and automation compatibility.
 
 ## S1 minimal edit form
 
@@ -8,8 +16,8 @@ A C++20 desktop UI framework. The public API is still evolving.
 
 ```powershell
 .\build.ps1 -Configuration Release
-.\build\Release\lcars_edit_form_web.exe
-.\build\Release\lcars_edit_form_material.exe
+.\build\Release\isoduo_edit_form_web.exe
+.\build\Release\isoduo_edit_form_material.exe
 .\build.ps1 -Configuration Release -CoreOnly
 ```
 
@@ -17,22 +25,22 @@ A C++20 desktop UI framework. The public API is still evolving.
 
 The build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
-Applications retain the handles returned by `Ui::addTextField`, `addButton` and `addLabel`; the layout accepts those handles. Each `Ui::addX` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.addButton({.id = "profile.save"})`. A read source (`lcars::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
+Applications retain the handles returned by `Ui::addTextField`, `addButton` and `addLabel`; the layout accepts those handles. Each `Ui::addX` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.addButton({.id = "profile.save"})`. A read source (`isoduo::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
 
 ```cpp
 std::u16string model = u"Initial";
 std::function<void()> notify_source;
-lcars::Ui ui;
+isoduo::Ui ui;
 auto name = ui.addTextField({.id = "profile.name"}).value.value();
 auto save = ui.addButton({.id = "profile.save"}).value.value();
 name.connectSource({[&] { return model; }, [&](std::function<void()> notify) {
     notify_source = std::move(notify);
     return [&] { notify_source = {}; };
 }});
-ui.connectConfirmation(save, {name}, [&](const std::vector<lcars::ConfirmFieldChange>& changes) {
-    model = std::get<lcars::Change<lcars::TextFieldHandle>>(changes[0]).value;
+ui.connectConfirmation(save, {name}, [&](const std::vector<isoduo::ConfirmFieldChange>& changes) {
+    model = std::get<isoduo::Change<isoduo::TextFieldHandle>>(changes[0]).value;
     if (notify_source) notify_source();
-    return lcars::ConfirmationResult{};
+    return isoduo::ConfirmationResult{};
 });
 auto changed = name.setValue(u"Station");
 auto saved = save.invoke();
@@ -44,16 +52,16 @@ Check `Result::status` and query status before using results. Read-only, disable
 A list keeps no draft, so it only writes immediately, and its write gets a change record like every other field: `value` is the newly selected item, `origin` the item the source held just before. When `setItems` drops the selected item (leaves it out, or keeps it but disabled), the write gets no value and that item as `origin`. A label reads its text from a read function, or from a full read source when background work changes the text, so that a notification repaints it:
 
 ```cpp
-std::optional<lcars::OptionValue> selection;
+std::optional<isoduo::OptionValue> selection;
 std::function<void()> selectionChanged;
 list.connectSource({[&] { return selection; }, [&](std::function<void()> notify) {
     selectionChanged = std::move(notify);
     return [&] { selectionChanged = {}; };
 }});
-list.connectImmediate([&](const lcars::Change<lcars::ListHandle>& change) {
+list.connectImmediate([&](const isoduo::Change<isoduo::ListHandle>& change) {
     selection = change.value;  // change.origin: the selection before
     if (selectionChanged) selectionChanged();
-    return lcars::Result{};
+    return isoduo::Result{};
 });
 title.connectSource([&] { return u"Templates"; });                      // text changes only through the screen
 clock.connectSource({[&] { return now_text(); }, subscribe_to_clock});  // a notification repaints
@@ -118,7 +126,7 @@ auto note = ui.addTextField({.id = "item.note", .maxLength = 200,
 note.setVisibleLines(5);                         // reflows at once
 note.setScrollLine(2);                           // first visible display line
 auto first = note.scrollLine();                   // Query<unsigned>
-ui.semantics().perform({"item.note"}, lcars::Verb::scroll, 4);  // the same operation, same Status values
+ui.semantics().perform({"item.note"}, isoduo::Verb::scroll, 4);  // the same operation, same Status values
 ```
 
 - **Value.** A line break is one LF (`\n`) and counts as one character toward `maxLength`. A value containing CR, or any other control character, is invalid wherever a value enters (initial value, source, `setValue`, semantic `setValue`). Pasted CRLF, lone CR and lone LF each become one LF; copy and cut write CRLF to the clipboard. Single-line fields still turn pasted breaks into spaces. ComponentSnapshot and UI Automation report the value with its LF characters.
@@ -136,11 +144,11 @@ Out of scope here: growing with content, horizontal scrolling or a no-wrap mode,
 Text fields (single- and multi-line) select by word and paragraph. Double click selects the word under the pointer and the spaces after it (a punctuation mark or a run of spaces on its own; at the end of a line, that line's last word). Triple click selects the whole text of a single-line field, or the LF-separated paragraph of a multi-line one. Holding the button after either and dragging grows the selection by words or paragraphs, and the first word or paragraph stays selected. Ctrl+Left/Right move to the previous/next word start (spaces skipped, each punctuation mark and each LF a stop), Ctrl+Shift+Left/Right extend, and Ctrl+Backspace/Delete delete up to the same stop (only the selection when there is one; one undo step each).
 
 ```cpp
-note.setWordSegmentation(lcars::WordSegmentation::perCharacter);  // dictionary (default) | perCharacter | scriptRun
+note.setWordSegmentation(isoduo::WordSegmentation::perCharacter);  // dictionary (default) | perCharacter | scriptRun
 auto word = note.wordAt(12);                 // Query<TextSpan>: what a double click there selects
 auto stop = note.nextWordStop(12);          // where Ctrl+Right goes
 note.doubleClick(12);                        // select it, and arm a drag that grows by words
-ui.semantics().perform({"item.note"}, lcars::Verb::selectParagraph, 12);  // the same operations, same Status values
+ui.semantics().perform({"item.note"}, isoduo::Verb::selectParagraph, 12);  // the same operations, same Status values
 ```
 
 - **Where words are.** `dictionary` (the default) asks the Windows system ICU (`icu.dll`, loaded from System32 on first use, locale `zh_TW`), so Chinese is cut into words (設定|管理|示範). If the library is missing or cannot open a break iterator the field falls back to `perCharacter` without interrupting anything; `wordSegmentation()` reports the mode set, `wordSegmentationInUse()` the mode in effect. `perCharacter`: every Chinese or Japanese character is a word, a run of Latin letters and digits is one word. `scriptRun`: a run of Chinese or Japanese characters is one word. In every mode each punctuation mark and each LF is a word of its own and a run of spaces stays together. The dictionary result follows the Windows version, so only rule-independent cases (script changes, punctuation) are asserted against it.
@@ -151,15 +159,15 @@ ui.semantics().perform({"item.note"}, lcars::Verb::selectParagraph, 12);  // the
 
 ## Rich text fields
 
-A multi-line field created with `rich = true` holds **plain text plus style spans** (`lcars::RichText`): bold, italic, underline and a named color. The option exists for multi-line fields only (`invalidValue` on anything else) and is fixed at creation; a plain field behaves exactly as before. Labels stay plain text.
+A multi-line field created with `rich = true` holds **plain text plus style spans** (`isoduo::RichText`): bold, italic, underline and a named color. The option exists for multi-line fields only (`invalidValue` on anything else) and is fixed at creation; a plain field behaves exactly as before. Labels stay plain text.
 
 ```cpp
 auto note = ui.addTextField({.id = "item.note", .multiline = true, .visibleLines = 3, .rich = true}).value.value();
 note.setColors({{"red", {176, 0, 32}, {255, 138, 148}}});          // name, light value, dark value
 note.connectRichSource({[&] { return model; }, subscribe});        // Source<RichText>: read() -> RichText
-note.connectRichConfirmed([&](const lcars::Change<lcars::TextFieldHandle, lcars::RichText>& c) { model = c.value; return lcars::Result{}; });
+note.connectRichConfirmed([&](const isoduo::Change<isoduo::TextFieldHandle, isoduo::RichText>& c) { model = c.value; return isoduo::Result{}; });
 note.setStyle(0, 2, {.bold = true});                                // a range of the committed text
-note.toggleStyle(lcars::StyleAttribute::underline);                 // what Ctrl+U does: the selection, or the typing style at a caret
+note.toggleStyle(isoduo::StyleAttribute::underline);                 // what Ctrl+U does: the selection, or the typing style at a caret
 note.applyStyle({.color = "red"});                                  // set the selection's color (caret only: the typing style)
 auto value = note.richValue();                                      // Query<RichText>: text + spans in normal form
 ```
@@ -204,12 +212,12 @@ Out of scope here: submenus, check marks and icons, menus outside the applicatio
 A label can be set vertically: text runs top to bottom, columns from right to left, laid out by the Taiwan Ministry of Education rules. Editable vertical text and read-only text fields are not covered.
 
 ```cpp
-auto note = ui.addLabel({.id = "about.note", .value = u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",
-                          .writingMode = lcars::WritingMode::vertical}).value.value();
-auto page = lcars::layout::column({lcars::layout::verticalText(note, 200)});  // the height is yours, in DIP
-note.setWritingMode(lcars::WritingMode::horizontal);     // changes at run time; the next arrangement follows
+auto note = ui.addLabel({.id = "about.note", .value = u"Isoduo 設定管理示範（第 12 版），謹此致謝。",
+                          .writingMode = isoduo::WritingMode::vertical}).value.value();
+auto page = isoduo::layout::column({isoduo::layout::verticalText(note, 200)});  // the height is yours, in DIP
+note.setWritingMode(isoduo::WritingMode::horizontal);     // changes at run time; the next arrangement follows
 note.setVerticalDigits(2);                               // 0-3 (default 3); anything else is Status::invalidValue
-ui.semantics().perform({"about.note"}, lcars::Verb::setWritingMode, lcars::WritingMode::vertical);  // same checks, same Status
+ui.semantics().perform({"about.note"}, isoduo::Verb::setWritingMode, isoduo::WritingMode::vertical);  // same checks, same Status
 ```
 
 - **Size.** The height comes from `layout::verticalText(label, height)`; characters fill a column to that height, then continue in the next column to the left, and a line break (`\n`) starts a new column. The width is the number of columns times the column width (the line height of the text). `verticalText(label, 0)` never wraps.
@@ -243,25 +251,25 @@ changes mid-way. Values, semantics and UI Automation update at once; only the pi
   "Fully covered" is best effort: one visible opaque window above ours that spans the whole client area.
 - A core-only host that installs no time source (`detail::UiState::animationTime`) never animates. Tests use
   that seam as a fake clock, and `setSystemAnimations` / `DesktopHost::systemAnimationSource` to simulate the
-  Windows setting. Tests: `animation` (core) and `lcars_host_verify --animation-only` (native host).
+  Windows setting. Tests: `animation` (core) and `isoduo_host_verify --animation-only` (native host).
 
 ## Palette overrides
 
 An application can change individual colors of the built-in appearances without writing an appearance of its own. `Ui::setPaletteOverrides` takes one list for the whole UI environment; each entry names an appearance (`Appearance::name()`), a theme variant, a palette role and a value. Colors that the list does not mention keep their built-in value, and a variant that is not listed is untouched (overriding light never changes dark).
 
 ```cpp
-auto green = lcars::Color{20, 110, 50};
+auto green = isoduo::Color{20, 110, 50};
 auto result = ui.setPaletteOverrides({
-    {std::string(lcars::webAppearance().name()), lcars::ThemeVariant::light(), "accent", green},
-    {std::string(lcars::webAppearance().name()), lcars::ThemeVariant::light(), "scrim_alpha", 140},
+    {std::string(isoduo::webAppearance().name()), isoduo::ThemeVariant::light(), "accent", green},
+    {std::string(isoduo::webAppearance().name()), isoduo::ThemeVariant::light(), "scrim_alpha", 140},
 });
 ```
 
-- Roles are the names in `Palette` (`lcars::paletteRoles()`: `background`, `panel`, `surface`, `text`, `muted`, `border`, `outline`, `accent`, `on_accent`, `selection`, `error`, `scrim`, `hover`, `focus`, plus `scrim_alpha` and `hover_alpha` with an `int` value 0-255). A color added to `Palette` later becomes overridable without further changes.
+- Roles are the names in `Palette` (`isoduo::paletteRoles()`: `background`, `panel`, `surface`, `text`, `muted`, `border`, `outline`, `accent`, `on_accent`, `selection`, `error`, `scrim`, `hover`, `focus`, plus `scrim_alpha` and `hover_alpha` with an `int` value 0-255). A color added to `Palette` later becomes overridable without further changes.
 - `outline` is the edge that identifies a component (text field box or underline, dropdown box, checkbox box, radio circle, slider track, scrollbar thumb, and a progress track that shows no value text); disabled components draw it with `border` instead. `border` stays the light color for decorative lines (button edge, list divider, tooltip edge).
 - `focus` is the focus ring's color. `Palette::focus` is an `std::optional<Color>`: empty (the default, and the built-in palettes) means "the accent", so the ring follows a replaced `accent` for every appearance, built-in or custom, even one that assigns `accent` after building its palette; setting `focus` (in a custom palette, or by overriding the `focus` role) pins the ring to its own color. Read the ring color with `Palette::focusColor()`; `Ui::effectivePalette` always returns `focus` set.
 - The list is replaced as a whole and takes effect on the next frame; `setPaletteOverrides({})` restores the built-in colors. Overrides apply only to the built-in appearances whose module is linked; a custom `Appearance` is never affected.
-- Each affected appearance and variant is checked against WCAG contrast (`text` on `background`, `panel`, `surface` and `selection`, `muted` and `error` on `surface`, `on_accent` on `accent`: 4.5:1; `accent` and `outline` on `surface`, `outline` on `background` and `panel`, and `focus` (the focus ring) on `surface`, `background` and `panel`: 3:1; `outline` is also checked on those three surfaces with the hover overlay laid over them; `border` is only a decorative divider and is not checked). Any failure, an unknown appearance, variant or role, a value of the wrong kind, an alpha role outside 0-255 or a repeated entry returns `Status::invalidValue` with a message naming the pair and its ratio, and the previous list stays active. `lcars::checkPaletteContrast(palette)` runs the same rules so an application can pre-check a palette.
+- Each affected appearance and variant is checked against WCAG contrast (`text` on `background`, `panel`, `surface` and `selection`, `muted` and `error` on `surface`, `on_accent` on `accent`: 4.5:1; `accent` and `outline` on `surface`, `outline` on `background` and `panel`, and `focus` (the focus ring) on `surface`, `background` and `panel`: 3:1; `outline` is also checked on those three surfaces with the hover overlay laid over them; `border` is only a decorative divider and is not checked). Any failure, an unknown appearance, variant or role, a value of the wrong kind, an alpha role outside 0-255 or a repeated entry returns `Status::invalidValue` with a message naming the pair and its ratio, and the previous list stays active. `isoduo::checkPaletteContrast(palette)` runs the same rules so an application can pre-check a palette.
 - `Ui::paletteOverrides()` reads the list; `Ui::effectivePalette(appearance, variant)` and `SemanticTree::effectivePalette()` (read-only; the Desktop host binds its appearance, a core-only host calls `Ui::bindAppearance`) report the colors that actually paint.
 
 ## Pointer hover
@@ -321,7 +329,7 @@ feedback and the first frame time after changing fonts (PR04). Generate the
 16 V01 trial images and manifest with:
 
 ```powershell
-./build/Release/lcars_host_verify.exe --trial-screenshots --evidence build/Release/evidence/presentation-trial
+./build/Release/isoduo_host_verify.exe --trial-screenshots --evidence build/Release/evidence/presentation-trial
 ```
 
 PR04 requires coordinator review and is not marked as passed by the generator.
@@ -333,7 +341,7 @@ script to return a failure status.
 Production changes to layout or to the desktop host need runs that only a real, idle desktop can give (real clipboard,
 input method, display scales, foreground window, frame timing). The core-seam twin of each property runs in CTest; this table
 lists, per change, which idle-desktop runs the author still has to do before a release. Commands are
-`./verify-idle.ps1 -Only <name>` unless the row says otherwise; `lcars_host_verify` is `build/Release/lcars_host_verify.exe`.
+`./verify-idle.ps1 -Only <name>` unless the row says otherwise; `isoduo_host_verify` is `build/Release/isoduo_host_verify.exe`.
 
 | Change | Idle-desktop runs |
 | --- | --- |
@@ -341,12 +349,12 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #105 camelCase C++ names (0.4.0) | none beyond CTest: host, UIA adapter and layout edits are renames only, including semantic property-event keys; `public_names` rejects new snake_case declarations, the installed consumer rejects old names, and all `demo_render_compare` artifacts stay byte-identical |
 | #72 focus indicator | `-Only dpi` (R08 real-window focus); toggle the Windows keyboard-cues setting once to see `WM_SETTINGCHANGE` re-read it; right press on empty space and a lone Alt with real input |
 | #73 slider drag interface | `-Only perf` (the report-only `slider-drag-text-size` plus PM01-PM05), `-Only dpi` |
-| #74 pointer hover | `lcars_host_verify --hover-only` (needs a real cursor position), look at both appearances; `-Only demo-uia` |
-| #75 slider animation | `-Only perf` (includes the gating `idle-after-animation`), `lcars_host_verify --animation-only`, `-Only uia`; drag and release a slider at 150 % and 200 % (the 4 DIP click/drag threshold and the release slide) |
+| #74 pointer hover | `isoduo_host_verify --hover-only` (needs a real cursor position), look at both appearances; `-Only demo-uia` |
+| #75 slider animation | `-Only perf` (includes the gating `idle-after-animation`), `isoduo_host_verify --animation-only`, `-Only uia`; drag and release a slider at 150 % and 200 % (the 4 DIP click/drag threshold and the release slide) |
 | #78 palette overrides | `-Only clipboard,ime,dpi` |
 | #79 multi-line text field | `-Only ime` (a real Zhuyin composition in a multi-line field), `-Only clipboard`, `-Only dpi` at 150 % and 200 %, author trial |
 | #80 text alignment and spacing | `-Only presentation` (layout), `-Only ime`, `-Only dpi` |
-| #81 rich text | `lcars_host_verify --richtext-only` (real clipboard), `lcars_demo_keyboard --real`, `-Only ime`, `-Only dpi` |
+| #81 rich text | `isoduo_host_verify --richtext-only` (real clipboard), `isoduo_demo_keyboard --real`, `-Only ime`, `-Only dpi` |
 | #82 vertical labels | `-Only dpi` |
 | #83 word and paragraph selection | `-Only ime`, `-Only dpi` (the real double-click time and distance are read at every press) |
 | #84 justified text | `-Only ime` (a composition on a justified line: the core test moves the caret rectangle, only a real input method shows the candidate window), `-Only dpi` (pieces are placed at whole pixels at 125 / 150 / 200 %) |
@@ -355,7 +363,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #90 focus ring | `-Only dpi` (the ring at 100 / 150 / 200 %), `-Only uia`; Tab through both appearances with the real keyboard (every component, light and dark, standard and compact), then try the four components on the appearance page |
 | #92 error-line layout | none beyond CTest: the error-line layout of every component type at three widths is pinned by `error_lines`, and `demo_render_compare` stays byte-identical to before (compare the saved images) |
 | #93 component registry dispatch | `-Only clipboard,ime,dpi,uia` (it touches the host, layout and the context menu: the text menu and its commands, the slider drag, the list row reveal and the dropdown popup); then with real input: right-click a text field and a list row, drag a slider, press and release on a list row, open a dropdown and pick with the pointer and with the keys |
-| #94 shared handle base and handle equality | `lcars_host_verify --context-menu-only` and `-Only clipboard`: the `ContextMenuHandle` operations in `src/context_menu.cpp` now run the shared liveness check (no host, layout or menu behavior change); nothing else needs a real platform |
+| #94 shared handle base and handle equality | `isoduo_host_verify --context-menu-only` and `-Only clipboard`: the `ContextMenuHandle` operations in `src/context_menu.cpp` now run the shared liveness check (no host, layout or menu behavior change); nothing else needs a real platform |
 | #95 `Source<T>` and `Change<Field, Value>` (0.3.0) | none: public type names only (no host, layout or input change); the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
 | #96 public names follow the glossary; `addX` sets the component type (0.3.0) | none: renames only (`src/desktop_host.cpp`, `src/desktop_host.hpp` and `src/uia_provider.cpp` change by type renames only, no host, layout or input change); the consumer example checks the new and removed names at compile time and the component type of every `addX` at run time, and `demo_render_compare` stays byte-identical |
 | #99 list change record and label read source | none: the list write's parameter type and a second label connection (no host, layout or input change); `components` drives both through the handles, the consumer example checks the types at compile time and `demo_render_compare` stays byte-identical |
@@ -368,13 +376,13 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the
 author has run them.
 
-## Using LcarsUI from another CMake project
+## Using Isoduo from another CMake project
 
-LcarsUI ships as static libraries built from source, with no ABI guarantee. Rebuild your application when updating LcarsUI. Install both configurations into one prefix:
+Isoduo ships as static libraries built from source, with no ABI guarantee. Rebuild your application when updating Isoduo. Install both configurations into one prefix:
 
 ```powershell
-.\build.ps1 -Configuration Release -Install C:\sdk\LcarsUI
-.\build.ps1 -Configuration Debug -Install C:\sdk\LcarsUI
+.\build.ps1 -Configuration Release -Install C:\sdk\Isoduo
+.\build.ps1 -Configuration Debug -Install C:\sdk\Isoduo
 ```
 
 Then in your project:
@@ -382,14 +390,14 @@ Then in your project:
 ```cmake
 cmake_minimum_required(VERSION 3.25)
 project(StationApp LANGUAGES CXX)
-find_package(LcarsUI 0.4 REQUIRED COMPONENTS Desktop AppearanceWeb)
+find_package(Isoduo 0.4 REQUIRED COMPONENTS Desktop AppearanceWeb)
 add_executable(station_app main.cpp)
-target_link_libraries(station_app PRIVATE LcarsUI::Desktop LcarsUI::AppearanceWeb)
-install(FILES "${LcarsUI_THIRD_PARTY_NOTICES_FILE}" DESTINATION .)
+target_link_libraries(station_app PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
+install(FILES "${Isoduo_THIRD_PARTY_NOTICES_FILE}" DESTINATION .)
 ```
 
 ```powershell
-cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\sdk\LcarsUI
+cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_PREFIX_PATH=C:\sdk\Isoduo
 cmake --build build
 ```
 
@@ -399,14 +407,14 @@ Run these commands in a Visual Studio x64 developer environment. Without `build.
 cmake -S . -B build/Release -G Ninja -DCMAKE_C_COMPILER=clang-cl -DCMAKE_CXX_COMPILER=clang-cl -DCMAKE_BUILD_TYPE=Release
 cmake --build build/Release
 ctest --test-dir build/Release --output-on-failure
-cmake --install build/Release --prefix C:\sdk\LcarsUI
+cmake --install build/Release --prefix C:\sdk\Isoduo
 ```
 
-Repeat with `Debug` in the build directory and build type. Requirements are Windows 10 22H2 or Windows 11 23H2 or later, x64, CMake 3.25, and a C++20 or newer compiler: clang-cl or Visual Studio 2022 MSVC with a toolset at least as new as the one used to build LcarsUI. The default runtime is `/MD` (`/MDd` in Debug); consumer and framework runtime settings must match. LcarsUI itself builds with clang-cl and Ninja.
+Repeat with `Debug` in the build directory and build type. Requirements are Windows 10 22H2 or Windows 11 23H2 or later, x64, CMake 3.25, and a C++20 or newer compiler: clang-cl or Visual Studio 2022 MSVC with a toolset at least as new as the one used to build Isoduo. The default runtime is `/MD` (`/MDd` in Debug); consumer and framework runtime settings must match. Isoduo itself builds with clang-cl and Ninja.
 
 Request the components you use: `Core`, `AppearanceWeb`, `AppearanceMaterial`, `Desktop`, and `Diagnostics`. Each appearance and Desktop automatically imports Core. Desktop includes the Windows host, OpenGL, text, UI Automation, FreeType and HarfBuzz. Diagnostics is available in a full desktop build. Without `COMPONENTS`, only Core is imported. All public headers are installed regardless of the selected component; using a Desktop or Diagnostics API requires linking its corresponding target. Draw lists and the rendering backend are internal.
 
-If you link Desktop, credit FreeType in your product documentation: show `lcars::thirdPartyNotices()` in an About box or ship `THIRD_PARTY_NOTICES.txt`. The framework license is available as `LcarsUI_LICENSE_FILE`. Source archives and headers are vendored under `third_party/` and verified by SHA256 at configure time; no network access or package manager is required to build.
+If you link Desktop, credit FreeType in your product documentation: show `isoduo::thirdPartyNotices()` in an About box or ship `THIRD_PARTY_NOTICES.txt`. The framework license is available as `Isoduo_LICENSE_FILE`. Source archives and headers are vendored under `third_party/` and verified by SHA256 at configure time; no network access or package manager is required to build.
 
 ## Updating third-party dependencies
 

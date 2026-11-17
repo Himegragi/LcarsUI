@@ -4,10 +4,10 @@
 #include "check.hpp"
 #include "component_type.hpp"
 #include "fake_measure.hpp"
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/semantics.hpp"
-using namespace lcars;
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/semantics.hpp"
+using namespace isoduo;
 using test::check;
 
 namespace {

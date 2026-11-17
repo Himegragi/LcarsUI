@@ -3,14 +3,14 @@
 // seams, with a deterministic fake text backend. Expected values are worked out by hand in each case.
 #include "check.hpp"
 #include "fake_measure.hpp"
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/semantics.hpp"
 #include <algorithm>
 #include <functional>
 #include <limits>
 #include <optional>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 using test::FakeMeasure;
 

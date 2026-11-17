@@ -7,7 +7,7 @@
 #include <windows.h>
 #endif
 
-namespace lcars::detail {
+namespace isoduo::detail {
 namespace {
 enum class Kind { letters, han, space, punctuation, newline };
 
@@ -222,4 +222,4 @@ TextSpan wordSpan(std::u16string_view text, const Words& words, unsigned offset)
     }
     return withSpace(segmentAt(offset));
 }
-}  // namespace lcars::detail
+}  // namespace isoduo::detail

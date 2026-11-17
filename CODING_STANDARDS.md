@@ -9,7 +9,7 @@
 
 ## 公開名稱 (public names)
 
-All LcarsUI C++ names across the repository (public headers, implementation, tests, examples, demo and showcase), and
+All Isoduo C++ names across the repository (public headers, implementation, tests, examples, demo and showcase), and
 comments referring to them, follow the rules below. A renamed name keeps no alias. The
 rules come from the author's glossary (`CONTEXT.md`, not in the repository), but this section is complete without it:
 the words public names use are these.
@@ -31,7 +31,7 @@ the words public names use are these.
   `CreateResult`, `RunResult`).
 - Boundaries. Semantic property-event strings follow their C++ names (`"readOnly"`, `"numericValue"`). Standard-library
   and foreign API names keep their required spelling. CMake targets, file names, persisted demo `settings.json` keys,
-  macros (`LCARS_OP`), menu command identifiers (`"lcars.undo"`) and other runtime text are unchanged. CTest
+  macros (`ISODUO_OP`), menu command identifiers (`"lcars.undo"`) and other runtime text are unchanged. CTest
   `public_names` checks public header declarations (including the generated version header template); its fixtures
   reject snake_case and exclude comments, literals, `std::` names, macros and private trailing underscores.
 - A. An enumeration that says which kind of thing something is, is `XxxKind` (`ComponentKind`, `LabelKind`,

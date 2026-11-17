@@ -43,7 +43,7 @@ function Run-Step([string]$Name, [scriptblock]$Action) {
 function Pause-User([string]$Prompt) { Write-Host $Prompt; Read-Host 'Press Enter when ready (record results separately)' | Out-Null }
 Pause-User 'Configure Microsoft Bopomofo and two monitors at 100% and 150%; keep this desktop idle during tests.'
 . "$PSScriptRoot/cmake/VisualStudio.ps1"
-$vs = Get-LcarsVisualStudio
+$vs = Get-IsoduoVisualStudio
 $ctest = Join-Path $vs.InstallationPath 'Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/ctest.exe'
 if (-not (Test-Path -LiteralPath $ctest)) { $ctest = (Get-Command ctest.exe).Source }
 foreach ($name in @('clipboard','ime','dpi')) {
@@ -59,7 +59,7 @@ Run-Step 'demo-keyboard' { & $ctest --test-dir "$PSScriptRoot/build/Release" -R 
 Run-Step 'demo-perf' { & powershell -NoProfile -File "$PSScriptRoot/tests/v1-final/demo-perf.ps1" -OutDir (Join-Path $OutDir 'demo-perf') }
 Run-Step 'render-real-gpu' {
     $renderDir = Join-Path $OutDir 'render-real-gpu'
-    & "$PSScriptRoot/build/Release/lcars_host_verify.exe" --render-compare --evidence $renderDir
+    & "$PSScriptRoot/build/Release/isoduo_host_verify.exe" --render-compare --evidence $renderDir
     if ($LASTEXITCODE -ne 0) { throw "comparison exited $LASTEXITCODE" }
     $rows = @(Import-Csv -Delimiter "`t" -LiteralPath (Join-Path $renderDir 'render-compare.tsv'))
     if ($rows.Count -ne 40 -or @($rows | Where-Object { $_.status -ne 'PASS' -or $_.renderer -match 'llvmpipe|softpipe|GDI Generic' }).Count) {
@@ -68,7 +68,7 @@ Run-Step 'render-real-gpu' {
 }
 Run-Step 'VC01' {
     $demoDir=Join-Path $OutDir 'demo-render'
-    & "$PSScriptRoot/build/Release/lcars_host_verify.exe" --demo-compare --evidence $demoDir
+    & "$PSScriptRoot/build/Release/isoduo_host_verify.exe" --demo-compare --evidence $demoDir
     if ($LASTEXITCODE -ne 0) { throw "comparison exited $LASTEXITCODE" }
     $rows=@(Import-Csv -Delimiter "`t" -LiteralPath (Join-Path $demoDir 'demo-render-compare.tsv'))
     if ($rows.Count -ne 64 -or @($rows | Where-Object { $_.status -ne 'PASS' -or $_.renderer -match 'llvmpipe|softpipe|GDI Generic' }).Count) { throw 'Expected 64 passing demo rows on a real GPU.' }

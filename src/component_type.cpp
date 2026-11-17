@@ -7,7 +7,7 @@
 #include <cmath>
 #include <stdexcept>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 std::optional<OptionValue> focusOption(const ComponentSnapshot& snapshot) {
     if (snapshot.kind == ComponentKind::dropdown && !snapshot.expanded) return std::nullopt;
     auto item = std::find_if(snapshot.items.begin(), snapshot.items.end(), [&](const auto& option) {

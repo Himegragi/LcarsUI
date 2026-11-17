@@ -2,9 +2,9 @@
 #include "component_type.hpp"
 // C01-C03 behavior through the public core interface only; no window, GPU or font backend.
 #include "check.hpp"
-#include "lcars/core.hpp"
+#include "isoduo/core.hpp"
 #include <thread>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 
 namespace {

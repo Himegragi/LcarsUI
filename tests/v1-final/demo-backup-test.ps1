@@ -1,6 +1,6 @@
 ﻿$ErrorActionPreference='Stop'
 . "$PSScriptRoot/settings-sandbox.ps1"
-$root=Join-Path ([IO.Path]::GetTempPath()) ('lcars-backup-test-'+[guid]::NewGuid().ToString('N'))
+$root=Join-Path ([IO.Path]::GetTempPath()) ('isoduo-backup-test-'+[guid]::NewGuid().ToString('N'))
 try {
  New-Item -ItemType Directory -Force "$root/settings/sub" | Out-Null
  [IO.File]::WriteAllBytes("$root/settings/settings.json",[byte[]](0,1,255,10))

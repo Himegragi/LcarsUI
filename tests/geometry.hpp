@@ -1,20 +1,20 @@
 #pragma once
-#include "lcars/layout.hpp"
+#include "isoduo/layout.hpp"
 #include <algorithm>
 #include <string_view>
 
 namespace test {
-inline bool inside(lcars::Rect inner, lcars::Rect outer) {
-    return lcars::intersect(inner, outer) == inner;
+inline bool inside(isoduo::Rect inner, isoduo::Rect outer) {
+    return isoduo::intersect(inner, outer) == inner;
 }
 struct PopupCheck {
-    const lcars::Placement* popup = nullptr;
+    const isoduo::Placement* popup = nullptr;
     bool inside = false;
     bool hit = false;
     explicit operator bool() const { return popup && inside && hit; }
 };
 // Overlays may extend over the scroll viewport, but must fit in the window client area.
-inline PopupCheck popupInClient(const lcars::Frame& frame, lcars::Rect client, std::string_view id) {
+inline PopupCheck popupInClient(const isoduo::Frame& frame, isoduo::Rect client, std::string_view id) {
     auto it = std::find_if(frame.overlays.begin(), frame.overlays.end(), [&](const auto& p) {
         return p.popup && !p.tooltip && p.id == id;
     });

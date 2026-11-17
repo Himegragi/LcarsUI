@@ -3,10 +3,10 @@
 // fake text backend. Expected values are worked out by hand in each case.
 #include "check.hpp"
 #include "fake_measure.hpp"
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/semantics.hpp"
-using namespace lcars;
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/semantics.hpp"
+using namespace isoduo;
 using test::check;
 using test::FakeMeasure;
 

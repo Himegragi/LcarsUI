@@ -1,10 +1,10 @@
 #include "settings_demo.hpp"
-#include "lcars/version.hpp"
+#include "isoduo/version.hpp"
 #include <algorithm>
 #include <cstdio>
 #include "utf.hpp"
 #include "core_internal.hpp"
-using namespace lcars;
+using namespace isoduo;
 namespace settingsDemo {
 namespace {
 auto subscribeTo(std::function<void()>& slot) {
@@ -53,8 +53,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     fontStatus_ = ui.addLabel({.id="appearance.font.status"}).value.value();
     nav.addMember({"appearance"}, font); nav.addMember({"appearance"}, fontStatus_);
     refreshFonts();
-    font.connectSource({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().fontFamily; return OptionValue{value.empty() ? "default" : "family:" + lcars::detail::utf8FromUtf16(value)}; }, subscribeTo(fontChanged_)});
-    font.connectImmediate([this](const Change<DropdownHandle>& c) { auto settings=ui.presentation(); settings.fontFamily = !c.value || c.value->id == "default" ? u"" : lcars::detail::utf16FromUtf8(c.value->id.substr(7)); return setPresentation(settings); });
+    font.connectSource({[this]() -> std::optional<OptionValue> { auto value=ui.presentation().fontFamily; return OptionValue{value.empty() ? "default" : "family:" + isoduo::detail::utf8FromUtf16(value)}; }, subscribeTo(fontChanged_)});
+    font.connectImmediate([this](const Change<DropdownHandle>& c) { auto settings=ui.presentation(); settings.fontFamily = !c.value || c.value->id == "default" ? u"" : isoduo::detail::utf16FromUtf8(c.value->id.substr(7)); return setPresentation(settings); });
     textSize = ui.addSlider({.id="appearance.text_size",.label=u"\u6587\u5b57\u5927\u5c0f"},{12,28,1}).value.value();
     nav.addMember({"appearance"}, textSize);
     textSize.connectSource({[this] { return ui.presentation().textSize; }, subscribeTo(textSizeChanged_)});
@@ -123,15 +123,15 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         aboutLabels_.push_back(ui.addLabel({.id=id}).value.value());
         nav.addMember({"about"}, aboutLabels_.back());
     }
-    aboutLabels_[0].connectSource([] { return u"LcarsUI 設定管理示範 0.1.0"; });
-    aboutLabels_[1].connectSource([] { return u"LcarsUI 框架 " + std::u16string(lcars::frameworkVersion); });
+    aboutLabels_[0].connectSource([] { return u"Isoduo 設定管理示範 0.1.0"; });
+    aboutLabels_[1].connectSource([] { return u"Isoduo 框架 " + std::u16string(isoduo::frameworkVersion); });
     aboutLabels_[2].connectSource([this] { return u"建置：" + about_.build; });
     aboutLabels_[3].connectSource([this] { return u"外觀：" + about_.appearance; });
     aboutLabels_[4].connectSource([this] { return u"繪製：" + about_.renderer; });
     aboutLabels_[5].connectSource([this] { return about_.diagnostics ? u"診斷：基本診斷（只存記憶體）" : u"診斷：未選用"; });
     aboutLabels_[6].connectSource([this] { return about_.settingsPath; });
     // A label in vertical writing mode: columns run top to bottom, right to left (Taiwan rules).
-    aboutVertical_ = ui.addLabel({.id="about.vertical",.value=u"LcarsUI 設定管理示範（第 12 版），謹此致謝。",.writingMode=WritingMode::vertical}).value.value();
+    aboutVertical_ = ui.addLabel({.id="about.vertical",.value=u"Isoduo 設定管理示範（第 12 版），謹此致謝。",.writingMode=WritingMode::vertical}).value.value();
     nav.addMember({"about"}, aboutVertical_);
     std::vector<OptionItem> licenseOptions;
     for (const auto& license : about_.licenses) licenseOptions.push_back({license.id, license.name});
@@ -209,10 +209,10 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     itemName.connectSource({[this] { return itemNameSource_; }, subscribeTo(itemNameChanged_)});
     itemNote.connectRichSource({[this] { return itemNoteSource_; }, subscribeTo(itemNoteChanged_)});
     // The style buttons act on the note's selection (or the typing style at a caret); the selection stays and the note takes the focus back.
-    auto styleButton = [this](lcars::ButtonHandle& button, lcars::StyleAttribute attribute) {
+    auto styleButton = [this](isoduo::ButtonHandle& button, isoduo::StyleAttribute attribute) {
         button.bind([this, attribute] { auto result = itemNote.toggleStyle(attribute); itemNote.focus(); return result; });
     };
-    styleButton(itemNoteBold, lcars::StyleAttribute::bold); styleButton(itemNoteItalic, lcars::StyleAttribute::italic); styleButton(itemNoteUnderline, lcars::StyleAttribute::underline);
+    styleButton(itemNoteBold, isoduo::StyleAttribute::bold); styleButton(itemNoteItalic, isoduo::StyleAttribute::italic); styleButton(itemNoteUnderline, isoduo::StyleAttribute::underline);
     itemNoteColor.connectSource({[this]() -> std::optional<OptionValue> { return OptionValue{noteColorValue_}; }, subscribeTo(noteColorChanged_)});
     itemNoteColor.connectImmediate([this](const Change<DropdownHandle>& c) {
         noteColorValue_ = c.value ? c.value->id : "default"; if (noteColorChanged_) noteColorChanged_();
@@ -226,7 +226,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         if (edit && found==items_.end()) return {Status::invalidValue,u"No selection"};
         itemTitle_.connectSource([edit] { return edit ? u"\u7de8\u8f2f\u9805\u76ee" : u"\u65b0\u589e\u9805\u76ee"; });
         auto result=itemDialog.open(); if (!result) return result;
-        itemNameSource_=edit ? found->name : u""; itemNoteSource_=edit ? lcars::RichText{found->note, found->noteSpans} : lcars::RichText{};
+        itemNameSource_=edit ? found->name : u""; itemNoteSource_=edit ? isoduo::RichText{found->note, found->noteSpans} : isoduo::RichText{};
         noteColorValue_="default"; if (noteColorChanged_) noteColorChanged_();
         if (itemNameChanged_) itemNameChanged_(); if (itemNoteChanged_) itemNoteChanged_();
         if (auto r = itemName.resetToSource(); !r) return r;
@@ -353,7 +353,7 @@ void Demo::connectSlider(SliderHandle& slider, const char* id, std::function<Res
 }
 int Demo::focusRadiusStart() const {
     if (focusRadiusMemory_) return *focusRadiusMemory_;
-    const auto* appearance = lcars::detail::access(ui).boundAppearance();
+    const auto* appearance = isoduo::detail::access(ui).boundAppearance();
     return appearance ? appearance->radius() : 6;
 }
 void Demo::refreshFonts() {
@@ -361,10 +361,10 @@ void Demo::refreshFonts() {
     auto key = ui.presentation().fontFamily;
     bool found = key.empty();
     for (const auto& family : about_.fonts) {
-        options.push_back({{"family:" + lcars::detail::utf8FromUtf16(family.key)}, family.displayName});
+        options.push_back({{"family:" + isoduo::detail::utf8FromUtf16(family.key)}, family.displayName});
         found = found || family.key == key;
     }
-    if (!found) options.push_back({{"family:" + lcars::detail::utf8FromUtf16(key)}, key + u"\uff08\u672a\u5b89\u88dd\uff09"});
+    if (!found) options.push_back({{"family:" + isoduo::detail::utf8FromUtf16(key)}, key + u"\uff08\u672a\u5b89\u88dd\uff09"});
     font.setItems(std::move(options));
     auto resolution = about_.resolveFont ? about_.resolveFont(ui.presentation()) : FontResolution{key, key.empty() ? u"Segoe UI" : key, found, {}};
     auto status = resolution.requestedAvailable ? u"\u76ee\u524d\u5b57\u578b\uff1a" + resolution.primary : u"\u627e\u4e0d\u5230\u300c" + key + u"\u300d\u5b57\u578b\uff0c\u66ab\u6642\u6539\u7528\u9810\u8a2d\u5b57\u578b\u3002\u8a2d\u5b9a\u4ecd\u6703\u4fdd\u7559\u3002";

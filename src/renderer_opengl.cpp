@@ -8,7 +8,7 @@
 #include <algorithm>
 #include <unordered_map>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 namespace {
 void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
 static PROC symbol(const char* name) {

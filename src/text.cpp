@@ -16,7 +16,7 @@
 #include <set>
 #include <mutex>
 #include <atomic>
-namespace lcars::detail {
+namespace isoduo::detail {
 namespace {
 std::string utf8(std::wstring_view value) {
     return utf8FromUtf16(std::u16string_view(reinterpret_cast<const char16_t*>(value.data()), value.size()));

@@ -3,7 +3,7 @@
 #include <cmath>
 #include <utility>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 namespace {
 unsigned roundedCoverage(Rect rect, int radius, int x, int y) {
     radius = std::max(0, std::min({radius, rect.w / 2, rect.h / 2}));
