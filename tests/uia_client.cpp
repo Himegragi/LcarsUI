@@ -32,7 +32,13 @@ public:
 
 class StructureEvents final : public UiaEventHandler<StructureEvents, IUIAutomationStructureChangedEventHandler> {
 public:
-    HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType type, SAFEARRAY*) override {
+    bool lcarsOnly = false;
+    HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement* sender, StructureChangeType type, SAFEARRAY*) override {
+        if (lcarsOnly) {
+            BSTR id = nullptr;
+            const bool matches = sender && SUCCEEDED(sender->get_CurrentAutomationId(&id)) && (!id || !*id || std::wstring(id).starts_with(L"form."));
+            SysFreeString(id); if (!matches) return S_OK;
+        }
         if (type == StructureChangeType_ChildrenInvalidated) SetEvent(received); return S_OK;
     }
 };
@@ -290,7 +296,7 @@ bool rendererFailureCases(const wchar_t* host, const wchar_t* appearance) {
 }
 bool accessibilityCase(const wchar_t* host, const wchar_t* appearance) {
     bool pass = true;
-    for (const auto mode : {L"", L"--accessibility-enabled", L"--accessibility-disabled"}) {
+    for (const auto mode : {L"", L"--accessibility-enabled", L"--accessibility-disabled", L"--accessibility-mixed"}) {
         const bool enabled = std::wstring(mode) != L"--accessibility-disabled";
         std::wstring command = L"\"" + std::wstring(host) + L"\" " + appearance + L" " + mode;
         STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
@@ -301,6 +307,12 @@ bool accessibilityCase(const wchar_t* host, const wchar_t* appearance) {
         IUIAutomation* uia = nullptr; IUIAutomationElement* root = nullptr;
         bool ok = search.window && SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&uia))) && SUCCEEDED(uia->ElementFromHandle(search.window, &root));
         if (ok) {
+            if (std::wstring(mode) == L"--accessibility-mixed" && SendMessageW(search.window, WM_APP+81, 0, 0) == reinterpret_cast<LRESULT>(search.window)) {
+                // EnumWindows can discover the companion first; its owner is the other window in this process.
+                HWND next = GetWindow(search.window, GW_HWNDNEXT);
+                while (next) { DWORD pid=0; GetWindowThreadProcessId(next, &pid); if (pid == process.dwProcessId && IsWindowVisible(next)) break; next=GetWindow(next, GW_HWNDNEXT); }
+                if (next) { root->Release(); root=nullptr; search.window=next; ok &= SUCCEEDED(uia->ElementFromHandle(next, &root)); }
+            }
             auto field = findId(uia, root, L"form.name");
             ok = enabled ? field != nullptr : field == nullptr;
             if (field) field->Release();
@@ -312,7 +324,33 @@ bool accessibilityCase(const wchar_t* host, const wchar_t* appearance) {
             else ok &= FAILED(invokeId(uia, root, L"fixture.name_write"));
             ok &= SendMessageW(search.window, WM_APP+80, 31, 0) == 0;
             ok &= WaitForSingleObject(events->received, enabled ? 5000 : 500) == (enabled ? WAIT_OBJECT_0 : WAIT_TIMEOUT);
-            uia->RemoveAllEventHandlers(); events->Release();
+            auto focus = new FocusEvents();
+            auto structure = new StructureEvents(); structure->lcarsOnly = true;
+            ok &= SUCCEEDED(uia->AddFocusChangedEventHandler(nullptr, focus));
+            ok &= SUCCEEDED(uia->AddStructureChangedEventHandler(root, TreeScope_Subtree, nullptr, structure));
+            ok &= SendMessageW(search.window, WM_APP+80, 20, 0) == 0;
+            ok &= WaitForSingleObject(focus->applyReceived, enabled ? 5000 : 500) == (enabled ? WAIT_OBJECT_0 : WAIT_TIMEOUT);
+            ok &= SendMessageW(search.window, WM_APP+80, 2, 0) == 0;
+            ok &= WaitForSingleObject(structure->received, enabled ? 5000 : 500) == (enabled ? WAIT_OBJECT_0 : WAIT_TIMEOUT);
+            if (std::wstring(mode) == L"--accessibility-mixed") {
+                HWND other = nullptr;
+                for (int i=0; i<100 && !other; ++i) { other = reinterpret_cast<HWND>(SendMessageW(search.window, WM_APP+81, 0, 0)); if (!other) Sleep(50); }
+                IUIAutomationElement* disabled = nullptr;
+                ok &= other && SUCCEEDED(uia->ElementFromHandle(other, &disabled));
+                if (disabled) {
+                    auto missing = findId(uia, disabled, L"form.name"); ok &= !missing; if (missing) missing->Release();
+                    ok &= FAILED(invokeId(uia, disabled, L"fixture.name_write"));
+                    Sleep(1000);
+                    ResetEvent(events->received); ResetEvent(focus->applyReceived); ResetEvent(structure->received);
+                    uia->AddPropertyChangedEventHandlerNativeArray(disabled, TreeScope_Subtree, nullptr, events, &property, 1);
+                    uia->AddStructureChangedEventHandler(disabled, TreeScope_Subtree, nullptr, structure);
+                    SendMessageW(other, WM_APP+80, 31, 0); SendMessageW(other, WM_APP+80, 20, 0); SendMessageW(other, WM_APP+80, 2, 0);
+                    ok &= WaitForSingleObject(events->received, 500) == WAIT_TIMEOUT && WaitForSingleObject(focus->applyReceived, 500) == WAIT_TIMEOUT && WaitForSingleObject(structure->received, 500) == WAIT_TIMEOUT;
+                    disabled->Release();
+                }
+                if (other) PostMessageW(other, WM_CLOSE, 0, 0);
+            }
+            uia->RemoveAllEventHandlers(); events->Release(); focus->Release(); structure->Release();
         }
         if (root) root->Release(); if (uia) uia->Release();
         if (search.window) PostMessageW(search.window, WM_CLOSE, 0, 0);
@@ -379,7 +417,7 @@ int wmain(int argc, wchar_t** argv) {
         IUIAutomationElement* label = nullptr;
         auto hidden = findId(automation, root, L"form.title.pages.v03.progress");
         bool field = SUCCEEDED(element->get_CurrentControlType(&type)) && type == UIA_EditControlTypeId &&
-            SUCCEEDED(element->get_CurrentName(&name)) && name && std::wstring(name) == L"顯示名稱" &&
+            SUCCEEDED(element->get_CurrentName(&name)) && name && std::wstring(name) == L"é¡¯ç¤ºåç¨±" &&
             SUCCEEDED(element->get_CurrentLabeledBy(&label)) && label && SUCCEEDED(label->get_CurrentAutomationId(&labelId)) &&
             labelId && std::wstring(labelId) == L"form.name.label" && SUCCEEDED(element->get_CurrentBoundingRectangle(&bounds));
         IUIAutomationElementArray* descriptions = nullptr;
@@ -418,7 +456,7 @@ int wmain(int argc, wchar_t** argv) {
         bool items = first && second && SUCCEEDED(first->get_CurrentControlType(&firstType)) && SUCCEEDED(second->get_CurrentControlType(&secondType)) &&
             firstType == UIA_ListItemControlTypeId && secondType == UIA_ListItemControlTypeId &&
             SUCCEEDED(first->get_CurrentName(&firstName)) && SUCCEEDED(second->get_CurrentName(&secondName)) && firstName && secondName &&
-            std::wstring(firstName) == L"共用範本" && std::wstring(firstName) == std::wstring(secondName) &&
+            std::wstring(firstName) == L"å…±ç”¨ç¯„æœ¬" && std::wstring(firstName) == std::wstring(secondName) &&
             SUCCEEDED(first->get_CurrentAutomationId(&firstId)) && SUCCEEDED(second->get_CurrentAutomationId(&secondId)) && firstId && secondId && std::wstring(firstId) != std::wstring(secondId);
         bool listCase = SUCCEEDED(selectId(automation, root, L"T006")) && SUCCEEDED(invokeId(automation, root, L"form.title.pages.v02.sort"));
         IUIAutomationSelectionItemPattern* listItem = nullptr; BOOL selectedItem = FALSE;
@@ -584,8 +622,8 @@ int wmain(int argc, wchar_t** argv) {
         HRESULT getAfter = count ? count->get_CurrentName(&after) : E_FAIL;
         bool invoked = apply && count && SUCCEEDED(getName) && SUCCEEDED(getInvoke) && invoke &&
             SUCCEEDED(invokeHr) && SUCCEEDED(getAfter) && before && after &&
-            std::wstring(before, SysStringLen(before)) == L"套用次數：0" &&
-            std::wstring(after, SysStringLen(after)) == L"套用次數：1";
+            std::wstring(before, SysStringLen(before)) == L"å¥—ç”¨æ¬¡æ•¸ï¼š0" &&
+            std::wstring(after, SysStringLen(after)) == L"å¥—ç”¨æ¬¡æ•¸ï¼š1";
         bool nameEvent = SUCCEEDED(nameSubscribed) && WaitForSingleObject(nameEvents->received, 2000) == WAIT_OBJECT_0;
         if (SUCCEEDED(nameSubscribed)) automation->RemovePropertyChangedEventHandler(count, nameEvents); nameEvents->Release();
         std::cout << "Name event: " << (nameEvent ? "PASS" : "FAIL") << '\n'; pass &= nameEvent;

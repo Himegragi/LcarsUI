@@ -1,4 +1,4 @@
-﻿#include "desktop_host.hpp"
+#include "desktop_host.hpp"
 #include "edit_form.hpp"
 #include "core_internal.hpp"
 #include "renderer.hpp"
@@ -7,13 +7,18 @@
 #include <iostream>
 #include <algorithm>
 #include <cmath>
+#include <thread>
+#include <atomic>
+std::atomic<HWND> companionWindow{nullptr};
+int wmain(int, wchar_t**);
 namespace {
-WNDPROC originalProc = nullptr;
-editForm::Form* activeForm = nullptr;
-lcars::detail::DesktopHost* activeHost = nullptr;
-int rootRequests = 0;
-lcars::detail::RendererTestHooks* activeHooks = nullptr;
+thread_local WNDPROC originalProc = nullptr;
+thread_local editForm::Form* activeForm = nullptr;
+thread_local lcars::detail::DesktopHost* activeHost = nullptr;
+thread_local int rootRequests = 0;
+thread_local lcars::detail::RendererTestHooks* activeHooks = nullptr;
 LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
+    if (msg == WM_APP + 81) return reinterpret_cast<LRESULT>(companionWindow.load());
     if (msg == WM_GETOBJECT && static_cast<LONG>(l) == UiaRootObjectId) ++rootRequests;
     if (msg == WM_APP + 80) {
         switch (w) {
@@ -181,6 +186,14 @@ int wmain(int argc, wchar_t** argv) {
         activeForm = &form; activeHost = &host; activeHooks = &hooks;
         originalProc = reinterpret_cast<WNDPROC>(SetWindowLongPtrW(host.window(), GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(testProc)));
         ShowWindow(host.window(), SW_SHOWNOACTIVATE); UpdateWindow(host.window());
+        if (argc > 2 && std::wstring_view(argv[2]) == L"--accessibility-disabled") companionWindow = host.window();
+        if (argc > 2 && std::wstring_view(argv[2]) == L"--accessibility-mixed") {
+            std::thread([material] {
+                wchar_t executable[] = L"host", web[] = L"web", mat[] = L"material", disabled[] = L"--accessibility-disabled";
+                wchar_t* args[] = {executable, material ? mat : web, disabled};
+                wmain(3, args);
+            }).detach();
+        }
         const int result = host.run();
         return host.rendererFailed() ? static_cast<int>(lcars::Status::rendererFailed) : result;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
