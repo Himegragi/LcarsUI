@@ -9,7 +9,7 @@
 namespace isoduo {
 namespace {
 char16_t fold(char16_t ch) { return ch >= u'a' && ch <= u'z' ? static_cast<char16_t>(ch - u'a' + u'A') : ch; }
-bool reservedId(std::string_view id) { return id.starts_with("lcars."); }
+bool reservedId(std::string_view id) { return id.starts_with("isoduo."); }
 }
 
 bool detail::UiState::hasMenu(const Component& control) const {

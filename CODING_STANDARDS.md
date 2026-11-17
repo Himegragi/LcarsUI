@@ -31,7 +31,9 @@ the words public names use are these.
   `CreateResult`, `RunResult`).
 - Boundaries. Semantic property-event strings follow their C++ names (`"readOnly"`, `"numericValue"`). Standard-library
   and foreign API names keep their required spelling. CMake targets, file names, persisted demo `settings.json` keys,
-  macros (`ISODUO_OP`), menu command identifiers (`"lcars.undo"`) and other runtime text are unchanged. CTest
+  macros (`ISODUO_OP`), menu command identifiers (`"isoduo.undo"`) and other runtime text are outside the C++ naming rules.
+  Built-in menu identifiers reserve `isoduo.*`; serializers emit canonical Isoduo headers,
+  with legacy names permitted only in readers and migration fixtures. CTest
   `public_names` checks public header declarations (including the generated version header template); its fixtures
   reject snake_case and exclude comments, literals, `std::` names, macros and private trailing underscores.
 - A. An enumeration that says which kind of thing something is, is `XxxKind` (`ComponentKind`, `LabelKind`,

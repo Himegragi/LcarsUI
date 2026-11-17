@@ -132,6 +132,11 @@ bool openClipboard(HWND window) {
 
 namespace {
 UINT richFormat() {
+    static const UINT format = RegisterClipboardFormatW(L"Isoduo.RichText.1");
+    return format;
+}
+// Read-only compatibility with clipboard owners from before the rename.
+UINT legacyRichFormat() {
     static const UINT format = RegisterClipboardFormatW(L"LcarsUI.RichText.1");
     return format;
 }
@@ -179,9 +184,10 @@ bool WindowsClipboard::writeRich(std::u16string_view text, std::string_view payl
 Query<std::string> WindowsClipboard::readRich() {
     if (!openClipboard(window_)) return {Status::failed, u"無法開啟剪貼簿", std::nullopt};
     Query<std::string> result{Status::notSupported, u"No rich text", std::nullopt};
-    if (IsClipboardFormatAvailable(richFormat())) {
+    const UINT format = IsClipboardFormatAvailable(richFormat()) ? richFormat() : legacyRichFormat();
+    if (IsClipboardFormatAvailable(format)) {
         result = {Status::failed, u"Cannot read rich text", std::nullopt};
-        if (auto memory = GetClipboardData(richFormat())) {
+        if (auto memory = GetClipboardData(format)) {
             if (auto data = static_cast<const char*>(GlobalLock(memory))) {
                 const auto size = GlobalSize(memory);
                 std::size_t n = 0;

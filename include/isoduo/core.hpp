@@ -700,7 +700,7 @@ struct ConfirmationResult { Result result; std::vector<ConfirmFieldError> errors
 struct MenuContext;
 // A separator line, or a command: id, text, availability, an optional quick-key letter, an optional
 // shortcut hint (display only; it registers no shortcut) and the code to run when chosen.
-// Ids beginning with "lcars." are reserved for the framework's built-in items.
+// Ids beginning with "isoduo." are reserved for the framework's built-in items.
 struct MenuItem {
     std::string id;
     std::u16string label;
@@ -726,16 +726,16 @@ struct MenuItemSnapshot {
 struct MenuSnapshot { ComponentHandle target; std::optional<OptionValue> item; std::vector<MenuItemSnapshot> items; };
 // Built-in text field items, by id. A rich text field (ComponentConfig::rich) adds bold, italic and underline, which run
 // the same function as Ctrl+B / Ctrl+I / Ctrl+U.
-inline constexpr const char* menuUndo = "lcars.undo";
-inline constexpr const char* menuRedo = "lcars.redo";
-inline constexpr const char* menuCut = "lcars.cut";
-inline constexpr const char* menuCopy = "lcars.copy";
-inline constexpr const char* menuPaste = "lcars.paste";
-inline constexpr const char* menuDelete = "lcars.delete";
-inline constexpr const char* menuSelectAll = "lcars.select_all";
-inline constexpr const char* menuBold = "lcars.bold";
-inline constexpr const char* menuItalic = "lcars.italic";
-inline constexpr const char* menuUnderline = "lcars.underline";
+inline constexpr const char* menuUndo = "isoduo.undo";
+inline constexpr const char* menuRedo = "isoduo.redo";
+inline constexpr const char* menuCut = "isoduo.cut";
+inline constexpr const char* menuCopy = "isoduo.copy";
+inline constexpr const char* menuPaste = "isoduo.paste";
+inline constexpr const char* menuDelete = "isoduo.delete";
+inline constexpr const char* menuSelectAll = "isoduo.select_all";
+inline constexpr const char* menuBold = "isoduo.bold";
+inline constexpr const char* menuItalic = "isoduo.italic";
+inline constexpr const char* menuUnderline = "isoduo.underline";
 // The application's items attached to one component. Built-in items are not part of it.
 class ContextMenuHandle : private detail::HandleBase<ContextMenuHandle> {
 public:

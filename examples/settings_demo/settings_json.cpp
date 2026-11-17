@@ -58,7 +58,7 @@ std::optional<SettingsDocument> parseSettings(const std::string& bytes) {
     try {
         (void)j.dump(); // Validate UTF-8 even in ignored fields.
         SettingsDocument d{}; std::string v; int n;
-        if (!string(j,"format",v) || v!="lcars-settings-demo" || !integer(j,"version",n) || n!=1) return {};
+        if (!string(j,"format",v) || (v!="isoduo-settings-demo" && v!="lcars-settings-demo") || !integer(j,"version",n) || n!=1) return {};
         if (!j.contains("general") || !j["general"].is_object() || !j.contains("presentation") || !j["presentation"].is_object() || !j.contains("items") || !j["items"].is_array()) return {};
         auto& g=j["general"]; auto& p=j["presentation"];
         if (!text(g,"name",d.name,64,true) || !g.contains("notices") || !g["notices"].is_boolean()) return {};
@@ -114,7 +114,7 @@ static json noteJson(const Item& item) {
     return {{"text",utf8FromUtf16(item.note)},{"spans",std::move(spans)}};
 }
 std::string writeSettings(const SettingsDocument& d) {
-    json j; j["format"]="lcars-settings-demo"; j["version"]=1;
+    json j; j["format"]="isoduo-settings-demo"; j["version"]=1;
     j["general"]={{"name",utf8FromUtf16(d.name)},{"notices",d.notices},{"mode",d.mode->id},{"region",d.region->id},{"volume",d.volume}};
     j["items"]=json::array(); for (auto& x:d.items) j["items"].push_back({{"id",x.id.id},{"name",utf8FromUtf16(x.name)},{"note",noteJson(x)}});
     j["next_item_id"]=d.nextItemId;

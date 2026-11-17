@@ -428,7 +428,7 @@ void contextMenuRowsHoverAsTheirHighlight() {
         const auto menu = menuNodeId("field");
         check(tree.perform({"field"}, Verb::hover).status == Status::blockedByModal, "the semantic verb agrees with the typed entry");
         check(tree.perform({menu}, Verb::hover).status == Status::notSupported, "the menu panel itself is not hoverable");
-        check(bool(tree.perform({menu, OptionValue{"lcars.select_all"}}, Verb::hover)) && highlightedItem(page) == "lcars.select_all", "the semantic hover on a row highlights it");
+        check(bool(tree.perform({menu, OptionValue{"isoduo.select_all"}}, Verb::hover)) && highlightedItem(page) == "isoduo.select_all", "the semantic hover on a row highlights it");
         // Closing the menu gives the pointer back at once, to what lies under its resting position.
         check(bool(page.ui.closeContextMenu()), "the menu closes");
         frame = page.arrange(*look);

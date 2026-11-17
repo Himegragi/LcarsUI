@@ -60,7 +60,7 @@ std::string highlighted(Ui& ui) {
     for (const auto& item : menu->items) if (item.highlighted) return item.id;
     return "";
 }
-const std::vector<std::string> builtinLayout{"lcars.undo", "lcars.redo", "-", "lcars.cut", "lcars.copy", "lcars.paste", "lcars.delete", "-", "lcars.select_all"};
+const std::vector<std::string> builtinLayout{"isoduo.undo", "isoduo.redo", "-", "isoduo.cut", "isoduo.copy", "isoduo.paste", "isoduo.delete", "-", "isoduo.select_all"};
 
 void textFieldMenuHasTheWindowsEditItems() {
     Ui ui; auto field = addField(ui, "note", u"hello world");
@@ -71,38 +71,38 @@ void textFieldMenuHasTheWindowsEditItems() {
           std::get<TextFieldHandle>(ui.contextMenu()->target) == field.handle, "the menu is open for the field");
     auto menu = ui.contextMenu();
     check(idsOf(*menu) == builtinLayout, "built-in items: undo, redo, line, cut, copy, paste, delete, line, select all");
-    check(findItem(*menu, "lcars.undo")->label == u"復原(U)" && findItem(*menu, "lcars.redo")->label == u"重做(R)" &&
-          findItem(*menu, "lcars.cut")->label == u"剪下(T)" && findItem(*menu, "lcars.copy")->label == u"複製(C)" &&
-          findItem(*menu, "lcars.paste")->label == u"貼上(P)" && findItem(*menu, "lcars.delete")->label == u"刪除(D)" &&
-          findItem(*menu, "lcars.select_all")->label == u"全選(A)", "labels follow the Windows edit menu");
-    check(findItem(*menu, "lcars.undo")->accessKey == u'U' && findItem(*menu, "lcars.redo")->accessKey == u'R' &&
-          findItem(*menu, "lcars.cut")->accessKey == u'T' && findItem(*menu, "lcars.copy")->accessKey == u'C' &&
-          findItem(*menu, "lcars.paste")->accessKey == u'P' && findItem(*menu, "lcars.delete")->accessKey == u'D' &&
-          findItem(*menu, "lcars.select_all")->accessKey == u'A', "quick keys match the letters in the labels");
-    check(findItem(*menu, "lcars.cut")->shortcutHint == u"Ctrl+X" && findItem(*menu, "lcars.paste")->shortcutHint == u"Ctrl+V" &&
-          findItem(*menu, "lcars.delete")->shortcutHint == u"Del", "shortcut hints are shown");
+    check(findItem(*menu, "isoduo.undo")->label == u"復原(U)" && findItem(*menu, "isoduo.redo")->label == u"重做(R)" &&
+          findItem(*menu, "isoduo.cut")->label == u"剪下(T)" && findItem(*menu, "isoduo.copy")->label == u"複製(C)" &&
+          findItem(*menu, "isoduo.paste")->label == u"貼上(P)" && findItem(*menu, "isoduo.delete")->label == u"刪除(D)" &&
+          findItem(*menu, "isoduo.select_all")->label == u"全選(A)", "labels follow the Windows edit menu");
+    check(findItem(*menu, "isoduo.undo")->accessKey == u'U' && findItem(*menu, "isoduo.redo")->accessKey == u'R' &&
+          findItem(*menu, "isoduo.cut")->accessKey == u'T' && findItem(*menu, "isoduo.copy")->accessKey == u'C' &&
+          findItem(*menu, "isoduo.paste")->accessKey == u'P' && findItem(*menu, "isoduo.delete")->accessKey == u'D' &&
+          findItem(*menu, "isoduo.select_all")->accessKey == u'A', "quick keys match the letters in the labels");
+    check(findItem(*menu, "isoduo.cut")->shortcutHint == u"Ctrl+X" && findItem(*menu, "isoduo.paste")->shortcutHint == u"Ctrl+V" &&
+          findItem(*menu, "isoduo.delete")->shortcutHint == u"Del", "shortcut hints are shown");
 }
 
 void itemsAreUnavailableWhenTheyCannotAct() {
     Ui ui; MemoryClipboard clipboard; core(ui).setClipboard(&clipboard);
     auto field = addField(ui, "note", u"hello world");
     ui.openContextMenu(field.handle);
-    check(!enabled(ui, "lcars.cut") && !enabled(ui, "lcars.copy") && !enabled(ui, "lcars.delete"), "no selection: cut, copy and delete are off");
-    check(!enabled(ui, "lcars.paste"), "empty clipboard: paste is off");
-    check(!enabled(ui, "lcars.undo") && !enabled(ui, "lcars.redo"), "no history: undo and redo are off");
-    check(enabled(ui, "lcars.select_all"), "select all is on");
+    check(!enabled(ui, "isoduo.cut") && !enabled(ui, "isoduo.copy") && !enabled(ui, "isoduo.delete"), "no selection: cut, copy and delete are off");
+    check(!enabled(ui, "isoduo.paste"), "empty clipboard: paste is off");
+    check(!enabled(ui, "isoduo.undo") && !enabled(ui, "isoduo.redo"), "no history: undo and redo are off");
+    check(enabled(ui, "isoduo.select_all"), "select all is on");
     ui.closeContextMenu();
     clipboard.content = u"x";
     check(bool(field.handle.select(0, 5)), "select a range");
     ui.openContextMenu(field.handle);
-    check(enabled(ui, "lcars.cut") && enabled(ui, "lcars.copy") && enabled(ui, "lcars.delete") && enabled(ui, "lcars.paste"),
+    check(enabled(ui, "isoduo.cut") && enabled(ui, "isoduo.copy") && enabled(ui, "isoduo.delete") && enabled(ui, "isoduo.paste"),
           "a selection and clipboard text turn cut, copy, delete and paste on");
-    check(bool(ui.invokeMenuItem("lcars.delete")), "delete the selection through the menu");
+    check(bool(ui.invokeMenuItem("isoduo.delete")), "delete the selection through the menu");
     ui.openContextMenu(field.handle);
-    check(enabled(ui, "lcars.undo") && !enabled(ui, "lcars.redo"), "an edit turns undo on");
-    ui.invokeMenuItem("lcars.undo");
+    check(enabled(ui, "isoduo.undo") && !enabled(ui, "isoduo.redo"), "an edit turns undo on");
+    ui.invokeMenuItem("isoduo.undo");
     ui.openContextMenu(field.handle);
-    check(!enabled(ui, "lcars.undo") && enabled(ui, "lcars.redo"), "after undo, redo is on");
+    check(!enabled(ui, "isoduo.undo") && enabled(ui, "isoduo.redo"), "after undo, redo is on");
 }
 
 void readOnlyFieldOnlyCopiesAndSelects() {
@@ -110,9 +110,9 @@ void readOnlyFieldOnlyCopiesAndSelects() {
     auto field = addField(ui, "note", u"hello", true);
     field.handle.select(0, 5);
     check(bool(ui.openContextMenu(field.handle)), "a read-only field still has its menu");
-    for (const char* id : {"lcars.undo", "lcars.redo", "lcars.cut", "lcars.paste", "lcars.delete"})
+    for (const char* id : {"isoduo.undo", "isoduo.redo", "isoduo.cut", "isoduo.paste", "isoduo.delete"})
         check(!enabled(ui, id), "a read-only field refuses every editing item");
-    check(enabled(ui, "lcars.copy") && enabled(ui, "lcars.select_all"), "copy and select all stay on");
+    check(enabled(ui, "isoduo.copy") && enabled(ui, "isoduo.select_all"), "copy and select all stay on");
 }
 
 // Every built-in item is the same operation as its shortcut: value, clipboard and history agree.
@@ -121,11 +121,11 @@ void builtInItemsMatchTheirShortcuts() {
     // (code review 2026-11-12, item 16): the value after it, the clipboard after it, and the final selection.
     struct Case { const char* item; KeyPress key; const char16_t* clipboard; const char16_t* value; std::optional<std::u16string> clipboardAfter; unsigned anchor, caret; };
     const Case cases[] = {
-        {"lcars.cut", {.ctrl = true, .letter = u'X'}, nullptr, u" world", u"hello", 0, 0},
-        {"lcars.copy", {.ctrl = true, .letter = u'C'}, nullptr, u"hello world", u"hello", 0, 5},
-        {"lcars.paste", {.ctrl = true, .letter = u'V'}, u"PASTED", u"PASTED world", u"PASTED", 6, 6},
-        {"lcars.delete", {.key = Key::del}, nullptr, u" world", std::nullopt, 0, 0},
-        {"lcars.select_all", {.ctrl = true, .letter = u'A'}, nullptr, u"hello world", std::nullopt, 0, 11},
+        {"isoduo.cut", {.ctrl = true, .letter = u'X'}, nullptr, u" world", u"hello", 0, 0},
+        {"isoduo.copy", {.ctrl = true, .letter = u'C'}, nullptr, u"hello world", u"hello", 0, 5},
+        {"isoduo.paste", {.ctrl = true, .letter = u'V'}, u"PASTED", u"PASTED world", u"PASTED", 6, 6},
+        {"isoduo.delete", {.key = Key::del}, nullptr, u" world", std::nullopt, 0, 0},
+        {"isoduo.select_all", {.ctrl = true, .letter = u'A'}, nullptr, u"hello world", std::nullopt, 0, 11},
     };
     for (const auto& c : cases) {
         Ui byMenu, byKey; MemoryClipboard menuClipboard, keyClipboard;
@@ -163,21 +163,21 @@ RichField addRichField(Ui& ui, std::string id, std::u16string value, bool readOn
     check(bool(handle.connectRichImmediate([model](const Change<TextFieldHandle, RichText>& change) { *model = change.value; return Result{}; })), "connect rich write");
     return {handle, model};
 }
-const std::vector<std::string> richLayout{"lcars.undo", "lcars.redo", "-", "lcars.cut", "lcars.copy", "lcars.paste", "lcars.delete", "-", "lcars.select_all",
-                                           "-", "lcars.bold", "lcars.italic", "lcars.underline"};
+const std::vector<std::string> richLayout{"isoduo.undo", "isoduo.redo", "-", "isoduo.cut", "isoduo.copy", "isoduo.paste", "isoduo.delete", "-", "isoduo.select_all",
+                                           "-", "isoduo.bold", "isoduo.italic", "isoduo.underline"};
 
 void richFieldMenuAddsBoldItalicUnderline() {
     Ui ui; auto field = addRichField(ui, "note", u"hello world");
     check(bool(ui.openContextMenu(field.handle)), "a rich field opens its built-in menu");
     auto menu = ui.contextMenu();
     check(idsOf(*menu) == richLayout, "the built-in items, a line, then bold, italic and underline");
-    check(findItem(*menu, "lcars.bold")->label == u"粗體(B)" && findItem(*menu, "lcars.italic")->label == u"斜體(I)" &&
-          findItem(*menu, "lcars.underline")->label == u"底線(U)", "labels follow the Windows rich-edit menu");
-    check(findItem(*menu, "lcars.bold")->accessKey == u'B' && findItem(*menu, "lcars.italic")->accessKey == u'I' &&
-          findItem(*menu, "lcars.underline")->accessKey == u'U', "quick keys match the letters in the labels");
-    check(findItem(*menu, "lcars.bold")->shortcutHint == u"Ctrl+B" && findItem(*menu, "lcars.italic")->shortcutHint == u"Ctrl+I" &&
-          findItem(*menu, "lcars.underline")->shortcutHint == u"Ctrl+U", "shortcut hints are shown");
-    check(enabled(ui, "lcars.bold") && enabled(ui, "lcars.italic") && enabled(ui, "lcars.underline"), "on in an editable rich field, with or without a selection");
+    check(findItem(*menu, "isoduo.bold")->label == u"粗體(B)" && findItem(*menu, "isoduo.italic")->label == u"斜體(I)" &&
+          findItem(*menu, "isoduo.underline")->label == u"底線(U)", "labels follow the Windows rich-edit menu");
+    check(findItem(*menu, "isoduo.bold")->accessKey == u'B' && findItem(*menu, "isoduo.italic")->accessKey == u'I' &&
+          findItem(*menu, "isoduo.underline")->accessKey == u'U', "quick keys match the letters in the labels");
+    check(findItem(*menu, "isoduo.bold")->shortcutHint == u"Ctrl+B" && findItem(*menu, "isoduo.italic")->shortcutHint == u"Ctrl+I" &&
+          findItem(*menu, "isoduo.underline")->shortcutHint == u"Ctrl+U", "shortcut hints are shown");
+    check(enabled(ui, "isoduo.bold") && enabled(ui, "isoduo.italic") && enabled(ui, "isoduo.underline"), "on in an editable rich field, with or without a selection");
     ui.closeContextMenu();
     // Only rich fields have them; a plain field keeps the old layout, and a read-only rich field disables them.
     auto plain = addField(ui, "plain", u"hello");
@@ -186,7 +186,7 @@ void richFieldMenuAddsBoldItalicUnderline() {
     ui.closeContextMenu();
     auto locked = addRichField(ui, "locked", u"hello", true);
     ui.openContextMenu(locked.handle);
-    check(idsOf(*ui.contextMenu()) == richLayout && !enabled(ui, "lcars.bold") && !enabled(ui, "lcars.italic") && !enabled(ui, "lcars.underline"),
+    check(idsOf(*ui.contextMenu()) == richLayout && !enabled(ui, "isoduo.bold") && !enabled(ui, "isoduo.italic") && !enabled(ui, "isoduo.underline"),
           "a read-only rich field shows them but refuses every one");
     ui.closeContextMenu();
     // The application's own switches still reach it: replace drops the built-ins, style items included.
@@ -200,8 +200,8 @@ void richFieldMenuAddsBoldItalicUnderline() {
 void styleItemsMatchTheirShortcuts() {
     struct Case { const char* item; char16_t letter; bool selection; };
     const Case cases[] = {
-        {"lcars.bold", u'B', true}, {"lcars.italic", u'I', true}, {"lcars.underline", u'U', true},
-        {"lcars.bold", u'B', false}, {"lcars.italic", u'I', false}, {"lcars.underline", u'U', false},
+        {"isoduo.bold", u'B', true}, {"isoduo.italic", u'I', true}, {"isoduo.underline", u'U', true},
+        {"isoduo.bold", u'B', false}, {"isoduo.italic", u'I', false}, {"isoduo.underline", u'U', false},
     };
     for (const auto& c : cases) {
         Ui byMenu, byKey;
@@ -237,14 +237,14 @@ void underlineSharesItsQuickKeyWithUndo() {
     check(bool(type(ui, u'x')), "type over the selection, so that undo has something to undo");
     field.handle.select(0, 1);
     press(ui, Key::menu);
-    check(enabled(ui, "lcars.undo") && enabled(ui, "lcars.underline"), "both items that share U are on");
+    check(enabled(ui, "isoduo.undo") && enabled(ui, "isoduo.underline"), "both items that share U are on");
     type(ui, u'U');
-    check(*ui.contextMenuOpen() && highlighted(ui) == "lcars.undo", "U jumps to the first match, 復原(U), without running it");
+    check(*ui.contextMenuOpen() && highlighted(ui) == "isoduo.undo", "U jumps to the first match, 復原(U), without running it");
     check(field.handle.richValue().value.value().spans.empty(), "nothing was run by the quick key");
     type(ui, u'u');
-    check(highlighted(ui) == "lcars.underline" && *ui.contextMenuOpen(), "pressed again it goes to 底線(U), still without running");
+    check(highlighted(ui) == "isoduo.underline" && *ui.contextMenuOpen(), "pressed again it goes to 底線(U), still without running");
     type(ui, u'U');
-    check(highlighted(ui) == "lcars.undo", "and wraps around");
+    check(highlighted(ui) == "isoduo.undo", "and wraps around");
     type(ui, u'u');
     check(bool(press(ui, Key::enter)) && !*ui.contextMenuOpen(), "Enter runs the highlighted 底線(U)");
     const auto spans = field.handle.richValue().value.value().spans;
@@ -263,15 +263,15 @@ void keyboardMovesSkipsLinesAndWraps() {
     field.handle.focus();
     check(bool(press(ui, Key::menu)) && *ui.contextMenuOpen(), "the menu key opens the menu");
     check(highlighted(ui).empty(), "nothing is highlighted at first");
-    press(ui, Key::down); check(highlighted(ui) == "lcars.undo", "Down enters at the first item");
+    press(ui, Key::down); check(highlighted(ui) == "isoduo.undo", "Down enters at the first item");
     press(ui, Key::down); press(ui, Key::down);
-    check(highlighted(ui) == "lcars.cut", "Down skips the separator");
-    press(ui, Key::up); check(highlighted(ui) == "lcars.redo", "Up skips the separator");
+    check(highlighted(ui) == "isoduo.cut", "Down skips the separator");
+    press(ui, Key::up); check(highlighted(ui) == "isoduo.redo", "Up skips the separator");
     press(ui, Key::up); press(ui, Key::up);
-    check(highlighted(ui) == "lcars.select_all", "Up from the first item wraps to the last");
-    press(ui, Key::down); check(highlighted(ui) == "lcars.undo", "Down from the last item wraps to the first");
-    press(ui, Key::end); check(highlighted(ui) == "lcars.select_all", "End goes to the last item");
-    press(ui, Key::home); check(highlighted(ui) == "lcars.undo", "Home goes to the first item");
+    check(highlighted(ui) == "isoduo.select_all", "Up from the first item wraps to the last");
+    press(ui, Key::down); check(highlighted(ui) == "isoduo.undo", "Down from the last item wraps to the first");
+    press(ui, Key::end); check(highlighted(ui) == "isoduo.select_all", "End goes to the last item");
+    press(ui, Key::home); check(highlighted(ui) == "isoduo.undo", "Home goes to the first item");
     check(press(ui, Key::enter).status == Status::disabled && *ui.contextMenuOpen(), "a disabled item can be reached but not run, and the menu stays");
     press(ui, Key::end);
     check(bool(press(ui, Key::space)) && !*ui.contextMenuOpen(), "Space runs the highlighted item and closes the menu");
@@ -279,11 +279,11 @@ void keyboardMovesSkipsLinesAndWraps() {
     check(core(ui).focused() == "note", "focus is on the field again");
     press(ui, Key::menu);
     press(ui, Key::end); press(ui, Key::up);
-    check(highlighted(ui) == "lcars.delete", "Up from the last item lands before the separator");
+    check(highlighted(ui) == "isoduo.delete", "Up from the last item lands before the separator");
     // Code review 2026-11-12 item 13: a standard Win32 popup menu ignores the Apps key while open (probed with TrackPopupMenu: F10 and
     // Alt close it, VK_APPS does not), and the spec's close list is Esc / Alt / F10 / click outside / deactivation.
     press(ui, Key::menu);
-    check(*ui.contextMenuOpen() && highlighted(ui) == "lcars.delete", "the menu key again leaves the open menu and its highlight alone");
+    check(*ui.contextMenuOpen() && highlighted(ui) == "isoduo.delete", "the menu key again leaves the open menu and its highlight alone");
     press(ui, Key::escape);
     check(!*ui.contextMenuOpen(), "Escape still closes it");
     core(ui).keyDown({.key = Key::f10, .shift = true});
@@ -375,7 +375,7 @@ void otherComponentsHaveNoMenuUntilOneIsAttached() {
     auto bad = ui.addButton({.id = "c"}).value.value();
     check(ui.addContextMenu(bad, {command("x", u"x", 0), command("x", u"y", 0)}).status == Status::invalidValue, "duplicate ids are refused");
     check(ui.addContextMenu(bad, {command("", u"x", 0)}).status == Status::invalidValue, "an item needs an id");
-    check(ui.addContextMenu(bad, {command("lcars.cut", u"x", 0)}).status == Status::invalidValue, "the isoduo. prefix is reserved");
+    check(ui.addContextMenu(bad, {command("isoduo.cut", u"x", 0)}).status == Status::invalidValue, "the isoduo. prefix is reserved");
     check(bool(ui.addContextMenu(bad, {})) , "an empty attachment is allowed (it is not a menu yet)");
     check(ui.openContextMenu(bad).status == Status::notSupported, "and opens nothing");
 }
@@ -574,7 +574,7 @@ void menuPanelSitsBesideThePointerFlipsAndScrolls() {
     check(panel && panel->bounds.x == 100 && panel->bounds.y == 60, "the panel's corner is at the pointer");
     check(panel->menuRows.size() == 9 && panel->menuRows[2].separator && !panel->menuRows[0].separator, "one row per item, lines included");
     check(panel->menuMaximum == 0 && inside(panel->bounds, {0, 0, 600, 400}), "it fits, so nothing scrolls");
-    check(frame.hit(110, 70) != frame.menuPanel() && frame.menuContains(110, 70) && frame.menuItemAt(110, 70) == "lcars.undo",
+    check(frame.hit(110, 70) != frame.menuPanel() && frame.menuContains(110, 70) && frame.menuItemAt(110, 70) == "isoduo.undo",
           "a point on the first row hits the first item (and the page's hit test never returns the menu)");
     check(!frame.menuContains(99, 59) && !frame.menuItemAt(99, 59), "just outside is outside");
     const auto size = panel->bounds;
@@ -660,7 +660,7 @@ void multiLineFieldMenuHangsFromTheCaretLine() {
     note.select(8, 8); note.focus();
     auto frame = layoutOf(ui, 600, 400, scroll);
     check(bool(press(ui, Key::menu)), "the menu key opens the menu in a multi-line field");
-    check(idsOf(*ui.contextMenu()) == builtinLayout && enabled(ui, "lcars.paste"), "with the same built-in items");
+    check(idsOf(*ui.contextMenu()) == builtinLayout && enabled(ui, "isoduo.paste"), "with the same built-in items");
     frame = layoutOf(ui, 600, 400, scroll);
     const auto* field = frame.find(note);
     const auto caret = field->caretRect(8);
@@ -668,16 +668,16 @@ void multiLineFieldMenuHangsFromTheCaretLine() {
     check(panel && caret.y > field->view.text.y && panel->bounds.x == caret.x && panel->bounds.y == caret.y + caret.h, "it hangs from the second line's caret, under that line");
     ui.closeContextMenu();
     check(bool(core(ui).menuPointerOpen("note", std::nullopt, 2, {30, 30})) && core(ui).edit("note")->selection.caret == 2, "right button moves the caret to the point");
-    ui.invokeMenuItem("lcars.paste");
+    ui.invokeMenuItem("isoduo.paste");
     check(*model == u"fix\nyrst\nsecond\nthird", "paste inserts the clipboard text with its line break at the caret");
     // Copy and cut over a selection that spans lines: the same functions as the shortcuts, so the clipboard gets CRLF (#79).
     core(ui).select("note", 0, 5);   // "fix", the line break and "y"
-    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && enabled(ui, "lcars.copy") && enabled(ui, "lcars.cut"), "copy and cut are on with a multi-line selection");
-    check(bool(ui.invokeMenuItem("lcars.copy")) && clipboard.content == u"fix\r\ny" && *model == u"fix\nyrst\nsecond\nthird", "copy writes CRLF and leaves the text");
+    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && enabled(ui, "isoduo.copy") && enabled(ui, "isoduo.cut"), "copy and cut are on with a multi-line selection");
+    check(bool(ui.invokeMenuItem("isoduo.copy")) && clipboard.content == u"fix\r\ny" && *model == u"fix\nyrst\nsecond\nthird", "copy writes CRLF and leaves the text");
     core(ui).select("note", 0, 5);
-    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("lcars.cut")) && clipboard.content == u"fix\r\ny" && *model == u"rst\nsecond\nthird",
+    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("isoduo.cut")) && clipboard.content == u"fix\r\ny" && *model == u"rst\nsecond\nthird",
           "cut writes CRLF and removes the text across the line break");
-    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("lcars.paste")) && *model == u"fix\nyrst\nsecond\nthird",
+    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("isoduo.paste")) && *model == u"fix\nyrst\nsecond\nthird",
           "pasting the CRLF clipboard back gives LF line breaks again");
 }
 
@@ -697,17 +697,17 @@ void semanticTreeShowsMenuAndItemsWhileOpen() {
     auto children = tree.children({"note"});
     check(std::find(children->begin(), children->end(), NodeRef{menuId}) != children->end(), "as a child of the component");
     auto items = tree.children({menuId});
-    check(items && items->size() == 9 && items->front() == NodeRef{menuId, OptionValue{"lcars.undo"}}, "with one child per item");
-    auto copy = tree.get({menuId, OptionValue{"lcars.copy"}});
+    check(items && items->size() == 9 && items->front() == NodeRef{menuId, OptionValue{"isoduo.undo"}}, "with one child per item");
+    auto copy = tree.get({menuId, OptionValue{"isoduo.copy"}});
     check(copy && copy->role == Role::menuItem && copy->name == u"複製(C)" && copy->accessKey == u"C" && copy->acceleratorKey == u"Ctrl+C" && !copy->enabled,
           "a disabled item: role, name with its letter, AccessKey, accelerator hint, not enabled");
     check(std::find(copy->verbs.begin(), copy->verbs.end(), Verb::invoke) == copy->verbs.end() && tree.perform(copy->ref, Verb::invoke).status == Status::disabled,
           "it offers no invoke and refuses one");
     auto line = tree.get({menuId, OptionValue{"separator:2"}});
     check(line && line->role == Role::menuSeparator && !line->focusable, "a separator node");
-    check(tree.perform({menuId, OptionValue{"lcars.select_all"}}, Verb::focus).status == Status::ok && highlighted(ui) == "lcars.select_all", "focus on an item highlights it");
-    check(tree.get({menuId, OptionValue{"lcars.select_all"}})->focused && !tree.get({"note"})->focused, "keyboard focus belongs to the item, not the field");
-    check(bool(tree.perform({menuId, OptionValue{"lcars.select_all"}}, Verb::invoke)) && !*ui.contextMenuOpen() && !tree.get({menuId}), "invoke runs the item and the nodes vanish");
+    check(tree.perform({menuId, OptionValue{"isoduo.select_all"}}, Verb::focus).status == Status::ok && highlighted(ui) == "isoduo.select_all", "focus on an item highlights it");
+    check(tree.get({menuId, OptionValue{"isoduo.select_all"}})->focused && !tree.get({"note"})->focused, "keyboard focus belongs to the item, not the field");
+    check(bool(tree.perform({menuId, OptionValue{"isoduo.select_all"}}, Verb::invoke)) && !*ui.contextMenuOpen() && !tree.get({menuId}), "invoke runs the item and the nodes vanish");
     check(tree.get({"note"})->focused && tree.get({"note"})->textSelection->caret == 5 && tree.get({"note"})->textSelection->anchor == 0, "focus is back on the field, with everything selected");
     tree.perform({"note"}, Verb::contextMenu);
     check(bool(tree.perform({menuId}, Verb::cancel)) && !*ui.contextMenuOpen(), "cancel on the menu closes it");
@@ -735,11 +735,11 @@ void semanticEventsAnnounceOpeningFocusAndClosing() {
     events.clear();
     press(ui, Key::down);
     ui.semantics().dispatchEvents();
-    check(has(SemanticEventKind::focusChanged, {menuId, OptionValue{"lcars.undo"}}), "highlighting the first item moves focus to it");
+    check(has(SemanticEventKind::focusChanged, {menuId, OptionValue{"isoduo.undo"}}), "highlighting the first item moves focus to it");
     events.clear();
     press(ui, Key::down);
     ui.semantics().dispatchEvents();
-    check(has(SemanticEventKind::focusChanged, {menuId, OptionValue{"lcars.redo"}}), "and then to the next");
+    check(has(SemanticEventKind::focusChanged, {menuId, OptionValue{"isoduo.redo"}}), "and then to the next");
     events.clear();
     press(ui, Key::escape);
     ui.semantics().dispatchEvents();

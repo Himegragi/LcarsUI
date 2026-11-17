@@ -2,13 +2,21 @@
 
 A C++20 desktop UI framework. The public API is still evolving.
 
+Code: [isoduo/Isoduo](https://github.com/isoduo/Isoduo).
+Private tracker: [isoduo/Isoduo-issues](https://github.com/isoduo/Isoduo-issues).
+Historical numbered issue links retain their original destinations.
+
 This project was renamed from LcarsUI to Isoduo. Consumers now use `<isoduo/...>`,
 `isoduo::`, `find_package(Isoduo)` and `Isoduo::` CMake targets; build options use
 `ISODUO_*`. Configure a fresh build directory and install into a clean prefix.
-The settings-demo data directory is now `%APPDATA%/Isoduo/SettingsDemo`; copy an
-existing `%APPDATA%/LcarsUI/SettingsDemo` there before first launch to retain settings.
-Serialized settings, rich clipboard data, diagnostic files and built-in menu IDs
-keep their original format identifiers for data and automation compatibility.
+The settings-demo data directory is now `%APPDATA%/Isoduo/SettingsDemo`; migrate
+existing settings with `powershell -NoProfile -File tools/migrate-settings.ps1` before first launch.
+Close both applications first. The script copies `%APPDATA%/LcarsUI/SettingsDemo` only when
+`%APPDATA%/Isoduo/SettingsDemo` does not exist, preserves the old directory as a backup,
+and refuses to merge or overwrite an existing destination. Optional `-AppDataRoot` selects
+a different roaming profile root. Old settings headers, rich clipboard payloads and
+diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
+`Isoduo.RichText.1` and `ISODUODIAG 1 0`. Old menu command IDs have changed to `isoduo.*`.
 
 ## S1 minimal edit form
 
@@ -177,7 +185,7 @@ auto value = note.richValue();                                      // Query<Ric
 - **Keys.** Ctrl+B / Ctrl+I / Ctrl+U are taken by a focused rich field before any application shortcut on the same chord (any other field leaves them to the application). With a selection the attribute is applied to all of it unless all of it already has it, then removed. With a caret only, the next typed text changes: it ends when the caret moves or text is inserted. There is no built-in toolbar or menu and no color shortcut: an application calls `toggleStyle` / `applyStyle` from its own buttons.
 - **Typed text** takes the style of the character before the caret, or of the one after it at the start of a paragraph (an empty paragraph is plain); a temporary typing style from Ctrl+B etc. wins. `typingStyle()` / `setTypingStyle()` read and set it. An IME preedit is shown in the style it will take.
 - **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
-- **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::writeRich`; the Windows host registers the format `LcarsUI.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `writeRich` / `readRich` carries plain text only.
+- **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::writeRich`; the Windows host registers the format `Isoduo.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `writeRich` / `readRich` carries plain text only.
 - **History and data connections.** One style application is one undo entry. Rich fields connect with `connectRichSource` / `connectRichImmediate` / `connectRichConfirmed` (the plain `connect_*` answer `notSupported`, and these answer `notSupported` on a plain field); a confirmation group takes them through `Ui::connectConfirmation` (a `Change<TextFieldHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `useLatest`, `resetToSource`).
 - **Semantic layer and UI Automation.** `NodeSnapshot::rich / styles / typingStyle`; `Verb::setStyle` (`StyleEdit{begin, end, change}`), `Verb::setTypingStyle` (`TextStyle`) and `Verb::setValue` with a `RichText`, all admitted like the typed calls and listed in snapshot `verbs`; property event `styles`; `SemanticTree::textColor(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
 
@@ -201,7 +209,7 @@ Labels and text fields take `TextAlign::justify`; labels also take `TextAlign::d
 A context menu is a short list of commands opened beside a component by the right mouse button (on release), the menu key or Shift+F10. One menu is open per window; it is drawn inside the window like a dropdown's list (flipped left and up near the window's edges, scrollable when the window is too small) and never changes which component has focus.
 
 - **Built-in items.** Every text field has Undo(U), Redo(R), Cut(T), Copy(C), Paste(P), Delete(D) and Select All(A), which run exactly the operations of Ctrl+Z / Ctrl+Y / Ctrl+X / Ctrl+C / Ctrl+V / Delete / Ctrl+A. They disable themselves when they cannot act (nothing selected, empty clipboard, nothing to undo, read-only field).
-- **Attaching a menu.** `ui.addContextMenu(component, items, mode)` works on any component. `MenuItem` has an id (not starting with `lcars.`), a label, enabled, an optional quick-key letter, a shortcut hint (display only: it registers no shortcut) and the code to run, which receives the component and, for a list, the clicked row. `MenuItem::divider()` is a separator. `MenuMode::append` (default) puts the items after the built-in ones, `replace` shows only yours, `off` disables the field's menu. The returned `ContextMenuHandle` adds, removes, updates and enables items at any time, also while the menu is open.
+- **Attaching a menu.** `ui.addContextMenu(component, items, mode)` works on any component. `MenuItem` has an id (not starting with `isoduo.`), a label, enabled, an optional quick-key letter, a shortcut hint (display only: it registers no shortcut) and the code to run, which receives the component and, for a list, the clicked row. `MenuItem::divider()` is a separator. `MenuMode::append` (default) puts the items after the built-in ones, `replace` shows only yours, `off` disables the field's menu. The returned `ContextMenuHandle` adds, removes, updates and enables items at any time, also while the menu is open.
 - **From code.** `ui.openContextMenu(component, position, row)`, `closeContextMenu()`, `contextMenu()` (items with their availability), `invokeMenuItem(id)`. A disabled component returns `disabled`; a background component behind a modal dialog returns `blockedByModal`.
 - **Keyboard.** Up/Down (skipping separators, wrapping), Home/End, Enter and Space run the highlighted item; a quick-key letter runs its item, or when several share it moves to the next one. Esc, Alt, F10, a click outside or the window losing activation close the menu; the click that closes it reaches nothing underneath. Disabled items can be highlighted but not run.
 - **Semantic layer and UIA.** While open, the component has a `Role::menu` child (`menuNodeId(id)`, `"<id>/menu"`) with `menuItem` and `menuSeparator` children; `Verb::contextMenu` opens it, `invoke` on an item runs it, `cancel` on the menu closes it. UIA sees Menu / MenuItem / Separator, `AccessKey`, `AcceleratorKey`, `IsEnabled`, the Invoke pattern, and `MenuOpened` / `MenuClosed` events.

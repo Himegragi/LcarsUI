@@ -27,7 +27,7 @@ static_assert(std::same_as<decltype(isoduo::CommonState::readOnly), bool> &&
               std::same_as<decltype(isoduo::CommonState::numericValue), std::optional<int>>);
 static_assert(isoduo::ComponentKind::radioGroup != isoduo::ComponentKind::textField &&
               isoduo::Status::notFound != isoduo::Status::readOnly);
-static_assert(isoduo::defaultMaxTextLength == 4096 && std::string_view(isoduo::menuUndo) == "lcars.undo");
+static_assert(isoduo::defaultMaxTextLength == 4096 && std::string_view(isoduo::menuUndo) == "isoduo.undo");
 }
 
 // As with the earlier removed-type probes, unqualified lookup finds these global

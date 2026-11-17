@@ -10,12 +10,27 @@ void roundTrip() {
     settingsDemo::Demo demo; auto document = demo.document();
     document.name=u"Station A"; document.notices=false; document.mode=isoduo::OptionValue{"focus"}; document.region=isoduo::OptionValue{"south"}; document.volume=75;
     document.items[0].name=u"Changed"; document.items[0].note=u"Note"; document.items.push_back({{"T021"},u"New",u"Details"}); document.nextItemId=22;
+    document.items[0].noteSpans = {{.start = 0, .length = 4, .bold = true, .color = "red"}};
     document.presentation.fontFamily=u"NoSuchFont"; document.presentation.textSize=23; document.presentation.variant=isoduo::ThemeVariant::dark(); document.presentation.density=isoduo::Density::compact; document.accent="green";
     auto bytes = settingsDemo::writeSettings(document);
     test::check(bytes.starts_with("{\n  \"format\"") && bytes.back()=='\n' && bytes.find('\r')==std::string::npos && !bytes.starts_with("\xef\xbb\xbf"), "UTF-8 without BOM uses LF and fixed first key");
     test::check(bytes.find("\"general\"") < bytes.find("\"items\"") && bytes.find("\"items\"") < bytes.find("\"next_item_id\"") && bytes.find("\"next_item_id\"") < bytes.find("\"presentation\""), "top-level keys have specified order");
     auto decoded = settingsDemo::parseSettings(bytes);
     test::check(decoded && *decoded == document, "settings survive JSON round trip");
+    auto legacy = bytes;
+    legacy.replace(legacy.find("isoduo-settings-demo"), std::string("isoduo-settings-demo").size(), "lcars-settings-demo");
+    auto path = std::filesystem::temp_directory_path() / ("isoduo-legacy-store-" + std::to_string(GetCurrentProcessId()));
+    std::filesystem::create_directories(path);
+    { std::ofstream file(path / "settings.json", std::ios::binary); file << legacy; }
+    settingsDemo::SettingsStore store(path);
+    auto loaded = store.load();
+    test::check(loaded.kind == settingsDemo::LoadKind::loaded && loaded.document == decoded, "old file loads without corrupt-file recovery or data loss");
+    test::check(store.save(*loaded.document).empty(), "save old document through the file store");
+    std::ifstream file(path / "settings.json", std::ios::binary);
+    std::string saved((std::istreambuf_iterator<char>(file)), {}); file.close();
+    test::check(saved == bytes && !std::filesystem::exists(path / "settings.json.bad"), "old file rewrites canonically without losing rich data");
+    std::filesystem::remove_all(path);
+
 }
 void multilineNotesRoundTripAndRejectCarriageReturns() {
     settingsDemo::Demo demo; auto document = demo.document();
@@ -24,7 +39,7 @@ void multilineNotesRoundTripAndRejectCarriageReturns() {
     test::check(bytes.find("\\n\\n") != std::string::npos && bytes.find('\r') == std::string::npos, "line breaks are stored as JSON \\n escapes");
     auto decoded = settingsDemo::parseSettings(bytes);
     test::check(decoded && *decoded == document && decoded->items[0].note == document.items[0].note, "a note with line breaks loads back identical");
-    const std::string base = R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":"x"}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    const std::string base = R"({"format":"isoduo-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":"x"}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
     auto replace = [&](std::string from, std::string to) { auto value = base; auto at = value.find(from); test::check(at != std::string::npos, "fixture field"); value.replace(at, from.size(), to); return value; };
     test::check(bool(settingsDemo::parseSettings(replace("\"note\":\"x\"", "\"note\":\"a\\nb\""))), "an LF in a note is valid");
     test::check(!settingsDemo::parseSettings(replace("\"note\":\"x\"", "\"note\":\"a\\rb\"")), "a CR in a note is rejected");
@@ -43,7 +58,7 @@ void richNotesRoundTripAndOldStringNotesStillLoad() {
     auto decoded = settingsDemo::parseSettings(bytes);
     test::check(decoded && *decoded == document && decoded->items[0].noteSpans == document.items[0].noteSpans, "a styled note loads back exactly");
     test::check(decoded && settingsDemo::writeSettings(*decoded) == bytes, "writing what was loaded gives the same file");
-    const std::string base = R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":"x"}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    const std::string base = R"({"format":"isoduo-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":"x"}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
     auto withNote = [&](const std::string& note) { auto value = base; auto at = value.find("\"note\":\"x\""); test::check(at != std::string::npos, "fixture field"); value.replace(at, 10, "\"note\":" + note); return value; };
     auto old = settingsDemo::parseSettings(withNote("\"plain\""));
     test::check(old && old->items[0].note == u"plain" && old->items[0].noteSpans.empty(), "a note stored as a string loads with no styles");
@@ -124,7 +139,7 @@ void appearancePersistence() {
 void accentPersistence() {
     settingsDemo::Demo demo; auto document=demo.document();
     test::check(document.accent=="default" && settingsDemo::writeSettings(document).find("\"accent\": \"default\"")!=std::string::npos, "default accent is written");
-    const std::string oldFile=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    const std::string oldFile=R"({"format":"isoduo-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
     auto old=settingsDemo::parseSettings(oldFile); test::check(old && old->accent=="default", "a file without accent loads as default");
     const std::string density="\"density\":\"standard\"";
     auto with=[&](const std::string& value) { auto copy=oldFile; copy.replace(copy.find(density),density.size(),density+",\"accent\":"+value); return copy; };
@@ -148,7 +163,7 @@ void focusRingPersistence() {
     auto written=settingsDemo::writeSettings(document);
     test::check(written.find("\"focus_indicator\": \"automatic\"")!=std::string::npos && written.find("\"focus_ring_width\": null")!=std::string::npos &&
                 written.find("\"focus_ring_radius\": null")!=std::string::npos && written.find("\"focus_color\": \"default\"")!=std::string::npos, "the defaults are written: automatic, empty, empty, default");
-    const std::string oldFile=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    const std::string oldFile=R"({"format":"isoduo-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
     auto old=settingsDemo::parseSettings(oldFile);
     test::check(old && old->presentation.focusIndicator==isoduo::FocusIndicatorMode::automatic && !old->presentation.focusRingWidth && !old->presentation.focusRingRadius && old->focusColor=="default",
                 "a file without the four settings is not corrupt and loads the defaults");
@@ -187,7 +202,7 @@ void focusRingPersistence() {
 void justifyAsLeftPersistence() {
     settingsDemo::Demo demo; auto document=demo.document();
     test::check(!document.presentation.justifyAsLeft && settingsDemo::writeSettings(document).find("\"justify_as_left\": false")!=std::string::npos, "the default is written as off");
-    const std::string oldFile=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
+    const std::string oldFile=R"({"format":"isoduo-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"","text_size":16,"variant":"light","density":"standard"}})";
     auto old=settingsDemo::parseSettings(oldFile); test::check(old && !old->presentation.justifyAsLeft, "a file without the setting loads as off");
     const std::string density="\"density\":\"standard\"";
     auto with=[&](const std::string& value) { auto copy=oldFile; copy.replace(copy.find(density),density.size(),density+",\"justify_as_left\":"+value); return copy; };
@@ -281,9 +296,9 @@ void dialogFailures() {
     test::check(bool(state.invoke("app.load_dialog.ok")) && demo.nav.describe()->focused,"load dialog returns focus to navigation");
 }
 void edgeDocuments() {
-    const std::string base=R"({"format":"lcars-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"NoSuchFont","text_size":16,"variant":"light","density":"standard"}})";
+    const std::string base=R"({"format":"isoduo-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"NoSuchFont","text_size":16,"variant":"light","density":"standard"}})";
     auto good=settingsDemo::parseSettings(base); test::check(good && good->presentation.fontFamily==u"NoSuchFont","uninstalled family retained");
     auto mutate=[&](std::string from,std::string to) { auto value=base; auto at=value.find(from); test::check(at!=std::string::npos,"edge fixture field"); value.replace(at,from.size(),to); return value; };
-    for (const auto& value : {mutate("{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"}","{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"},{\"id\":\"T005\",\"name\":\"B\",\"note\":\"\"}"), mutate("\"next_item_id\":6","\"next_item_id\":5"), mutate("\"presentation\":{","\"ignored\":{"), mutate("\"name\":\"A\"","\"name\":\"  \""), mutate("\"format\":\"lcars-settings-demo\"",std::string("\"extra\":\"\xff\",\"format\":\"lcars-settings-demo\""))})
+    for (const auto& value : {mutate("{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"}","{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"},{\"id\":\"T005\",\"name\":\"B\",\"note\":\"\"}"), mutate("\"next_item_id\":6","\"next_item_id\":5"), mutate("\"presentation\":{","\"ignored\":{"), mutate("\"name\":\"A\"","\"name\":\"  \""), mutate("\"format\":\"isoduo-settings-demo\"",std::string("\"extra\":\"\xff\",\"format\":\"isoduo-settings-demo\""))})
         test::check(!settingsDemo::parseSettings(value),"edge document rejected");
 }

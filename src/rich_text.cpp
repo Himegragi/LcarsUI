@@ -120,7 +120,7 @@ std::vector<StyleSpan> compositionSpans(const std::vector<StyleSpan>& spans, uns
 }
 std::string serializeRichPayload(const RichText& value) {
     const auto text = utf8FromUtf16(value.text);
-    std::string out = "LcarsUI.RichText.1\n" + std::to_string(text.size()) + "\n" + text + "\n" + std::to_string(value.spans.size()) + "\n";
+    std::string out = "Isoduo.RichText.1\n" + std::to_string(text.size()) + "\n" + text + "\n" + std::to_string(value.spans.size()) + "\n";
     for (const auto& span : value.spans) {
         const unsigned flags = (span.bold ? 1u : 0u) | (span.italic ? 2u : 0u) | (span.underline ? 4u : 0u);
         out += std::to_string(span.start) + " " + std::to_string(span.length) + " " + std::to_string(flags) + " " + std::to_string(span.color.size()) + ":" + span.color + "\n";
@@ -149,7 +149,9 @@ struct Reader {
 std::optional<RichText> parseRichPayload(std::string_view payload) {
     try {
         Reader in{payload};
-        if (!in.expect("LcarsUI.RichText.1\n")) return std::nullopt;
+        // Accept the former header only on input; all copies use the canonical header.
+        if (payload.starts_with("LcarsUI.RichText.1\n")) in.rest.remove_prefix(std::string_view("LcarsUI.RichText.1\n").size());
+        else if (!in.expect("Isoduo.RichText.1\n")) return std::nullopt;
         const auto textSize = in.number('\n');
         if (in.failed) return std::nullopt;
         RichText value;
