@@ -91,6 +91,9 @@ try {
             foreach ($id in @('UIA01','UIA02','UIA03','UIA04','UIA05','UIA06','UIA07','UIA08','UIA09','UIA10','UIA11','UIA12','UIA13','UIA14','UIA15','UIA17','UIA18','UIA19')) {
                 if (-not @($rows | Where-Object { $_.case -like "$id*" }).Count) { Record $id 'Case executed and passed' 'No case result' 'BLOCKED' }
             }
+            foreach ($id in @('UIA09 option HelpText empty', 'UIA09 disabled row not focusable', 'UIA23 option focus')) {
+                if (-not @($rows | Where-Object { $_.case -eq $id }).Count) { Record $id 'Case executed and passed' 'No case result' 'BLOCKED' }
+            }
             if ($code -ne 0) { Record 'UIA driver' 'exit 0' "exit $code" 'FAIL' }
         }
     }

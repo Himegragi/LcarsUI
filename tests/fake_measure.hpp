@@ -24,6 +24,6 @@ struct FakeMeasure final : lcars::TextMeasure {
         run.width *= 1.25f;
         return run;
     }
-    int line_height(int pixels) override { return pixels * 3 / 2; }
+    int lineHeight(int pixels) override { return pixels * 3 / 2; }
 };
 }

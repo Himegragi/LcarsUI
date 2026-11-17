@@ -21,9 +21,9 @@ struct Justified {
 // `styles` (rich fields, #81): the line's runs of one style, relative to the line start. The line is also cut
 // at every run boundary (a cut that gets no extra width), so each piece lies inside exactly one run and can be
 // drawn in that run's face; `natural` must already continue across the runs, each measured in its own face.
-std::optional<Justified> justify_line(TextMeasure& measure, std::u16string_view text, int pixels,
+std::optional<Justified> justifyLine(TextMeasure& measure, std::u16string_view text, int pixels,
                                       const TextRun& natural, float width, JustifyMethod method,
-                                      const std::vector<FieldLine::Piece>* styles = nullptr);
+                                      const std::vector<TextFieldLine::Piece>* styles = nullptr);
 // The character classes the automatic method uses. The code point is the first of a cluster.
-bool is_wide_character(char32_t code_point);  // CJK ideographs, kana, hangul, bopomofo, full-width forms and CJK punctuation
+bool isWideCharacter(char32_t codePoint);  // CJK ideographs, kana, hangul, bopomofo, full-width forms and CJK punctuation
 }

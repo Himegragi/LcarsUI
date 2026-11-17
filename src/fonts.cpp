@@ -14,7 +14,7 @@
 namespace lcars {
 using Microsoft::WRL::ComPtr;
 namespace {
-std::u16string name_of(IDWriteLocalizedStrings* names, const wchar_t* locale, bool fallback) {
+std::u16string nameOf(IDWriteLocalizedStrings* names, const wchar_t* locale, bool fallback) {
     UINT32 index=0, length=0; BOOL found=FALSE;
     if (!names || FAILED(names->FindLocaleName(locale,&index,&found)) || (!found && !fallback)) return {};
     if (!found) index=0;
@@ -23,14 +23,14 @@ std::u16string name_of(IDWriteLocalizedStrings* names, const wchar_t* locale, bo
     if (FAILED(names->GetString(index,value.data(),length+1))) return {};
     value.resize(length); return {value.begin(),value.end()};
 }
-detail::FontFile file_of(IDWriteFontFaceReference* face) {
+detail::FontFile fileOf(IDWriteFontFaceReference* face) {
     ComPtr<IDWriteFontFile> file; ComPtr<IDWriteFontFileLoader> loader; ComPtr<IDWriteLocalFontFileLoader> local;
-    const void* key=nullptr; UINT32 key_size=0,length=0;
+    const void* key=nullptr; UINT32 keySize=0,length=0;
     if (face->GetLocality()!=DWRITE_LOCALITY_LOCAL || FAILED(face->GetFontFile(&file)) || FAILED(file->GetLoader(&loader)) ||
-        FAILED(loader.As(&local)) || FAILED(file->GetReferenceKey(&key,&key_size)) ||
-        FAILED(local->GetFilePathLengthFromKey(key,key_size,&length))) return {};
+        FAILED(loader.As(&local)) || FAILED(file->GetReferenceKey(&key,&keySize)) ||
+        FAILED(local->GetFilePathLengthFromKey(key,keySize,&length))) return {};
     std::wstring path(length+1,L'\0');
-    if (FAILED(local->GetFilePathFromKey(key,key_size,path.data(),length+1))) return {};
+    if (FAILED(local->GetFilePathFromKey(key,keySize,path.data(),length+1))) return {};
     path.resize(length);
     detail::FontFile result{path,face->GetFontFaceIndex()};
     ComPtr<IDWriteFontFaceReference1> variable;
@@ -49,7 +49,7 @@ bool usable(const detail::FontFile& file, bool& eligible) {
     LARGE_INTEGER size{}; HANDLE mapping=nullptr; void* data=nullptr; FT_Library lib=nullptr; FT_Face face=nullptr; bool ok=false;
     if(GetFileSizeEx(f,&size) && size.QuadPart>0 && size.QuadPart<=LONG_MAX &&
        (mapping=CreateFileMappingW(f,nullptr,PAGE_READONLY,0,0,nullptr)) && (data=MapViewOfFile(mapping,FILE_MAP_READ,0,0,0)) &&
-       !FT_Init_FreeType(&lib) && !FT_New_Memory_Face(lib,static_cast<const FT_Byte*>(data),static_cast<FT_Long>(size.QuadPart),file.face_index,&face)) {
+       !FT_Init_FreeType(&lib) && !FT_New_Memory_Face(lib,static_cast<const FT_Byte*>(data),static_cast<FT_Long>(size.QuadPart),file.faceIndex,&face)) {
         ok=true; eligible=face->charmap && face->charmap->encoding!=FT_ENCODING_MS_SYMBOL;
         for (unsigned c='0';c<='9' && eligible;++c) eligible=FT_Get_Char_Index(face,c)!=0;
         for (unsigned c='A';c<='Z' && eligible;++c) eligible=FT_Get_Char_Index(face,c)!=0;
@@ -74,7 +74,7 @@ const Snapshot& snapshot() {
     }
     out.available=true;
     std::map<std::u16string,int> scores;
-    std::map<std::u16string,std::array<int,4>> styled_scores;
+    std::map<std::u16string,std::array<int,4>> styledScores;
     std::set<std::u16string> listed;
     for(UINT32 i=0;i<set->GetFontCount();++i) {
         ComPtr<IDWriteFontFaceReference> ref; ComPtr<IDWriteLocalizedStrings> names; BOOL exists=FALSE;
@@ -83,21 +83,21 @@ const Snapshot& snapshot() {
             names.Reset(); exists=FALSE;
             if(FAILED(set->GetPropertyValues(i,DWRITE_FONT_PROPERTY_ID_WIN32_FAMILY_NAME,&exists,&names)) || !exists) continue;
         }
-        auto key=name_of(names.Get(),L"en-us",true); if(key.empty()) continue;
-        auto file=file_of(ref.Get()); if(file.path.empty()) continue;
+        auto key=nameOf(names.Get(),L"en-us",true); if(key.empty()) continue;
+        auto file=fileOf(ref.Get()); if(file.path.empty()) continue;
         out.files.try_emplace(key,file);
         ComPtr<IDWriteFontFace3> dwface;
         if(FAILED(ref->CreateFontFace(&dwface))) continue;
         {  // the family's real Bold / Italic / Bold Italic faces: the nearest upright-normal-stretch weight to 700 or 400
             const int weight=static_cast<int>(dwface->GetWeight());
-            const bool slanted=dwface->GetStyle()!=DWRITE_FONT_STYLE_NORMAL, normal_width=dwface->GetStretch()==DWRITE_FONT_STRETCH_NORMAL;
+            const bool slanted=dwface->GetStyle()!=DWRITE_FONT_STYLE_NORMAL, normalWidth=dwface->GetStretch()==DWRITE_FONT_STRETCH_NORMAL;
             for(unsigned slot=1;slot<4;++slot) {
-                const bool want_bold=slot&1, want_italic=(slot&2)!=0;
-                if(!normal_width || want_bold!=(weight>=600) || want_italic!=slanted) continue;
-                const int slot_score=std::abs(weight-(want_bold?700:400));
-                auto [held_it,fresh]=styled_scores.try_emplace(key); if(fresh) held_it->second.fill(1<<30); auto& held=held_it->second;
-                if(slot_score>=held[slot]) continue;
-                out.styled[key][slot]=file; held[slot]=slot_score;
+                const bool wantBold=slot&1, wantItalic=(slot&2)!=0;
+                if(!normalWidth || wantBold!=(weight>=600) || wantItalic!=slanted) continue;
+                const int slotScore=std::abs(weight-(wantBold?700:400));
+                auto [heldIt,fresh]=styledScores.try_emplace(key); if(fresh) heldIt->second.fill(1<<30); auto& held=heldIt->second;
+                if(slotScore>=held[slot]) continue;
+                out.styled[key][slot]=file; held[slot]=slotScore;
             }
         }
         int score=std::abs(static_cast<int>(dwface->GetWeight())-400) +
@@ -108,10 +108,10 @@ const Snapshot& snapshot() {
         bool eligible=false; if(!usable(file,eligible)) continue;
         out.valid.insert(key);
         if(prior==scores.end() || score<prior->second) { out.files[key]=file; scores[key]=score; }
-        if(eligible && !dwface->IsSymbolFont() && listed.insert(key).second) { auto display=name_of(names.Get(),L"zh-tw",false); out.families.push_back({key,display.empty()?key:display}); }
+        if(eligible && !dwface->IsSymbolFont() && listed.insert(key).second) { auto display=nameOf(names.Get(),L"zh-tw",false); out.families.push_back({key,display.empty()?key:display}); }
     }
     std::sort(out.families.begin(),out.families.end(),[](const auto& a,const auto& b) {
-        return CompareStringEx(LOCALE_NAME_USER_DEFAULT,NORM_IGNORECASE,reinterpret_cast<const wchar_t*>(a.display_name.c_str()),-1,reinterpret_cast<const wchar_t*>(b.display_name.c_str()),-1,nullptr,nullptr,0)==CSTR_LESS_THAN;
+        return CompareStringEx(LOCALE_NAME_USER_DEFAULT,NORM_IGNORECASE,reinterpret_cast<const wchar_t*>(a.displayName.c_str()),-1,reinterpret_cast<const wchar_t*>(b.displayName.c_str()),-1,nullptr,nullptr,0)==CSTR_LESS_THAN;
     });
     return out;
  }(); return value;
@@ -122,23 +122,23 @@ bool FontCatalog::contains(std::u16string_view key) const noexcept {
 }
 FontResolution FontCatalog::resolve(const PresentationSettings& settings) const {
     FontResolution result;
-    result.requested=settings.font_family;
-    result.requested_available=settings.font_family.empty() || contains(settings.font_family);
+    result.requested=settings.fontFamily;
+    result.requestedAvailable=settings.fontFamily.empty() || contains(settings.fontFamily);
     const auto& valid=snapshot().valid;
     auto append=[&](std::u16string_view name) {
         if(valid.count(std::u16string(name)) && std::find(result.fallback.begin(),result.fallback.end(),name)==result.fallback.end())
             result.fallback.emplace_back(name);
     };
-    if(result.requested_available && !settings.font_family.empty()) append(settings.font_family);
+    if(result.requestedAvailable && !settings.fontFamily.empty()) append(settings.fontFamily);
     for(auto name:{u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"}) append(name);
     if(!result.fallback.empty()) { result.primary=result.fallback.front(); result.fallback.erase(result.fallback.begin()); }
     return result;
 }
 namespace detail {
-long system_font_catalog_error() { return snapshot().error; }
-FontFile system_styled_font_file(std::u16string_view family, bool bold, bool italic) {
+long systemFontCatalogError() { return snapshot().error; }
+FontFile systemStyledFontFile(std::u16string_view family, bool bold, bool italic) {
  const unsigned slot=(bold?1u:0u)|(italic?2u:0u);
- if(slot==0) return system_font_file(family);
+ if(slot==0) return systemFontFile(family);
  const auto& state=snapshot();
  if(state.available) {
     auto it=state.styled.find(std::u16string(family));
@@ -153,7 +153,7 @@ FontFile system_styled_font_file(std::u16string_view family, bool bold, bool ita
  std::error_code error;
  return std::filesystem::exists(path,error)?FontFile{path,0}:FontFile{};
 }
-FontFile system_font_file(std::u16string_view family) {
+FontFile systemFontFile(std::u16string_view family) {
  const auto& state=snapshot(); auto it=state.files.find(std::u16string(family));
  if(it!=state.files.end()) return it->second;
  if(state.available) return {};
@@ -168,7 +168,7 @@ FontFile system_font_file(std::u16string_view family) {
  return std::filesystem::exists(path,error)?FontFile{path,0}:FontFile{};
 }
 }
-const FontCatalog& system_font_catalog() {
+const FontCatalog& systemFontCatalog() {
  static const FontCatalog catalog=[] { FontCatalog result; result.families_=snapshot().families; return result; }(); return catalog;
 }
 }

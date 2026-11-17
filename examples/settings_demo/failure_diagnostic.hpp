@@ -3,11 +3,11 @@
 #include "lcars/diagnostics.hpp"
 #include <string>
 #include <string_view>
-namespace settings_demo {
+namespace settingsDemo {
 // Turns the renderer failure the demo is told about into the diagnostic record it keeps
 // (TD01): the in-memory Diagnostics module stores it as the first failure, and a
 // --diagnostics-out run saves it with the recent events.
-inline std::string failure_utf8(std::u16string_view text) {
+inline std::string failureUtf8(std::u16string_view text) {
     std::string out;
     for (std::size_t i = 0; i < text.size(); ++i) {
         char32_t c = text[i];
@@ -21,19 +21,19 @@ inline std::string failure_utf8(std::u16string_view text) {
     }
     return out;
 }
-inline lcars::RenderDiagnostic failure_diagnostic(const lcars::RendererFailure& failure) {
+inline lcars::RenderDiagnostic failureDiagnostic(const lcars::RendererFailure& failure) {
     lcars::RenderDiagnostic d;
     d.backend = u"OpenGL";
     d.severity = lcars::DiagnosticSeverity::error;
-    d.kind = failure.kind == lcars::RendererFailureKind::device_reset ? lcars::DiagnosticKind::device_reset : lcars::DiagnosticKind::other;
+    d.kind = failure.kind == lcars::RendererFailureKind::deviceReset ? lcars::DiagnosticKind::deviceReset : lcars::DiagnosticKind::other;
     switch (failure.kind) {
-    case lcars::RendererFailureKind::frame_error: d.code = "renderer_failed.frame_error"; break;
-    case lcars::RendererFailureKind::device_reset: d.code = "renderer_failed.device_reset"; break;
-    case lcars::RendererFailureKind::present_failed: d.code = "renderer_failed.present_failed"; break;
-    case lcars::RendererFailureKind::resource_failed: d.code = "renderer_failed.resource_failed"; break;
+    case lcars::RendererFailureKind::frameError: d.code = "renderer_failed.frame_error"; break;
+    case lcars::RendererFailureKind::deviceReset: d.code = "renderer_failed.device_reset"; break;
+    case lcars::RendererFailureKind::presentFailed: d.code = "renderer_failed.present_failed"; break;
+    case lcars::RendererFailureKind::resourceFailed: d.code = "renderer_failed.resource_failed"; break;
     }
-    d.native_code = failure.native_code;
-    d.native_message = failure_utf8(failure.message);
+    d.nativeCode = failure.nativeCode;
+    d.nativeMessage = failureUtf8(failure.message);
     return d;
 }
 }

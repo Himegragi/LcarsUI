@@ -7,10 +7,10 @@
 
 class GlobalToggleHandler final : public UiaEventHandler<GlobalToggleHandler, IUIAutomationPropertyChangedEventHandler> {
 public:
-    std::atomic<DWORD> expected_pid{0};
+    std::atomic<DWORD> expectedPid{0};
     HRESULT STDMETHODCALLTYPE HandlePropertyChangedEvent(IUIAutomationElement* sender, PROPERTYID property, VARIANT value) override {
         if (property != UIA_ToggleToggleStatePropertyId || value.vt != VT_I4 || value.lVal != ToggleState_Off) return S_OK;
-        const DWORD expected = expected_pid.load();
+        const DWORD expected = expectedPid.load();
         int pid = 0; if (expected && SUCCEEDED(sender->get_CurrentProcessId(&pid)) && static_cast<DWORD>(pid) == expected) SetEvent(received);
         return S_OK;
     }
@@ -26,8 +26,8 @@ int wmain(int argc, wchar_t** argv) {
     if (subscribed) {
         std::wstring command = L"\"" + std::wstring(argv[1]) + L"\" " + argv[2];
         if (CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) {
-            CloseHandle(process.hThread); search.pid = process.dwProcessId; handler->expected_pid = search.pid;
-            for (int i = 0; i < 100 && !search.window; ++i) { EnumWindows(find_window, reinterpret_cast<LPARAM>(&search)); Sleep(100); }
+            CloseHandle(process.hThread); search.pid = process.dwProcessId; handler->expectedPid = search.pid;
+            for (int i = 0; i < 100 && !search.window; ++i) { EnumWindows(findWindow, reinterpret_cast<LPARAM>(&search)); Sleep(100); }
         }
     }
     DWORD_PTR requests = 0;

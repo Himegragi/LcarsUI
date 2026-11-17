@@ -5,7 +5,7 @@
 
 namespace lcars::detail {
 namespace {
-unsigned rounded_coverage(Rect rect, int radius, int x, int y) {
+unsigned roundedCoverage(Rect rect, int radius, int x, int y) {
     radius = std::max(0, std::min({radius, rect.w / 2, rect.h / 2}));
     if (!radius) return 255;
     float dx = std::max(0.f, float(radius) - std::min(x - rect.x + 0.5f, rect.x + rect.w - x - 0.5f));
@@ -19,48 +19,48 @@ RecordingCanvas::RecordingCanvas(int w, int h, Color color)
     list.clear({color.r, color.g, color.b, 255});
 }
 void RecordingCanvas::fill(Rect rect, Color color) {
-    list.set_clip(clip);
-    list.fill_rect(rect, {color.r, color.g, color.b, 255});
-    list.commands.back().role = current_role;
+    list.setClip(clip);
+    list.fillRect(rect, {color.r, color.g, color.b, 255});
+    list.commands.back().role = currentRole;
 
 }
 void RecordingCanvas::rounded(Rect rect, int radius, Color color) {
-    list.set_clip(clip);
-    list.rounded_rect(rect, radius, {color.r, color.g, color.b, 255});
-    list.commands.back().role = current_role;
+    list.setClip(clip);
+    list.roundedRect(rect, radius, {color.r, color.g, color.b, 255});
+    list.commands.back().role = currentRole;
 
 }
 void RecordingCanvas::overlay(Rect rect, int radius, Color color, unsigned char alpha) {
-    list.set_clip(clip);
-    if (radius > 0) list.rounded_rect(rect, radius, {color.r, color.g, color.b, alpha});
-    else list.fill_rect(rect, {color.r, color.g, color.b, alpha});
-    list.commands.back().role = current_role;
+    list.setClip(clip);
+    if (radius > 0) list.roundedRect(rect, radius, {color.r, color.g, color.b, alpha});
+    else list.fillRect(rect, {color.r, color.g, color.b, alpha});
+    list.commands.back().role = currentRole;
 }
 void RecordingCanvas::glyph(Rect rect, Color color, std::shared_ptr<const AtlasPage> page, Rect region) {
-    list.set_clip(clip);
+    list.setClip(clip);
     DrawCommand command{DrawCommand::Type::glyph, rect, {color.r, color.g, color.b, 255}, 0,
-                        {page.get(), region}, current_role, {}, false, false, {}, {}};
-    command.page_owner = std::move(page);
+                        {page.get(), region}, currentRole, {}, false, false, {}, {}};
+    command.pageOwner = std::move(page);
     list.commands.push_back(std::move(command));
 }
-void RecordingCanvas::glyph_deferred(Color color, std::function<ResolvedGlyph()> resolve) {
-    list.set_clip(clip);
-    DrawCommand command{DrawCommand::Type::glyph, {}, {color.r,color.g,color.b,255}, 0, {}, current_role, {}, false, false, {}, {}};
+void RecordingCanvas::glyphDeferred(Color color, std::function<ResolvedGlyph()> resolve) {
+    list.setClip(clip);
+    DrawCommand command{DrawCommand::Type::glyph, {}, {color.r,color.g,color.b,255}, 0, {}, currentRole, {}, false, false, {}, {}};
     command.resolve = std::move(resolve);
     list.commands.push_back(std::move(command));
 }
 void RecordingCanvas::blend(int x, int y, Color color, unsigned alpha) {
-    list.set_clip(clip);
-    list.fill_rect({x, y, 1, 1}, {color.r, color.g, color.b, static_cast<unsigned char>(alpha)});
+    list.setClip(clip);
+    list.fillRect({x, y, 1, 1}, {color.r, color.g, color.b, static_cast<unsigned char>(alpha)});
 }
-void RecordingCanvas::begin_group(std::string owner, bool popup, bool tooltip) {
-    DrawCommand command{DrawCommand::Type::begin_group, {}, {}, 0, {}, PaintRole::content, std::move(owner), popup, tooltip, {}, {}};
+void RecordingCanvas::beginGroup(std::string owner, bool popup, bool tooltip) {
+    DrawCommand command{DrawCommand::Type::beginGroup, {}, {}, 0, {}, PaintRole::content, std::move(owner), popup, tooltip, {}, {}};
     list.commands.push_back(std::move(command));
 }
-void RecordingCanvas::end_group() {
-    list.commands.push_back({DrawCommand::Type::end_group, {}, {}, 0, {}, PaintRole::content, {}, false, false, {}, {}});
+void RecordingCanvas::endGroup() {
+    list.commands.push_back({DrawCommand::Type::endGroup, {}, {}, 0, {}, PaintRole::content, {}, false, false, {}, {}});
 }
-bool command_ink(const DrawList& list, std::size_t begin, std::size_t end, Rect clip, int width, int height) {
+bool commandInk(const DrawList& list, std::size_t begin, std::size_t end, Rect clip, int width, int height) {
     clip = intersect(clip, {0, 0, width, height});
     for (std::size_t i = begin; i < end; ++i) {
         const auto& command = list.commands[i];
@@ -72,39 +72,39 @@ bool command_ink(const DrawList& list, std::size_t begin, std::size_t end, Rect 
         auto bounds = intersect(resolved.rect, clip);
         for (int y = bounds.y; y < bounds.y + bounds.h; ++y) for (int x = bounds.x; x < bounds.x + bounds.w; ++x) {
             if (command.type == DrawCommand::Type::fill) return true;
-            if (command.type == DrawCommand::Type::rounded && rounded_coverage(command.rect, command.radius, x, y)) return true;
+            if (command.type == DrawCommand::Type::rounded && roundedCoverage(command.rect, command.radius, x, y)) return true;
             if (command.type == DrawCommand::Type::glyph && resolved.region.page->pixels[static_cast<std::size_t>(resolved.region.rect.y + y - resolved.rect.y) * resolved.region.page->width + resolved.region.rect.x + x - resolved.rect.x]) return true;
         }
     }
     return false;
 }
 
-ImageComparison compare_images(const Image& expected, const Image& actual, const std::vector<Rect>& regions) {
+ImageComparison compareImages(const Image& expected, const Image& actual, const std::vector<Rect>& regions) {
     ImageComparison result;
     if (expected.width != actual.width || expected.height != actual.height || expected.pixels.size() != actual.pixels.size()) {
-        result.regions_ok = false; result.different_pixels = expected.pixels.size(); return result;
+        result.regionsOk = false; result.differentPixels = expected.pixels.size(); return result;
     }
     std::vector<bool> different(static_cast<std::size_t>(expected.width) * expected.height);
     for (std::size_t pixel = 0; pixel < different.size(); ++pixel) {
         for (int c = 0; c < 4; ++c) {
             int delta = std::abs(int(expected.pixels[pixel*4+c]) - int(actual.pixels[pixel*4+c]));
-            result.maximum_difference = std::max(result.maximum_difference, delta);
+            result.maximumDifference = std::max(result.maximumDifference, delta);
             different[pixel] = different[pixel] || delta > 8;
         }
-        result.different_pixels += different[pixel];
+        result.differentPixels += different[pixel];
     }
     for (auto region : regions) {
         bool passed = true;
         region = intersect({region.x-1, region.y-1, region.w+2, region.h+2}, {0,0,expected.width,expected.height});
         for (int y=region.y; y<region.y+region.h; ++y) for(int x=region.x; x<region.x+region.w; ++x)
             if (different[static_cast<std::size_t>(y)*expected.width+x]) passed=false;
-        result.region_pass.push_back(passed);
-        result.regions_ok = result.regions_ok && passed;
+        result.regionPass.push_back(passed);
+        result.regionsOk = result.regionsOk && passed;
     }
     return result;
 }
 
-Image render_cpu(const DrawList& list, int width, int height) {
+Image renderCpu(const DrawList& list, int width, int height) {
     Image image{width, height, std::vector<unsigned char>(static_cast<std::size_t>(width) * height * 4)};
     // Preflight once; if accumulated entries filled the atlas, retry from a clean
     // generation. If this frame itself is too large, execute it incrementally.
@@ -130,7 +130,7 @@ Image render_cpu(const DrawList& list, int width, int height) {
         for (int y = bounds.y; y < bounds.y + bounds.h; ++y) {
             for (int x = bounds.x; x < bounds.x + bounds.w; ++x) {
                 unsigned coverage = 255;
-                if (command.type == DrawCommand::Type::rounded) coverage = rounded_coverage(rect, command.radius, x, y);
+                if (command.type == DrawCommand::Type::rounded) coverage = roundedCoverage(rect, command.radius, x, y);
                 if (command.type == DrawCommand::Type::glyph)
                     coverage = resolved.region.page->pixels[static_cast<std::size_t>(resolved.region.rect.y + y - rect.y) * resolved.region.page->width + resolved.region.rect.x + x - rect.x];
                 unsigned alpha = coverage * command.color.a / 255;

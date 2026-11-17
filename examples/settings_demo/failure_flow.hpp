@@ -2,18 +2,18 @@
 #include <functional>
 #include <string>
 #include <string_view>
-namespace settings_demo {
+namespace settingsDemo {
 enum class SaveChoice { save, discard, cancel };
 struct NativePrompt {
     virtual ~NativePrompt() = default;
     virtual bool retry(std::u16string_view reason) = 0;
-    virtual SaveChoice save(bool blank_name) = 0;
+    virtual SaveChoice save(bool blankName) = 0;
     virtual void error(std::u16string_view message) = 0;
 };
-inline bool failure_close(NativePrompt& prompt, bool dirty, bool blank_name,
+inline bool failureClose(NativePrompt& prompt, bool dirty, bool blankName,
                           const std::function<std::u16string()>& save) {
     if (!dirty) return true;
-    switch (prompt.save(blank_name)) {
+    switch (prompt.save(blankName)) {
     case SaveChoice::discard: return true;
     case SaveChoice::cancel: return false;
     case SaveChoice::save: {
@@ -24,13 +24,13 @@ inline bool failure_close(NativePrompt& prompt, bool dirty, bool blank_name,
     }
     return false;
 }
-inline void failure_flow(NativePrompt& prompt, std::u16string_view reason,
+inline void failureFlow(NativePrompt& prompt, std::u16string_view reason,
                          const std::function<bool()>& dirty, const std::function<bool()>& rebuild,
                          const std::function<std::u16string()>& save, const std::function<void()>& close,
-                         const std::function<bool()>& blank_name = [] { return false; }) {
+                         const std::function<bool()>& blankName = [] { return false; }) {
     for (;;) {
         if (prompt.retry(reason)) { if (rebuild()) return; }
-        else if (failure_close(prompt, dirty(), blank_name(), save)) { close(); return; }
+        else if (failureClose(prompt, dirty(), blankName(), save)) { close(); return; }
     }
 }
 }

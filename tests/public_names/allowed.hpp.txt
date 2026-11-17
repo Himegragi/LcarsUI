@@ -1,0 +1,26 @@
+#pragma once
+#include <string_view>
+#define lowercase_macro(x) \
+    void macro_generated_name(x);
+#define UPPER_MACRO(x) void other_generated_name(x);
+// void comment_name();
+/* struct comment_type { int bad_name; }; */
+namespace lcars {
+using Counter = std::vector<std::pair<int, int>>::size_type;
+class Derived : public std::vector<int> {
+    int inherited_;
+};
+class Fixture {
+public:
+    int id() const { return componentId_; }
+    char16_t character = u'x';
+    std::string_view name() const { return "string_name"; }
+    const char* text = R"tag(raw_name " quoted_name)tag";
+    const char* escaped = "escaped_\"string_name";
+    void use() { value.value_or(0); std::chrono::steady_clock::now(); }
+    lowercase_macro(int)
+    UPPER_MACRO(int)
+private:
+    int componentId_;
+};
+}

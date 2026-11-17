@@ -1,5 +1,5 @@
 // Component types are told apart only by what the registry says about them (#93). This suite pins what a built-in
-// type does today (key policy, semantic roles, verbs and operations, debug names) through public seams, and runs a
+// type does today (key policy, semantic roles, verbs, debug names) through public seams, and runs a
 // registered test-only type through the same dispatch points. `--print` writes the observed tables instead of checking them.
 #include "lcars/core.hpp"
 #include "lcars/semantics.hpp"
@@ -19,20 +19,20 @@ using test::check;
 namespace {
 bool printing = false;
 
-Source<std::u16string> text_source(std::shared_ptr<std::u16string> value) {
+Source<std::u16string> textSource(std::shared_ptr<std::u16string> value) {
     return {[value] { return *value; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
-Source<bool> bool_source() {
+Source<bool> boolSource() {
     return {[] { return false; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
-Source<int> numeric_source() {
+Source<int> numericSource() {
     return {[] { return 20; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
-Source<std::optional<OptionValue>> option_source() {
+Source<std::optional<OptionValue>> optionSource() {
     return {[] { return std::optional<OptionValue>{OptionValue{"a"}}; }, [](std::function<void()>) { return std::function<void()>([] {}); }};
 }
-std::vector<OptionItem> two_options() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }
-std::vector<TabPage> two_pages() { return {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Beta", true, {}}}; }
+std::vector<OptionItem> twoOptions() { return {{{"a"}, u"Alpha", true}, {{"b"}, u"Beta", true}}; }
+std::vector<TabPage> twoPages() { return {{{"a"}, u"Alpha", true, {}}, {{"b"}, u"Beta", true, {}}}; }
 
 // One component of every built-in type, wired as far as its type allows (a source and an immediate write).
 struct Everything {
@@ -41,94 +41,86 @@ struct Everything {
     std::vector<std::pair<const char*, ComponentHandle>> components;
     explicit Everything(bool confirmed) {
         auto accepted = [](const auto&) { return Result{}; };
-        auto text_field = ui.add_text({.id = "text", .label = u"Text"}).value.value();
-        text_field.connect_source(text_source(text));
-        if (confirmed) text_field.connect_confirmed(accepted); else text_field.connect_immediate(accepted);
-        components.push_back({"text", text_field});
-        auto button = ui.add_button({.id = "button", .label = u"Button"}).value.value();
+        auto textField = ui.addTextField({.id = "text", .label = u"Text"}).value.value();
+        textField.connectSource(textSource(text));
+        if (confirmed) textField.connectConfirmed(accepted); else textField.connectImmediate(accepted);
+        components.push_back({"text", textField});
+        auto button = ui.addButton({.id = "button", .label = u"Button"}).value.value();
         button.bind([] { return Result{}; });
         components.push_back({"button", button});
-        components.push_back({"label", ui.add_label({.id = "label", .value = u"Label"}).value.value()});
-        auto checkbox = ui.add_checkbox({.id = "checkbox", .label = u"Check"}).value.value();
-        checkbox.connect_source(bool_source());
-        if (confirmed) checkbox.connect_confirmed(accepted); else checkbox.connect_immediate(accepted);
+        components.push_back({"label", ui.addLabel({.id = "label", .value = u"Label"}).value.value()});
+        auto checkbox = ui.addCheckbox({.id = "checkbox", .label = u"Check"}).value.value();
+        checkbox.connectSource(boolSource());
+        if (confirmed) checkbox.connectConfirmed(accepted); else checkbox.connectImmediate(accepted);
         components.push_back({"checkbox", checkbox});
-        auto radio = ui.add_radio_group({.id = "radio", .label = u"Radio"}, two_options()).value.value();
-        radio.connect_source(option_source());
-        if (confirmed) radio.connect_confirmed(accepted); else radio.connect_immediate(accepted);
+        auto radio = ui.addRadioGroup({.id = "radio", .label = u"Radio"}, twoOptions()).value.value();
+        radio.connectSource(optionSource());
+        if (confirmed) radio.connectConfirmed(accepted); else radio.connectImmediate(accepted);
         components.push_back({"radio", radio});
-        auto slider = ui.add_slider({.id = "slider", .label = u"Slider"}, {0, 100, 10}).value.value();
-        slider.connect_source(numeric_source());
-        if (confirmed) slider.connect_confirmed(accepted); else slider.connect_immediate(accepted);
+        auto slider = ui.addSlider({.id = "slider", .label = u"Slider"}, {0, 100, 10}).value.value();
+        slider.connectSource(numericSource());
+        if (confirmed) slider.connectConfirmed(accepted); else slider.connectImmediate(accepted);
         components.push_back({"slider", slider});
-        auto dropdown = ui.add_dropdown({.id = "dropdown", .label = u"Drop"}, two_options()).value.value();
-        dropdown.connect_source(option_source());
-        if (confirmed) dropdown.connect_confirmed(accepted); else dropdown.connect_immediate(accepted);
+        auto dropdown = ui.addDropdown({.id = "dropdown", .label = u"Drop"}, twoOptions()).value.value();
+        dropdown.connectSource(optionSource());
+        if (confirmed) dropdown.connectConfirmed(accepted); else dropdown.connectImmediate(accepted);
         components.push_back({"dropdown", dropdown});
-        auto list = ui.add_list({.id = "list", .label = u"List"}, two_options()).value.value();
-        list.connect_source(option_source());
-        list.connect_immediate([](const Change<ListHandle>&) { return Result{}; });
+        auto list = ui.addList({.id = "list", .label = u"List"}, twoOptions()).value.value();
+        list.connectSource(optionSource());
+        list.connectImmediate([](const Change<ListHandle>&) { return Result{}; });
         components.push_back({"list", list});
-        components.push_back({"tabs", ui.add_tabs({.id = "tabs", .label = u"Tabs"}, two_pages()).value.value()});
-        auto progress = ui.add_progress({.id = "progress", .label = u"Progress"}).value.value();
-        progress.connect_source(numeric_source());
+        components.push_back({"tabs", ui.addTabs({.id = "tabs", .label = u"Tabs"}, twoPages()).value.value()});
+        auto progress = ui.addProgress({.id = "progress", .label = u"Progress"}).value.value();
+        progress.connectSource(numericSource());
         components.push_back({"progress", progress});
-        components.push_back({"navigation_list", ui.add_navigation_list({.id = "navigation_list", .label = u"Nav"}, two_pages(), {"a"}).value.value()});
+        components.push_back({"navigation_list", ui.addNavigationList({.id = "navigation_list", .label = u"Nav"}, twoPages(), {"a"}).value.value()});
     }
 };
 
 // Each enumerator is named explicitly, so inserting a value into an enumeration cannot silently mislabel the tables.
 template <class E> struct Named { E value; const char* name; };
-template <class E, std::size_t N> std::string name_in(const Named<E> (&names)[N], E value) {
+template <class E, std::size_t N> std::string nameIn(const Named<E> (&names)[N], E value) {
     for (const auto& entry : names) if (entry.value == value) return entry.name;
     throw std::runtime_error("an enumerator has no name in the registry tables");
 }
-std::string name_of(Role role) {
+std::string nameOf(Role role) {
     static const Named<Role> names[] = {
-        {Role::text, "text"}, {Role::button, "button"}, {Role::label, "label"}, {Role::checkbox, "checkbox"}, {Role::radio_group, "radio_group"},
-        {Role::radio_option, "radio_option"}, {Role::slider, "slider"}, {Role::dropdown, "dropdown"}, {Role::dropdown_option, "dropdown_option"},
-        {Role::list, "list"}, {Role::list_item, "list_item"}, {Role::tabs, "tabs"}, {Role::tab_item, "tab_item"}, {Role::progress, "progress"},
-        {Role::dialog, "dialog"}, {Role::tooltip, "tooltip"}, {Role::menu, "menu"}, {Role::menu_item, "menu_item"}, {Role::menu_separator, "menu_separator"}};
-    return name_in(names, role);
+        {Role::textField, "text"}, {Role::button, "button"}, {Role::label, "label"}, {Role::checkbox, "checkbox"}, {Role::radioGroup, "radio_group"},
+        {Role::radioOption, "radio_option"}, {Role::slider, "slider"}, {Role::dropdown, "dropdown"}, {Role::dropdownOption, "dropdown_option"},
+        {Role::list, "list"}, {Role::listItem, "list_item"}, {Role::tabs, "tabs"}, {Role::tabItem, "tab_item"}, {Role::progress, "progress"},
+        {Role::dialog, "dialog"}, {Role::tooltip, "tooltip"}, {Role::menu, "menu"}, {Role::menuItem, "menu_item"}, {Role::menuSeparator, "menu_separator"}};
+    return nameIn(names, role);
 }
-std::string name_of(Verb verb) {
+std::string nameOf(Verb verb) {
     static const Named<Verb> names[] = {
-        {Verb::invoke, "invoke"}, {Verb::toggle, "toggle"}, {Verb::set_value, "set_value"}, {Verb::select, "select"}, {Verb::open, "open"},
+        {Verb::invoke, "invoke"}, {Verb::toggle, "toggle"}, {Verb::setValue, "set_value"}, {Verb::select, "select"}, {Verb::open, "open"},
         {Verb::cancel, "cancel"}, {Verb::focus, "focus"}, {Verb::undo, "undo"}, {Verb::redo, "redo"}, {Verb::copy, "copy"}, {Verb::cut, "cut"},
-        {Verb::paste, "paste"}, {Verb::confirm, "confirm"}, {Verb::scroll, "scroll"}, {Verb::set_text_align, "set_text_align"},
-        {Verb::set_line_spacing, "set_line_spacing"}, {Verb::set_paragraph_spacing, "set_paragraph_spacing"}, {Verb::context_menu, "context_menu"},
-        {Verb::set_writing_mode, "set_writing_mode"}, {Verb::set_vertical_digits, "set_vertical_digits"}, {Verb::hover, "hover"},
-        {Verb::set_style, "set_style"}, {Verb::set_typing_style, "set_typing_style"}, {Verb::set_word_segmentation, "set_word_segmentation"},
-        {Verb::select_word, "select_word"}, {Verb::select_paragraph, "select_paragraph"}, {Verb::double_click, "double_click"},
-        {Verb::triple_click, "triple_click"}, {Verb::set_justify_method, "set_justify_method"}};
-    return name_in(names, verb);
+        {Verb::paste, "paste"}, {Verb::confirm, "confirm"}, {Verb::scroll, "scroll"}, {Verb::setTextAlign, "set_text_align"},
+        {Verb::setLineSpacing, "set_line_spacing"}, {Verb::setParagraphSpacing, "set_paragraph_spacing"}, {Verb::contextMenu, "context_menu"},
+        {Verb::setWritingMode, "set_writing_mode"}, {Verb::setVerticalDigits, "set_vertical_digits"}, {Verb::hover, "hover"},
+        {Verb::setStyle, "set_style"}, {Verb::setTypingStyle, "set_typing_style"}, {Verb::setWordSegmentation, "set_word_segmentation"},
+        {Verb::selectWord, "select_word"}, {Verb::selectParagraph, "select_paragraph"}, {Verb::doubleClick, "double_click"},
+        {Verb::tripleClick, "triple_click"}, {Verb::setJustifyMethod, "set_justify_method"}};
+    return nameIn(names, verb);
 }
-std::string name_of(Operation op) {
-    static const Named<Operation> names[] = {
-        {Operation::focus, "focus"}, {Operation::activate, "activate"}, {Operation::select, "select"}, {Operation::copy, "copy"},
-        {Operation::edit, "edit"}, {Operation::cut, "cut"}, {Operation::paste, "paste"}, {Operation::undo, "undo"}, {Operation::redo, "redo"},
-        {Operation::scroll, "scroll"}, {Operation::style, "style"}};
-    return name_in(names, op);
-}
-std::string describe_node(const NodeSnapshot& node, const ComponentSnapshot* semantics) {
+std::string describeNode(const NodeSnapshot& node) {
     std::ostringstream out;
-    out << name_of(node.role) << (node.selection_required ? " selection_required" : "") << " verbs=";
-    for (auto verb : node.verbs) out << name_of(verb) << ',';
-    if (semantics) { out << " ops="; for (auto op : semantics->operations) out << name_of(op) << ','; }
+    out << nameOf(node.role) << (node.selectionRequired ? " selection_required" : "") << " verbs=";
+    for (auto verb : node.verbs) out << nameOf(verb) << ',';
     return out.str();
 }
 
-// The semantic layer of every built-in type: role, verbs and operations, for the container and its first item.
-std::vector<std::string> semantic_table(bool confirmed) {
+// The semantic layer of every built-in type: role, verbs, for the container and its first item.
+std::vector<std::string> semanticTable(bool confirmed) {
     Everything all(confirmed);
     std::vector<std::string> lines;
     for (const auto& [name, handle] : all.components) {
         auto node = all.ui.semantics().get({name});
         auto semantics = detail::access(all.ui).describe(name);
-        lines.push_back(std::string(name) + ": " + (node ? describe_node(*node, semantics ? &*semantics : nullptr) : "none"));
+        lines.push_back(std::string(name) + ": " + (node ? describeNode(*node) : "none"));
         if (semantics && !semantics->items.empty()) {
             auto item = all.ui.semantics().get({name, semantics->items[0].value});
-            lines.push_back(std::string(name) + "[0]: " + (item ? describe_node(*item, nullptr) : "none"));
+            lines.push_back(std::string(name) + "[0]: " + (item ? describeNode(*item) : "none"));
         }
     }
     return lines;
@@ -136,11 +128,11 @@ std::vector<std::string> semantic_table(bool confirmed) {
 
 // Which keys a focused component takes for itself: a scoped shortcut on the key fires only when the component declines it,
 // so the keys listed are the ones that did not fire it. Labels and progress bars cannot hold focus, so they take every key here.
-std::vector<std::string> key_table() {
+std::vector<std::string> keyTable() {
     struct Press { const char* name; KeyPress key; };
     const Press presses[] = {{"enter", {.key = Key::enter}}, {"space", {.key = Key::space}}, {"left", {.key = Key::left}}, {"right", {.key = Key::right}},
         {"up", {.key = Key::up}}, {"down", {.key = Key::down}}, {"home", {.key = Key::home}}, {"end", {.key = Key::end}},
-        {"page_down", {.key = Key::page_down}}, {"backspace", {.key = Key::backspace}}, {"ctrl+a", {.ctrl = true, .letter = u'A'}},
+        {"page_down", {.key = Key::pageDown}}, {"backspace", {.key = Key::backspace}}, {"ctrl+a", {.ctrl = true, .letter = u'A'}},
         {"ctrl+left", {.key = Key::left, .ctrl = true}}};
     std::vector<std::string> lines;
     Everything names(false);
@@ -153,14 +145,14 @@ std::vector<std::string> key_table() {
             Everything all(false);
             ComponentHandle subject;
             for (const auto& [candidate, handle] : all.components) if (name == candidate) subject = handle;
-            auto sink = all.ui.add_button({.id = "sink", .label = u"Sink"}).value.value();
+            auto sink = all.ui.addButton({.id = "sink", .label = u"Sink"}).value.value();
             int fired = 0;
             sink.bind([&] { ++fired; return Result{}; });
             Shortcut chord{.key = press.key.key, .letter = press.key.letter, .ctrl = press.key.ctrl};
-            if (!all.ui.add_shortcut(chord, sink, subject)) throw std::runtime_error("shortcut was not registered");
+            if (!all.ui.addShortcut(chord, sink, subject)) throw std::runtime_error("shortcut was not registered");
             detail::access(all.ui).focus(name);
             if (popup) std::get<DropdownHandle>(subject).open();
-            detail::access(all.ui).key_down(press.key);
+            detail::access(all.ui).keyDown(press.key);
             if (!fired) line += std::string(" ") + press.name;
         }
         lines.push_back(line);
@@ -168,7 +160,7 @@ std::vector<std::string> key_table() {
     return lines;
 }
 
-const std::vector<std::string> golden_keys = {
+const std::vector<std::string> goldenKeys = {
     "text: left right home end backspace ctrl+a ctrl+left",
     "button: enter space",
     "label: enter space left right up down home end page_down backspace ctrl+a ctrl+left",
@@ -181,31 +173,31 @@ const std::vector<std::string> golden_keys = {
     "progress: enter space left right up down home end page_down backspace ctrl+a ctrl+left",
     "navigation_list: up down home end",
     "dropdown(open): enter space left right up down home end ctrl+left"};
-const std::vector<std::string> golden_semantics = {
-    "text: text verbs=context_menu,focus,set_value,select,copy,cut,paste,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing,set_word_segmentation,select_word,select_paragraph,double_click,triple_click, ops=focus,select,copy,edit,cut,paste,",
-    "button: button verbs=focus,invoke, ops=focus,activate,",
-    "label: label verbs=set_writing_mode,set_vertical_digits,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing, ops=",
-    "checkbox: checkbox verbs=focus,toggle, ops=focus,activate,",
-    "radio: radio_group verbs=focus, ops=focus,select,",
+const std::vector<std::string> goldenSemantics = {
+    "text: text verbs=context_menu,focus,set_value,select,copy,cut,paste,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing,set_word_segmentation,select_word,select_paragraph,double_click,triple_click,",
+    "button: button verbs=focus,invoke,",
+    "label: label verbs=set_writing_mode,set_vertical_digits,set_text_align,set_justify_method,set_line_spacing,set_paragraph_spacing,",
+    "checkbox: checkbox verbs=focus,toggle,",
+    "radio: radio_group verbs=focus,",
     "radio[0]: radio_option verbs=select,",
-    "slider: slider verbs=focus,set_value, ops=focus,edit,",
-    "dropdown: dropdown verbs=focus,open,cancel, ops=focus,select,",
+    "slider: slider verbs=focus,set_value,",
+    "dropdown: dropdown verbs=focus,open,cancel,",
     "dropdown[0]: dropdown_option verbs=select,",
-    "list: list verbs=focus, ops=focus,select,",
+    "list: list verbs=focus,",
     "list[0]: list_item verbs=select,focus,",
-    "tabs: tabs selection_required verbs=focus, ops=focus,activate,",
-    "tabs[0]: tab_item selection_required verbs=select,",
-    "progress: progress verbs= ops=",
-    "navigation_list: list selection_required verbs=focus, ops=focus,",
-    "navigation_list[0]: list_item selection_required verbs=select,"};
+    "tabs: tabs selection_required verbs=focus,",
+    "tabs[0]: tab_item verbs=select,focus,",
+    "progress: progress verbs=",
+    "navigation_list: list selection_required verbs=focus,",
+    "navigation_list[0]: list_item verbs=select,focus,"};
 // With a confirmed write instead of an immediate one, the five types that take a write timing also list the confirm verb (after
 // their other verbs); every other row is what the immediate table says.
-std::vector<std::string> confirmed_from(const std::vector<std::string>& immediate) {
+std::vector<std::string> confirmedFrom(const std::vector<std::string>& immediate) {
     static const char* const confirming[] = {"text", "checkbox", "radio", "slider", "dropdown"};
     std::vector<std::string> rows;
     for (auto row : immediate) {
         for (const char* name : confirming)
-            if (row.starts_with(std::string(name) + ": ")) { row.insert(row.find(" ops="), "confirm,"); break; }
+            if (row.starts_with(std::string(name) + ": ")) { row.insert(row.size(), "confirm,"); break; }
         rows.push_back(std::move(row));
     }
     return rows;
@@ -219,105 +211,104 @@ void compare(const std::vector<std::string>& observed, const std::vector<std::st
     }
 }
 
-void key_policy_of_every_built_in_type() { compare(key_table(), golden_keys, "keys taken by each type (its scoped shortcut stays silent)"); }
-void semantics_of_every_built_in_type() { compare(semantic_table(false), golden_semantics, "semantic nodes, immediate writes"); }
-void confirm_verb_of_every_built_in_type() { compare(semantic_table(true), confirmed_from(golden_semantics), "semantic nodes, confirmed writes"); }
+void keyPolicyOfEveryBuiltInType() { compare(keyTable(), goldenKeys, "keys taken by each type (its scoped shortcut stays silent)"); }
+void semanticsOfEveryBuiltInType() { compare(semanticTable(false), goldenSemantics, "semantic nodes, immediate writes"); }
+void confirmVerbOfEveryBuiltInType() { compare(semanticTable(true), confirmedFrom(goldenSemantics), "semantic nodes, confirmed writes"); }
 
 
 // A component type that exists only in a test. Everything it does comes from its own code and its registration: the
 // press and release, the keys it takes, its place in the semantic tree and the verbs it answers.
 class Stepper final : public detail::ComponentType {
 public:
-    mutable int value = 7, key_presses = 0, presses = 0, releases = 0;
-    mutable Key last_key = Key::other;
-    mutable std::optional<std::size_t> pressed_option, released_pressed_option, released_option;
+    mutable int value = 7, keyPresses = 0, presses = 0, releases = 0;
+    mutable Key lastKey = Key::other;
+    mutable std::optional<std::size_t> pressedOption, releasedPressedOption, releasedOption;
     std::string_view name() const override { return "stepper"; }
     Role role() const override { return Role::slider; }
-    ComponentHandle handle(detail::UiState& ui, const detail::Component& control) const override { return ui.typed_handle<ButtonHandle>(control); }
+    ComponentHandle handle(detail::UiState& ui, const detail::Component& control) const override { return ui.typedHandle<ButtonHandle>(control); }
     void arrange(detail::ComponentLayout& layout) const override { layout.placement.bounds = {0, 0, 80, 30}; }
     void paint(detail::ComponentPaint& paint) const override { paint.fill(paint.placement.bounds, {17, 91, 173}); }
-    bool handles_key(const detail::UiState&, const detail::Component&, KeyPress key) const override { return key.key == Key::up || key.key == Key::down; }
-    Result key_down(detail::UiState&, KeyPress key) const override { ++key_presses; last_key = key.key; return {}; }
-    bool ignores_press(const detail::UiState&, const detail::Component&, std::optional<std::size_t> option) const override { return option == 5u; }
-    void pointer_down(detail::UiState& ui, const detail::Component& control, std::optional<std::size_t> option) const override {
-        ++presses; pressed_option = option; ui.arm_pointer(control.id, option);
+    bool handlesKey(const detail::UiState&, const detail::Component&, KeyPress key) const override { return key.key == Key::up || key.key == Key::down; }
+    Result keyDown(detail::UiState&, KeyPress key) const override { ++keyPresses; lastKey = key.key; return {}; }
+    bool ignoresPress(const detail::UiState&, const detail::Component&, std::optional<std::size_t> option) const override { return option == 5u; }
+    void pointerDown(detail::UiState& ui, const detail::Component& control, std::optional<std::size_t> option) const override {
+        ++presses; pressedOption = option; ui.armPointer(control.id, option);
     }
-    Result pointer_up(detail::UiState&, const detail::PointerRelease& release) const override {
-        ++releases; released_pressed_option = release.pressed_option; released_option = release.option; return {};
+    Result pointerUp(detail::UiState&, const detail::PointerRelease& release) const override {
+        ++releases; releasedPressedOption = release.pressedOption; releasedOption = release.option; return {};
     }
-    void describe(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.numeric_value = value; s.slider_range = SliderRange{0, 10, 1}; }
-    void describe_operations(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.operations.push_back(Operation::edit); }
+    void describe(const detail::UiState&, const detail::Component&, ComponentSnapshot& s) const override { s.numericValue = value; s.range = SliderRange{0, 10, 1}; }
     void verbs(const detail::VerbContext& context, std::vector<Verb>& out) const override {
-        if (!context.item && context.admits(Operation::edit)) out.push_back(Verb::set_value);
+        ComponentType::verbs(context, out);
+        if (!context.item) out.push_back(Verb::setValue);
     }
     std::optional<Result> perform(const detail::PerformContext& context) const override {
-        if (context.verb != Verb::set_value) return std::nullopt;
+        if (context.verb != Verb::setValue) return std::nullopt;
         if (const auto* number = std::get_if<int>(&context.argument)) { value = *number; return Result{}; }
-        return context.invalid_argument();
+        return context.invalidArgument();
     }
 };
-constexpr auto stepper_kind = static_cast<ComponentKind>(101);
+constexpr auto stepperKind = static_cast<ComponentKind>(101);
 
-void a_registered_type_takes_part_in_keys_pointer_and_semantics() {
+void aRegisteredTypeTakesPartInKeysPointerAndSemantics() {
     Stepper stepper;
-    detail::ScopedComponentType registration(stepper_kind, stepper);
+    detail::ScopedComponentType registration(stepperKind, stepper);
     Ui ui; auto& host = detail::access(ui);
-    host.seed_test_controls({{stepper_kind, {.id = "stepper", .label = u"Stepper"}}});
-    check(detail::component_type(stepper_kind).name() == "stepper", "the type names itself");
-    // ComponentSnapshot: its role, its description, its operations and the verbs it offers.
+    host.seedTestControls({{stepperKind, {.id = "stepper", .label = u"Stepper"}}});
+    check(detail::componentType(stepperKind).name() == "stepper", "the type names itself");
+    // ComponentSnapshot: its role, its description, the verbs it offers.
     auto node = ui.semantics().get({"stepper"});
-    check(node && node->role == Role::slider && node->numeric_value == 7 && node->range && node->range->maximum == 10, "role and description come from the type");
-    check(node && std::find(node->verbs.begin(), node->verbs.end(), Verb::set_value) != node->verbs.end(), "the type's verb is offered");
-    // The operations are the type's own, read from the description (not inferred from a verb): focus comes with any focusable
-    // control, the type adds edit, and nothing else is admitted.
+    check(node && node->role == Role::slider && node->numericValue == 7 && node->range && node->range->maximum == 10, "role and description come from the type");
+    check(node && std::find(node->verbs.begin(), node->verbs.end(), Verb::setValue) != node->verbs.end(), "the type's verb is offered");
+    // The type extends the shared focus verb with its own setValue verb.
     const auto described = host.describe("stepper");
-    check(described && described->operations == std::vector<Operation>{Operation::focus, Operation::edit}, "the operations come from the type");
-    check(bool(ui.semantics().perform({"stepper"}, Verb::set_value, 9)) && stepper.value == 9 && ui.semantics().get({"stepper"})->numeric_value == 9, "the type performs its verb");
-    check(ui.semantics().perform({"stepper"}, Verb::set_value, std::u16string(u"nine")).status == Status::invalid_value, "a wrong argument is the common answer");
+    check(described && described->verbs == std::vector<Verb>{Verb::focus, Verb::setValue}, "the verbs come from the type");
+    check(bool(ui.semantics().perform({"stepper"}, Verb::setValue, 9)) && stepper.value == 9 && ui.semantics().get({"stepper"})->numericValue == 9, "the type performs its verb");
+    check(ui.semantics().perform({"stepper"}, Verb::setValue, std::u16string(u"nine")).status == Status::invalidValue, "a wrong argument is the common answer");
     // Keys: it takes Up and Down, and leaves Left to the application's shortcut.
     int fired = 0;
-    auto sink = ui.add_button({.id = "sink", .label = u"Sink"}).value.value();
+    auto sink = ui.addButton({.id = "sink", .label = u"Sink"}).value.value();
     sink.bind([&] { ++fired; return Result{}; });
-    check(bool(ui.add_shortcut({.key = Key::left}, sink, host.layout_handle("stepper"))), "shortcut registered");
+    check(bool(ui.addShortcut({.key = Key::left}, sink, host.layoutHandle("stepper"))), "shortcut registered");
     check(bool(host.focus("stepper")), "the type can be focused");
-    host.key_down({.key = Key::up});
-    check(stepper.key_presses == 1 && stepper.last_key == Key::up, "a key the type takes reaches it");
-    host.key_down({.key = Key::left});
-    check(stepper.key_presses == 1 && fired == 1, "a key the type leaves goes to the shortcut");
+    host.keyDown({.key = Key::up});
+    check(stepper.keyPresses == 1 && stepper.lastKey == Key::up, "a key the type takes reaches it");
+    host.keyDown({.key = Key::left});
+    check(stepper.keyPresses == 1 && fired == 1, "a key the type leaves goes to the shortcut");
     // Pointer: press and release reach the type with the rows; a press it ignores changes nothing.
-    check(bool(host.pointer_down("stepper", 2u)) && stepper.presses == 1 && stepper.pressed_option == 2u, "the press reaches the type");
-    check(bool(host.pointer_up("stepper", 2u)) && stepper.releases == 1 && stepper.released_pressed_option == 2u && stepper.released_option == 2u, "the release reaches the type");
+    check(bool(host.pointerDown("stepper", 2u)) && stepper.presses == 1 && stepper.pressedOption == 2u, "the press reaches the type");
+    check(bool(host.pointerUp("stepper", 2u)) && stepper.releases == 1 && stepper.releasedPressedOption == 2u && stepper.releasedOption == 2u, "the release reaches the type");
     check(bool(host.focus("sink")) && host.focused() == "sink", "focus moved away");
-    host.pointer_down("stepper", 5u);
-    host.pointer_up("stepper", 5u);
+    host.pointerDown("stepper", 5u);
+    host.pointerUp("stepper", 5u);
     check(stepper.presses == 1 && stepper.releases == 1 && host.focused() == "sink", "an ignored press neither focuses nor arms");
 }
 
 // The one expectation of what each built-in type calls itself: the id of its component in Everything, its ComponentKind and its name. The
 // registry table and the diagnostics (which name the type of an ID that is taken again) are both checked against it.
 struct BuiltIn { const char* component; ComponentKind kind; const char* name; };
-const BuiltIn built_in_types[] = {
-    {"text", ComponentKind::text, "text"}, {"button", ComponentKind::button, "button"}, {"label", ComponentKind::label, "label"}, {"checkbox", ComponentKind::checkbox, "checkbox"},
-    {"radio", ComponentKind::radio_group, "radio_group"}, {"slider", ComponentKind::slider, "slider"}, {"dropdown", ComponentKind::dropdown, "dropdown"}, {"list", ComponentKind::list, "list"},
-    {"tabs", ComponentKind::tabs, "tabs"}, {"progress", ComponentKind::progress, "progress"}, {"navigation_list", ComponentKind::navigation_list, "navigation_list"}};
+const BuiltIn builtInTypes[] = {
+    {"text", ComponentKind::textField, "text"}, {"button", ComponentKind::button, "button"}, {"label", ComponentKind::label, "label"}, {"checkbox", ComponentKind::checkbox, "checkbox"},
+    {"radio", ComponentKind::radioGroup, "radio_group"}, {"slider", ComponentKind::slider, "slider"}, {"dropdown", ComponentKind::dropdown, "dropdown"}, {"list", ComponentKind::list, "list"},
+    {"tabs", ComponentKind::tabs, "tabs"}, {"progress", ComponentKind::progress, "progress"}, {"navigation_list", ComponentKind::navigationList, "navigation_list"}};
 
 // Debug names come from the registry, not from the order of the ComponentKind enumeration: each built-in type names itself.
-void built_in_types_name_themselves() {
-    for (const auto& item : built_in_types) check(detail::component_type(item.kind).name() == item.name, item.name);
-    check(detail::find_component_type(static_cast<ComponentKind>(99)) == nullptr, "a Kind without a type is not invented");
+void builtInTypesNameThemselves() {
+    for (const auto& item : builtInTypes) check(detail::componentType(item.kind).name() == item.name, item.name);
+    check(detail::findComponentType(static_cast<ComponentKind>(99)) == nullptr, "a Kind without a type is not invented");
 }
 
 #ifndef NDEBUG
 // The diagnostic that names an existing component's type when its ID is taken again.
-void debug_names_in_diagnostics() {
+void debugNamesInDiagnostics() {
     Everything all(false);
-    check(all.components.size() == std::size(built_in_types), "every built-in type has a component here");
+    check(all.components.size() == std::size(builtInTypes), "every built-in type has a component here");
     for (const auto& [name, unused] : all.components) {
-        const auto expected = std::find_if(std::begin(built_in_types), std::end(built_in_types), [&](const BuiltIn& item) { return std::string_view(name) == item.component; });
-        check(expected != std::end(built_in_types), name);
-        if (expected == std::end(built_in_types)) continue;
+        const auto expected = std::find_if(std::begin(builtInTypes), std::end(builtInTypes), [&](const BuiltIn& item) { return std::string_view(name) == item.component; });
+        check(expected != std::end(builtInTypes), name);
+        if (expected == std::end(builtInTypes)) continue;
         const auto before = all.ui.diagnostics().size();
-        check(all.ui.add_label({.id = name}).status == Status::invalid_value, "duplicate id is refused");
+        check(all.ui.addLabel({.id = name}).status == Status::invalidValue, "duplicate id is refused");
         check(all.ui.diagnostics().size() == before + 1, "refusal is diagnosed");
         const auto& message = all.ui.diagnostics().back();
         check(message.ends_with(std::string("existing component type: ") + expected->name), "diagnostic names the type");
@@ -329,13 +320,13 @@ void debug_names_in_diagnostics() {
 int main(int argc, char** argv) {
     printing = argc > 1 && std::strcmp(argv[1], "--print") == 0;
     const test::Case cases[] = {
-        {"key policy of every built-in type", key_policy_of_every_built_in_type},
-        {"semantics of every built-in type", semantics_of_every_built_in_type},
-        {"confirm verb of every built-in type", confirm_verb_of_every_built_in_type},
-        {"built-in types name themselves", built_in_types_name_themselves},
-        {"a registered type takes part in keys, pointer and semantics", a_registered_type_takes_part_in_keys_pointer_and_semantics},
+        {"key policy of every built-in type", keyPolicyOfEveryBuiltInType},
+        {"semantics of every built-in type", semanticsOfEveryBuiltInType},
+        {"confirm verb of every built-in type", confirmVerbOfEveryBuiltInType},
+        {"built-in types name themselves", builtInTypesNameThemselves},
+        {"a registered type takes part in keys, pointer and semantics", aRegisteredTypeTakesPartInKeysPointerAndSemantics},
 #ifndef NDEBUG
-        {"debug names in diagnostics", debug_names_in_diagnostics},
+        {"debug names in diagnostics", debugNamesInDiagnostics},
 #endif
     };
     return test::run("component_registry", cases);

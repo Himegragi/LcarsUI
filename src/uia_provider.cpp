@@ -22,20 +22,20 @@
 
 namespace lcars::detail {
 namespace {
-HRESULT status_hr(Status s) {
+HRESULT statusHr(Status s) {
     switch (s) {
     case Status::ok: return S_OK;
-    case Status::not_found: return UIA_E_ELEMENTNOTAVAILABLE;
+    case Status::notFound: return UIA_E_ELEMENTNOTAVAILABLE;
     case Status::disabled: return UIA_E_ELEMENTNOTENABLED;
-    case Status::invalid_value: return E_INVALIDARG;
-    case Status::not_supported: return UIA_E_NOTSUPPORTED;
+    case Status::invalidValue: return E_INVALIDARG;
+    case Status::notSupported: return UIA_E_NOTSUPPORTED;
     case Status::failed: return E_FAIL;
-    case Status::wrong_thread: OutputDebugStringW(L"LcarsUI UIA: unexpected wrong thread\n"); return E_FAIL;
+    case Status::wrongThread: OutputDebugStringW(L"LcarsUI UIA: unexpected wrong thread\n"); return E_FAIL;
     default: return UIA_E_INVALIDOPERATION;
     }
 }
 class Provider;
-IUnknown* make_selection_provider(Provider*);
+IUnknown* makeSelectionProvider(Provider*);
 // UIA can reenter the provider, so raise outside the UI thread. One draining
 // worker preserves semantic event order without blocking host shutdown.
 struct EventQueue : std::enable_shared_from_this<EventQueue> {
@@ -66,17 +66,17 @@ struct Request {
 };
 }
 struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
-    Ui* ui; std::function<const Frame&()> frame; HWND hwnd; DWORD thread; std::mutex mutex; std::atomic<bool> alive = true, identity_available = true;
+    Ui* ui; std::function<const Frame&()> frame; HWND hwnd; DWORD thread; std::mutex mutex; std::atomic<bool> alive = true, identityAvailable = true;
     std::deque<std::shared_ptr<Request>> queue;
     std::shared_ptr<EventQueue> events = std::make_shared<EventQueue>();
-    std::shared_ptr<EventQueue> focus_events = std::make_shared<EventQueue>();
-    std::shared_ptr<EventQueue> structure_events = std::make_shared<EventQueue>();
-    std::shared_ptr<EventQueue> overlay_events = std::make_shared<EventQueue>();
-    std::shared_ptr<EventQueue> text_events = std::make_shared<EventQueue>();
+    std::shared_ptr<EventQueue> focusEvents = std::make_shared<EventQueue>();
+    std::shared_ptr<EventQueue> structureEvents = std::make_shared<EventQueue>();
+    std::shared_ptr<EventQueue> overlayEvents = std::make_shared<EventQueue>();
+    std::shared_ptr<EventQueue> textEvents = std::make_shared<EventQueue>();
     std::vector<Provider*> providers;
     Subscription subscription;
     bool observing = false;
-    HRESULT com_init = E_FAIL;
+    HRESULT comInit = E_FAIL;
     explicit Impl(Ui& u, HWND w, std::function<const Frame&()> f) : ui(&u), frame(std::move(f)), hwnd(w), thread(GetCurrentThreadId()) {}
     HRESULT call(std::function<HRESULT()> action) {
         if (GetCurrentThreadId() == thread) {
@@ -88,7 +88,7 @@ struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
             std::lock_guard lock(mutex);
             if (!alive) return UIA_E_ELEMENTNOTAVAILABLE;
             queue.push_back(request);
-            if (!PostMessageW(hwnd, uia_dispatch_message, 0, 0)) { queue.pop_back(); return UIA_E_ELEMENTNOTAVAILABLE; }
+            if (!PostMessageW(hwnd, uiaDispatchMessage, 0, 0)) { queue.pop_back(); return UIA_E_ELEMENTNOTAVAILABLE; }
         }
         std::unique_lock lock(request->mutex);
         if (!request->changed.wait_for(lock, std::chrono::milliseconds(1000), [&] { return request->state != Request::State::waiting; })) {
@@ -109,34 +109,42 @@ struct UiaBridge::Impl : std::enable_shared_from_this<UiaBridge::Impl> {
         }
     }
     Provider* provider(const NodeRef& ref);
+    bool effectiveEnabled(const NodeSnapshot& node) const {
+        if (!node.enabled) return false;
+        if (node.ref.item) {
+            const auto parent = ui->semantics().get({node.ref.id});
+            return parent && parent->enabled;
+        }
+        return true;
+    }
     void observe();
 };
 namespace {
-int control_type(Role r) {
+int controlType(Role r) {
     switch (r) {
-    case Role::text: return UIA_EditControlTypeId;
+    case Role::textField: return UIA_EditControlTypeId;
     case Role::button: return UIA_ButtonControlTypeId;
     case Role::label: return UIA_TextControlTypeId;
     case Role::checkbox: return UIA_CheckBoxControlTypeId;
-    case Role::radio_group: return UIA_GroupControlTypeId;
-    case Role::radio_option: return UIA_RadioButtonControlTypeId;
+    case Role::radioGroup: return UIA_GroupControlTypeId;
+    case Role::radioOption: return UIA_RadioButtonControlTypeId;
     case Role::slider: return UIA_SliderControlTypeId;
     case Role::dropdown: return UIA_ComboBoxControlTypeId;
-    case Role::dropdown_option: case Role::list_item: return UIA_ListItemControlTypeId;
+    case Role::dropdownOption: case Role::listItem: return UIA_ListItemControlTypeId;
     case Role::list: return UIA_ListControlTypeId;
     case Role::tabs: return UIA_TabControlTypeId;
-    case Role::tab_item: return UIA_TabItemControlTypeId;
+    case Role::tabItem: return UIA_TabItemControlTypeId;
     case Role::progress: return UIA_ProgressBarControlTypeId;
     case Role::dialog: return UIA_WindowControlTypeId;
     case Role::tooltip: return UIA_ToolTipControlTypeId;
     case Role::menu: return UIA_MenuControlTypeId;
-    case Role::menu_item: return UIA_MenuItemControlTypeId;
-    case Role::menu_separator: return UIA_SeparatorControlTypeId;
+    case Role::menuItem: return UIA_MenuItemControlTypeId;
+    case Role::menuSeparator: return UIA_SeparatorControlTypeId;
     }
     return UIA_CustomControlTypeId;
 }
 BSTR bstr(std::u16string_view s) { return SysAllocStringLen(reinterpret_cast<const wchar_t*>(s.data()), static_cast<UINT>(s.size())); }
-BSTR bstr_id(const std::string& s) { return bstr(utf16_from_utf8(s)); }
+BSTR bstrId(const std::string& s) { return bstr(utf16FromUtf8(s)); }
 class Provider final : public IRawElementProviderSimple, public IRawElementProviderFragment, public IRawElementProviderFragmentRoot, public IInvokeProvider, public IToggleProvider, public ISelectionItemProvider, public IExpandCollapseProvider, public IRangeValueProvider, public IWindowProvider, public IValueProvider, public ITextProvider, public IScrollProvider {
     std::atomic<ULONG> refs_{1};
 public:
@@ -165,7 +173,7 @@ public:
         if (!valid || !ctx->alive) return UIA_E_ELEMENTNOTAVAILABLE;
         if (root()) return S_OK;
         auto node = ctx->ui->semantics().get(ref);
-        if (!node) return status_hr(node.status);
+        if (!node) return statusHr(node.status);
         return node->instance != instance ? UIA_E_ELEMENTNOTAVAILABLE : S_OK;
     }
     HRESULT STDMETHODCALLTYPE get_ProviderOptions(ProviderOptions* o) override {
@@ -177,16 +185,16 @@ public:
         if (!out) return E_POINTER; *out = nullptr;
         auto result = std::make_shared<IUnknown*>(nullptr); AddRef();
         auto hr = ctx->call([this, id, result] { auto h = check(); if (FAILED(h)) return h; if (root()) return S_OK;
-            auto n = ctx->ui->semantics().get(ref); if (id == UIA_InvokePatternId && (n->role == Role::button || n->role == Role::menu_item)) *result = static_cast<IInvokeProvider*>(this);
+            auto n = ctx->ui->semantics().get(ref); if (id == UIA_InvokePatternId && (n->role == Role::button || n->role == Role::menuItem)) *result = static_cast<IInvokeProvider*>(this);
             if (id == UIA_TogglePatternId && n->role == Role::checkbox) *result = static_cast<IToggleProvider*>(this);
             if (id == UIA_WindowPatternId && n->role == Role::dialog) *result = static_cast<IWindowProvider*>(this);
             if (id == UIA_RangeValuePatternId && (n->role == Role::slider || n->role == Role::progress)) *result = static_cast<IRangeValueProvider*>(this);
             if (id == UIA_ExpandCollapsePatternId && n->role == Role::dropdown) *result = static_cast<IExpandCollapseProvider*>(this);
-            if (id == UIA_SelectionPatternId && (n->role == Role::radio_group || n->role == Role::dropdown || n->role == Role::list || n->role == Role::tabs)) { *result = make_selection_provider(this); return *result ? S_OK : E_OUTOFMEMORY; }
-            if (id == UIA_SelectionItemPatternId && (n->role == Role::radio_option || n->role == Role::dropdown_option || n->role == Role::list_item || n->role == Role::tab_item)) *result = static_cast<ISelectionItemProvider*>(this);
-            if (id == UIA_ValuePatternId && n->role == Role::text) *result = static_cast<IValueProvider*>(this);
-            if (id == UIA_TextPatternId && n->role == Role::text) *result = static_cast<ITextProvider*>(this);
-            if (id == UIA_ScrollPatternId && n->role == Role::text && n->scroll) *result = static_cast<IScrollProvider*>(this);
+            if (id == UIA_SelectionPatternId && (n->role == Role::radioGroup || n->role == Role::dropdown || n->role == Role::list || n->role == Role::tabs)) { *result = makeSelectionProvider(this); return *result ? S_OK : E_OUTOFMEMORY; }
+            if (id == UIA_SelectionItemPatternId && (n->role == Role::radioOption || n->role == Role::dropdownOption || n->role == Role::listItem || n->role == Role::tabItem)) *result = static_cast<ISelectionItemProvider*>(this);
+            if (id == UIA_ValuePatternId && n->role == Role::textField) *result = static_cast<IValueProvider*>(this);
+            if (id == UIA_TextPatternId && n->role == Role::textField) *result = static_cast<ITextProvider*>(this);
+            if (id == UIA_ScrollPatternId && n->role == Role::textField && n->scroll) *result = static_cast<IScrollProvider*>(this);
             if (*result) (*result)->AddRef(); return S_OK; }); Release();
         if (SUCCEEDED(hr)) *out = *result; return hr;
     }
@@ -194,20 +202,20 @@ public:
         if (!out) return E_POINTER; VariantInit(out); auto result = std::make_shared<VARIANT>(); VariantInit(result.get()); AddRef();
         auto hr = ctx->call([this, id, result] { auto h = check(); if (FAILED(h)) return h; if (root()) return S_OK;
             auto n = ctx->ui->semantics().get(ref); auto& v = *result;
-            if (id == UIA_AutomationIdPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr_id(ref.item ? ref.item->id : ref.id); }
+            if (id == UIA_AutomationIdPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstrId(ref.item ? ref.item->id : ref.id); }
             else if (id == UIA_NamePropertyId || id == UIA_HelpTextPropertyId || id == UIA_FrameworkIdPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(id == UIA_NamePropertyId ? n->name : id == UIA_HelpTextPropertyId ? n->description : u"LcarsUI"); }
-            else if (id == UIA_AcceleratorKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->accelerator_key); }
-            else if (id == UIA_AccessKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->access_key); }
-            else if (id == UIA_ControlTypePropertyId) { v.vt=VT_I4; v.lVal=control_type(n->role); }
+            else if (id == UIA_AcceleratorKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->acceleratorKey); }
+            else if (id == UIA_AccessKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->accessKey); }
+            else if (id == UIA_ControlTypePropertyId) { v.vt=VT_I4; v.lVal=controlType(n->role); }
             else if (id == UIA_IsEnabledPropertyId || id == UIA_IsKeyboardFocusablePropertyId || id == UIA_HasKeyboardFocusPropertyId || id == UIA_IsOffscreenPropertyId || id == UIA_IsDataValidForFormPropertyId || id == UIA_IsControlElementPropertyId || id == UIA_IsContentElementPropertyId) {
-                v.vt=VT_BOOL; bool b = id == UIA_IsEnabledPropertyId ? n->enabled : id == UIA_IsKeyboardFocusablePropertyId ? n->focusable : id == UIA_HasKeyboardFocusPropertyId ? n->focused && ::GetFocus() == ctx->hwnd : id == UIA_IsOffscreenPropertyId ? !n->bounds : id == UIA_IsDataValidForFormPropertyId ? !n->invalid : true; v.boolVal=b ? VARIANT_TRUE : VARIANT_FALSE;
+                v.vt=VT_BOOL; bool b = id == UIA_IsEnabledPropertyId ? ctx->effectiveEnabled(*n) : id == UIA_IsKeyboardFocusablePropertyId ? n->focusable : id == UIA_HasKeyboardFocusPropertyId ? n->focused && ::GetFocus() == ctx->hwnd : id == UIA_IsOffscreenPropertyId ? !n->bounds : id == UIA_IsDataValidForFormPropertyId ? !n->invalid : true; v.boolVal=b ? VARIANT_TRUE : VARIANT_FALSE;
             }
-            else if (id == UIA_LabeledByPropertyId && !n->labelled_by.empty()) { v.vt=VT_UNKNOWN; v.punkVal=static_cast<IRawElementProviderSimple*>(ctx->provider(n->labelled_by.front())); v.punkVal->AddRef(); }
-            else if (id == UIA_DescribedByPropertyId && !n->described_by.empty()) {
-                auto array = SafeArrayCreateVector(VT_UNKNOWN, 0, static_cast<ULONG>(n->described_by.size()));
+            else if (id == UIA_LabeledByPropertyId && !n->labelledBy.empty()) { v.vt=VT_UNKNOWN; v.punkVal=static_cast<IRawElementProviderSimple*>(ctx->provider(n->labelledBy.front())); v.punkVal->AddRef(); }
+            else if (id == UIA_DescribedByPropertyId && !n->describedBy.empty()) {
+                auto array = SafeArrayCreateVector(VT_UNKNOWN, 0, static_cast<ULONG>(n->describedBy.size()));
                 if (!array) return E_OUTOFMEMORY;
-                for (LONG i = 0; i < static_cast<LONG>(n->described_by.size()); ++i) {
-                    auto provider = static_cast<IRawElementProviderSimple*>(ctx->provider(n->described_by[i]));
+                for (LONG i = 0; i < static_cast<LONG>(n->describedBy.size()); ++i) {
+                    auto provider = static_cast<IRawElementProviderSimple*>(ctx->provider(n->describedBy[i]));
                     auto result = SafeArrayPutElement(array, &i, provider);
                     if (FAILED(result)) { SafeArrayDestroy(array); return result; }
                 }
@@ -218,14 +226,14 @@ public:
     }
     HRESULT STDMETHODCALLTYPE get_HostRawElementProvider(IRawElementProviderSimple** out) override {
         if (!out) return E_POINTER; *out = nullptr;
-        if (!ctx->identity_available || (!valid && !disconnecting)) return UIA_E_ELEMENTNOTAVAILABLE;
+        if (!ctx->identityAvailable || (!valid && !disconnecting)) return UIA_E_ELEMENTNOTAVAILABLE;
         return root() ? UiaHostProviderFromHwnd(ctx->hwnd, out) : S_OK;
     }
     HRESULT STDMETHODCALLTYPE Navigate(NavigateDirection direction, IRawElementProviderFragment** out) override {
         if (!out) return E_POINTER; *out=nullptr; auto result=std::make_shared<Provider*>(nullptr); AddRef();
         auto hr=ctx->call([this,direction,result] { auto h=check(); if (FAILED(h)) return h;
             NodeRef parent; if (ref.item) parent.id=ref.id;
-            else if (auto menu_owner = menu_target_id(ref.id)) parent.id=*menu_owner;  // a menu hangs under its component
+            else if (auto menuOwner = menuTargetId(ref.id)) parent.id=*menuOwner;  // a menu hangs under its component
             else if (!root()) {
                 auto roots = ctx->ui->semantics().children({});
                 if (roots) for (const auto& candidate : *roots) {
@@ -237,11 +245,11 @@ public:
             }
             if (direction==NavigateDirection_Parent) { if (!root()) *result=ctx->provider(parent); }
             else if (direction==NavigateDirection_FirstChild || direction==NavigateDirection_LastChild) {
-                auto children=ctx->ui->semantics().children(ref); if (!children) return status_hr(children.status);
+                auto children=ctx->ui->semantics().children(ref); if (!children) return statusHr(children.status);
                 std::vector<NodeRef> visible; for (auto& child:*children) { auto n=ctx->ui->semantics().get(child); if (n && !n->hidden) visible.push_back(child); }
                 if (!visible.empty()) *result=ctx->provider(direction==NavigateDirection_FirstChild ? visible.front() : visible.back());
             } else if (!root()) {
-                auto children=ctx->ui->semantics().children(parent); if (!children) return status_hr(children.status);
+                auto children=ctx->ui->semantics().children(parent); if (!children) return statusHr(children.status);
                 std::vector<NodeRef> visible; for (auto& child:*children) { auto n=ctx->ui->semantics().get(child); if (n && !n->hidden) visible.push_back(child); }
                 auto it=std::find(visible.begin(),visible.end(),ref); if (it!=visible.end()) {
                     if (direction==NavigateDirection_NextSibling && ++it!=visible.end()) *result=ctx->provider(*it);
@@ -267,7 +275,7 @@ public:
         if (!out) return E_POINTER; *out = nullptr;
         AddRef(); auto hr = ctx->call([this] { return check(); }); Release(); return hr;
     }
-    HRESULT STDMETHODCALLTYPE SetFocus() override { AddRef(); auto hr=ctx->call([this] { auto h=check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref,Verb::focus).status); }); Release(); return hr; }
+    HRESULT STDMETHODCALLTYPE SetFocus() override { AddRef(); auto hr=ctx->call([this] { auto h=check(); return FAILED(h) ? h : statusHr(ctx->ui->semantics().perform(ref,Verb::focus).status); }); Release(); return hr; }
     HRESULT STDMETHODCALLTYPE get_FragmentRoot(IRawElementProviderFragmentRoot** out) override { if (!out) return E_POINTER; *out=nullptr; auto result=std::make_shared<Provider*>(nullptr); AddRef(); auto hr=ctx->call([this,result] { auto h=check(); if (FAILED(h)) return h; *result=ctx->provider({}); (*result)->AddRef(); return S_OK; }); Release(); if (SUCCEEDED(hr)) *out=static_cast<IRawElementProviderFragmentRoot*>(*result); return hr; }
     HRESULT STDMETHODCALLTYPE ElementProviderFromPoint(double x, double y, IRawElementProviderFragment** out) override {
         if (!out) return E_POINTER; *out = nullptr; auto result = std::make_shared<Provider*>(nullptr); AddRef();
@@ -303,12 +311,12 @@ public:
         });
         Release(); if (SUCCEEDED(hr) && *result) *out = static_cast<IRawElementProviderFragment*>(*result); return hr;
     }
-    HRESULT selection_get(SAFEARRAY** out) {
+    HRESULT selectionGet(SAFEARRAY** out) {
         if (!out) return E_POINTER; *out = nullptr;
         auto result = std::make_shared<SAFEARRAY*>(nullptr); AddRef();
         auto hr = ctx->call([this, result] {
             auto h = check(); if (FAILED(h)) return h;
-            auto children = ctx->ui->semantics().children(ref); if (!children) return status_hr(children.status);
+            auto children = ctx->ui->semantics().children(ref); if (!children) return statusHr(children.status);
             std::vector<IRawElementProviderSimple*> selected;
             for (auto& child : *children) { auto n = ctx->ui->semantics().get(child); if (n && n->selected) selected.push_back(static_cast<IRawElementProviderSimple*>(ctx->provider(child))); }
             auto a = SafeArrayCreateVector(VT_UNKNOWN, 0, static_cast<ULONG>(selected.size())); if (!a) return E_OUTOFMEMORY;
@@ -316,10 +324,10 @@ public:
             *result = a; return S_OK;
         }); Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
     }
-    HRESULT selection_can_select_multiple(BOOL* out) { if (!out) return E_POINTER; *out = FALSE; AddRef(); auto hr = ctx->call([this] { return check(); }); Release(); return hr; }
-    HRESULT selection_is_required(BOOL* out) {
+    HRESULT selectionCanSelectMultiple(BOOL* out) { if (!out) return E_POINTER; *out = FALSE; AddRef(); auto hr = ctx->call([this] { return check(); }); Release(); return hr; }
+    HRESULT selectionIsRequired(BOOL* out) {
         if (!out) return E_POINTER; auto result = std::make_shared<BOOL>(FALSE); AddRef();
-        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->ui->semantics().get(ref)->selection_required; return S_OK; });
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; *result = ctx->ui->semantics().get(ref)->selectionRequired; return S_OK; });
         Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
     }
     HRESULT STDMETHODCALLTYPE Select() override { return perform(Verb::select); }
@@ -344,23 +352,23 @@ public:
     }
     HRESULT STDMETHODCALLTYPE SetValue(double value) override {
         if (!std::isfinite(value) || std::trunc(value) != value || value < std::numeric_limits<int>::min() || value > std::numeric_limits<int>::max()) return E_INVALIDARG;
-        AddRef(); auto hr = ctx->call([this, value] { auto h = check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref, Verb::set_value, static_cast<int>(value)).status); }); Release(); return hr;
+        AddRef(); auto hr = ctx->call([this, value] { auto h = check(); return FAILED(h) ? h : statusHr(ctx->ui->semantics().perform(ref, Verb::setValue, static_cast<int>(value)).status); }); Release(); return hr;
     }
-    HRESULT range_property(double* out, int which) {
+    HRESULT rangeProperty(double* out, int which) {
         if (!out) return E_POINTER; auto result = std::make_shared<double>(0); AddRef();
         auto hr = ctx->call([this, result, which] { auto h = check(); if (FAILED(h)) return h; auto n = ctx->ui->semantics().get(ref);
             auto r = n->range.value_or(SliderRange{0, 100, 1});
-            *result = which == 0 ? n->numeric_value.value_or(0) : which == 1 ? r.minimum : which == 2 ? r.maximum : r.step; return S_OK; });
+            *result = which == 0 ? n->numericValue.value_or(0) : which == 1 ? r.minimum : which == 2 ? r.maximum : r.step; return S_OK; });
         Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
     }
-    HRESULT STDMETHODCALLTYPE get_Value(double* out) override { return range_property(out, 0); }
-    HRESULT STDMETHODCALLTYPE get_Minimum(double* out) override { return range_property(out, 1); }
-    HRESULT STDMETHODCALLTYPE get_Maximum(double* out) override { return range_property(out, 2); }
-    HRESULT STDMETHODCALLTYPE get_SmallChange(double* out) override { return range_property(out, 3); }
-    HRESULT STDMETHODCALLTYPE get_LargeChange(double* out) override { return range_property(out, 3); }
+    HRESULT STDMETHODCALLTYPE get_Value(double* out) override { return rangeProperty(out, 0); }
+    HRESULT STDMETHODCALLTYPE get_Minimum(double* out) override { return rangeProperty(out, 1); }
+    HRESULT STDMETHODCALLTYPE get_Maximum(double* out) override { return rangeProperty(out, 2); }
+    HRESULT STDMETHODCALLTYPE get_SmallChange(double* out) override { return rangeProperty(out, 3); }
+    HRESULT STDMETHODCALLTYPE get_LargeChange(double* out) override { return rangeProperty(out, 3); }
     HRESULT STDMETHODCALLTYPE get_IsReadOnly(BOOL* out) override {
         if (!out) return E_POINTER; auto result = std::make_shared<BOOL>(FALSE); AddRef();
-        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; auto n = ctx->ui->semantics().get(ref); *result = n->read_only || n->role == Role::progress; return S_OK; });
+        auto hr = ctx->call([this, result] { auto h = check(); if (FAILED(h)) return h; auto n = ctx->ui->semantics().get(ref); *result = n->readOnly || n->role == Role::progress; return S_OK; });
         Release(); if (SUCCEEDED(hr)) *out = *result; return hr;
     }
     HRESULT STDMETHODCALLTYPE Close() override { return perform(Verb::cancel); }
@@ -386,7 +394,7 @@ public:
         if (!value) return E_INVALIDARG;
         std::u16string copy(reinterpret_cast<const char16_t*>(value));
         AddRef(); auto hr = ctx->call([this, copy = std::move(copy)] {
-            auto h = check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref, Verb::set_value, copy).status);
+            auto h = check(); return FAILED(h) ? h : statusHr(ctx->ui->semantics().perform(ref, Verb::setValue, copy).status);
         }); Release(); return hr;
     }
     HRESULT STDMETHODCALLTYPE get_Value(BSTR* out) override {
@@ -397,7 +405,7 @@ public:
         if (SUCCEEDED(hr)) { *out = bstr(*result); if (!*out) return E_OUTOFMEMORY; } return hr;
     }
     // A multi-line text field scrolls vertically, by display lines: small steps are one line, large ones a page.
-    HRESULT scroll_call(std::function<HRESULT(const TextScroll&)> action) {
+    HRESULT scrollCall(std::function<HRESULT(const TextFieldScroll&)> action) {
         AddRef();
         auto hr = ctx->call([this, action = std::move(action)] {
             auto h = check(); if (FAILED(h)) return h;
@@ -407,55 +415,55 @@ public:
         });
         Release(); return hr;
     }
-    static unsigned most_first(const TextScroll& s) { return s.line_count > s.visible_lines ? s.line_count - s.visible_lines : 0; }
+    static unsigned mostFirst(const TextFieldScroll& s) { return s.lineCount > s.visibleLines ? s.lineCount - s.visibleLines : 0; }
     HRESULT STDMETHODCALLTYPE Scroll(ScrollAmount horizontal, ScrollAmount vertical) override {
         if (horizontal != ScrollAmount_NoAmount) return UIA_E_INVALIDOPERATION;
-        return scroll_call([&](const TextScroll& s) {
+        return scrollCall([&](const TextFieldScroll& s) {
             long long step = vertical == ScrollAmount_SmallIncrement ? 1 : vertical == ScrollAmount_SmallDecrement ? -1
-                : vertical == ScrollAmount_LargeIncrement ? static_cast<long long>(s.visible_lines) : vertical == ScrollAmount_LargeDecrement ? -static_cast<long long>(s.visible_lines) : 0;
-            auto target = std::clamp(static_cast<long long>(s.first_line) + step, 0LL, static_cast<long long>(most_first(s)));
-            if (target == s.first_line) return S_OK;
-            return status_hr(ctx->ui->semantics().perform(ref, Verb::scroll, static_cast<int>(target)).status);
+                : vertical == ScrollAmount_LargeIncrement ? static_cast<long long>(s.visibleLines) : vertical == ScrollAmount_LargeDecrement ? -static_cast<long long>(s.visibleLines) : 0;
+            auto target = std::clamp(static_cast<long long>(s.firstLine) + step, 0LL, static_cast<long long>(mostFirst(s)));
+            if (target == s.firstLine) return S_OK;
+            return statusHr(ctx->ui->semantics().perform(ref, Verb::scroll, static_cast<int>(target)).status);
         });
     }
     HRESULT STDMETHODCALLTYPE SetScrollPercent(double horizontal, double vertical) override {
         if (horizontal != -1.0) return UIA_E_INVALIDOPERATION;
         if (vertical == -1.0) return S_OK;
         if (!(vertical >= 0 && vertical <= 100)) return E_INVALIDARG;
-        return scroll_call([&](const TextScroll& s) {
-            auto target = static_cast<int>(std::lround(vertical / 100.0 * most_first(s)));
-            return status_hr(ctx->ui->semantics().perform(ref, Verb::scroll, target).status);
+        return scrollCall([&](const TextFieldScroll& s) {
+            auto target = static_cast<int>(std::lround(vertical / 100.0 * mostFirst(s)));
+            return statusHr(ctx->ui->semantics().perform(ref, Verb::scroll, target).status);
         });
     }
-    HRESULT scroll_value(std::function<double(const TextScroll&)> value, double* out) {
+    HRESULT scrollValue(std::function<double(const TextFieldScroll&)> value, double* out) {
         if (!out) return E_POINTER;
         *out = 0;
         auto result = std::make_shared<double>(0);
-        auto hr = scroll_call([&](const TextScroll& s) { *result = value(s); return S_OK; });
+        auto hr = scrollCall([&](const TextFieldScroll& s) { *result = value(s); return S_OK; });
         if (SUCCEEDED(hr)) *out = *result;
         return hr;
     }
-    HRESULT STDMETHODCALLTYPE get_HorizontalScrollPercent(double* out) override { return scroll_value([](const TextScroll&) { return static_cast<double>(-1.0); }, out); }
+    HRESULT STDMETHODCALLTYPE get_HorizontalScrollPercent(double* out) override { return scrollValue([](const TextFieldScroll&) { return static_cast<double>(-1.0); }, out); }
     HRESULT STDMETHODCALLTYPE get_VerticalScrollPercent(double* out) override {
-        return scroll_value([](const TextScroll& s) { return most_first(s) ? 100.0 * s.first_line / most_first(s) : 0.0; }, out);
+        return scrollValue([](const TextFieldScroll& s) { return mostFirst(s) ? 100.0 * s.firstLine / mostFirst(s) : 0.0; }, out);
     }
-    HRESULT STDMETHODCALLTYPE get_HorizontalViewSize(double* out) override { return scroll_value([](const TextScroll&) { return 100.0; }, out); }
+    HRESULT STDMETHODCALLTYPE get_HorizontalViewSize(double* out) override { return scrollValue([](const TextFieldScroll&) { return 100.0; }, out); }
     HRESULT STDMETHODCALLTYPE get_VerticalViewSize(double* out) override {
-        return scroll_value([](const TextScroll& s) { return s.line_count > s.visible_lines ? 100.0 * s.visible_lines / s.line_count : 100.0; }, out);
+        return scrollValue([](const TextFieldScroll& s) { return s.lineCount > s.visibleLines ? 100.0 * s.visibleLines / s.lineCount : 100.0; }, out);
     }
-    HRESULT scroll_flag(std::function<bool(const TextScroll&)> value, BOOL* out) {
+    HRESULT scrollFlag(std::function<bool(const TextFieldScroll&)> value, BOOL* out) {
         if (!out) return E_POINTER;
         *out = FALSE;
         auto result = std::make_shared<bool>(false);
-        auto hr = scroll_call([&](const TextScroll& s) { *result = value(s); return S_OK; });
+        auto hr = scrollCall([&](const TextFieldScroll& s) { *result = value(s); return S_OK; });
         if (SUCCEEDED(hr)) *out = *result ? TRUE : FALSE;
         return hr;
     }
-    HRESULT STDMETHODCALLTYPE get_HorizontallyScrollable(BOOL* out) override { return scroll_flag([](const TextScroll&) { return false; }, out); }
-    HRESULT STDMETHODCALLTYPE get_VerticallyScrollable(BOOL* out) override { return scroll_flag([](const TextScroll& s) { return s.line_count > s.visible_lines; }, out); }
+    HRESULT STDMETHODCALLTYPE get_HorizontallyScrollable(BOOL* out) override { return scrollFlag([](const TextFieldScroll&) { return false; }, out); }
+    HRESULT STDMETHODCALLTYPE get_VerticallyScrollable(BOOL* out) override { return scrollFlag([](const TextFieldScroll& s) { return s.lineCount > s.visibleLines; }, out); }
     HRESULT STDMETHODCALLTYPE Invoke() override { return perform(Verb::invoke); }
     HRESULT STDMETHODCALLTYPE Toggle() override { return perform(Verb::toggle); }
-    HRESULT perform(Verb v) { AddRef(); auto hr=ctx->call([this,v] { auto h=check(); return FAILED(h) ? h : status_hr(ctx->ui->semantics().perform(ref,v).status); }); Release(); return hr; }
+    HRESULT perform(Verb v) { AddRef(); auto hr=ctx->call([this,v] { auto h=check(); return FAILED(h) ? h : statusHr(ctx->ui->semantics().perform(ref,v).status); }); Release(); return hr; }
     HRESULT STDMETHODCALLTYPE get_ToggleState(ToggleState* out) override { if (!out) return E_POINTER; auto result=std::make_shared<ToggleState>(ToggleState_Off); AddRef(); auto hr=ctx->call([this,result] { auto h=check(); if (FAILED(h)) return h; auto n=ctx->ui->semantics().get(ref); *result=n->checked.value_or(false) ? ToggleState_On : ToggleState_Off; return S_OK; }); Release(); if (SUCCEEDED(hr)) *out=*result; return hr; }
 };
 
@@ -474,11 +482,11 @@ public:
     }
     ULONG STDMETHODCALLTYPE AddRef() override { return ++refs_; }
     ULONG STDMETHODCALLTYPE Release() override { auto n = --refs_; if (!n) delete this; return n; }
-    HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY** out) override { return owner_->selection_get(out); }
-    HRESULT STDMETHODCALLTYPE get_CanSelectMultiple(BOOL* out) override { return owner_->selection_can_select_multiple(out); }
-    HRESULT STDMETHODCALLTYPE get_IsSelectionRequired(BOOL* out) override { return owner_->selection_is_required(out); }
+    HRESULT STDMETHODCALLTYPE GetSelection(SAFEARRAY** out) override { return owner_->selectionGet(out); }
+    HRESULT STDMETHODCALLTYPE get_CanSelectMultiple(BOOL* out) override { return owner_->selectionCanSelectMultiple(out); }
+    HRESULT STDMETHODCALLTYPE get_IsSelectionRequired(BOOL* out) override { return owner_->selectionIsRequired(out); }
 };
-IUnknown* make_selection_provider(Provider* owner) { return static_cast<ISelectionProvider*>(new SelectionProvider(owner)); }
+IUnknown* makeSelectionProvider(Provider* owner) { return static_cast<ISelectionProvider*>(new SelectionProvider(owner)); }
 
 class TextRange final : public ITextRangeProvider {
     std::atomic<ULONG> refs{1};
@@ -493,7 +501,7 @@ class TextRange final : public ITextRangeProvider {
             if (FAILED(h))
                 return h;
             auto n = owner->ctx->ui->semantics().get(owner->ref);
-            if (!n || n->text_revision != revision)
+            if (!n || n->textRevision != revision)
                 return static_cast<HRESULT>(UIA_E_ELEMENTNOTAVAILABLE);
             return action(*n);
         });
@@ -501,7 +509,7 @@ class TextRange final : public ITextRangeProvider {
         return hr;
     }
     const Placement *placement() const {
-        return find_placement(owner->ctx->frame(), owner->ref.id);
+        return findPlacement(owner->ctx->frame(), owner->ref.id);
     }
     // Boundaries in committed-text offsets from offsets of the visible text (composition included).
     std::vector<unsigned> committed(const std::vector<unsigned> &visible) const {
@@ -550,8 +558,8 @@ class TextRange final : public ITextRangeProvider {
         if (unit == TextUnit_Character)
             return stops();
         if (unit == TextUnit_Word || unit == TextUnit_Paragraph) {
-            auto out = unit == TextUnit_Word ? access(*owner->ctx->ui).word_unit_boundaries(owner->ref.id)
-                                             : access(*owner->ctx->ui).paragraph_boundaries(owner->ref.id);
+            auto out = unit == TextUnit_Word ? access(*owner->ctx->ui).wordUnitBoundaries(owner->ref.id)
+                                             : access(*owner->ctx->ui).paragraphBoundaries(owner->ref.id);
             if (out.empty() || out.back() != version.size())
                 out.push_back(static_cast<unsigned>(version.size()));
             return out;
@@ -572,7 +580,7 @@ class TextRange final : public ITextRangeProvider {
   public:
     TextRange(Provider *p, unsigned a, unsigned b, std::u16string v)
         : owner(p), first(a), last(b), version(std::move(v)),
-          revision(p->ctx->ui->semantics().get(p->ref)->text_revision) {
+          revision(p->ctx->ui->semantics().get(p->ref)->textRevision) {
         owner->AddRef();
     }
     ~TextRange() {
@@ -660,17 +668,17 @@ class TextRange final : public ITextRangeProvider {
     }
     // Rich text attributes. The style of the text decides weight, slant, underline and the foreground color the
     // field draws with right now (the color name resolved for the current theme).
-    static bool rich_attribute(TEXTATTRIBUTEID id) {
+    static bool richAttribute(TEXTATTRIBUTEID id) {
         return id == UIA_FontWeightAttributeId || id == UIA_IsItalicAttributeId || id == UIA_UnderlineStyleAttributeId ||
                id == UIA_ForegroundColorAttributeId;
     }
-    std::optional<long> attribute_key(TEXTATTRIBUTEID id, const TextStyle &style) const {
+    std::optional<long> attributeKey(TEXTATTRIBUTEID id, const TextStyle &style) const {
         switch (id) {
         case UIA_FontWeightAttributeId: return style.bold ? 700 : 400;
         case UIA_IsItalicAttributeId: return style.italic ? 1 : 0;
         case UIA_UnderlineStyleAttributeId: return style.underline ? 1 : 0;  // TextDecorationLineStyle_Single
         case UIA_ForegroundColorAttributeId: {
-            auto color = owner->ctx->ui->semantics().text_color(owner->ref, style.color);
+            auto color = owner->ctx->ui->semantics().textColor(owner->ref, style.color);
             if (!color) return std::nullopt;
             return static_cast<long>(color->r | (color->g << 8) | (color->b << 16));  // COLORREF
         }
@@ -679,12 +687,12 @@ class TextRange final : public ITextRangeProvider {
     }
     // The range cut wherever the style changes, each piece with the attribute's value. An empty range is one
     // piece: the style of the character at the caret (the last one at the end of the text).
-    std::vector<std::tuple<unsigned, unsigned, long>> attribute_runs(const NodeSnapshot &n, TEXTATTRIBUTEID id) const {
+    std::vector<std::tuple<unsigned, unsigned, long>> attributeRuns(const NodeSnapshot &n, TEXTATTRIBUTEID id) const {
         std::vector<std::tuple<unsigned, unsigned, long>> runs;
         std::vector<unsigned> cuts{first, last};
         if (first == last) {
             const unsigned at = first < version.size() || first == 0 ? first : first - 1;
-            if (auto key = attribute_key(id, style_at(n.styles, at))) runs.emplace_back(first, last, *key);
+            if (auto key = attributeKey(id, styleAt(n.styles, at))) runs.emplace_back(first, last, *key);
             return runs;
         }
         for (const auto &span : n.styles)
@@ -693,7 +701,7 @@ class TextRange final : public ITextRangeProvider {
         std::sort(cuts.begin(), cuts.end());
         cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
         for (std::size_t i = 0; i + 1 < cuts.size(); ++i) {
-            auto key = attribute_key(id, style_at(n.styles, cuts[i]));
+            auto key = attributeKey(id, styleAt(n.styles, cuts[i]));
             if (!key) return {};
             if (!runs.empty() && std::get<2>(runs.back()) == *key) std::get<1>(runs.back()) = cuts[i + 1];
             else runs.emplace_back(cuts[i], cuts[i + 1], *key);
@@ -706,7 +714,7 @@ class TextRange final : public ITextRangeProvider {
             return E_POINTER;
         *out = nullptr;
         return call([&](const NodeSnapshot &n) {
-            if (!n.rich || !rich_attribute(id))
+            if (!n.rich || !richAttribute(id))
                 return static_cast<HRESULT>(UIA_E_NOTSUPPORTED);
             long wanted = 0;
             if (id == UIA_IsItalicAttributeId) {
@@ -716,7 +724,7 @@ class TextRange final : public ITextRangeProvider {
                 if (value.vt != VT_I4) return static_cast<HRESULT>(E_INVALIDARG);
                 wanted = value.lVal;
             }
-            auto runs = attribute_runs(n, id);
+            auto runs = attributeRuns(n, id);
             if (backward) std::reverse(runs.begin(), runs.end());
             for (const auto &[a, b, key] : runs)
                 if (key == wanted) {
@@ -756,7 +764,7 @@ class TextRange final : public ITextRangeProvider {
         return call([&](const auto &n) {
             if (id == UIA_IsReadOnlyAttributeId) {
                 out->vt = VT_BOOL;
-                out->boolVal = n.read_only ? VARIANT_TRUE : VARIANT_FALSE;
+                out->boolVal = n.readOnly ? VARIANT_TRUE : VARIANT_FALSE;
                 return S_OK;
             }
             if (id == UIA_HorizontalTextAlignmentAttributeId) {  // #80: the field's own alignment, one value for the whole range
@@ -768,7 +776,7 @@ class TextRange final : public ITextRangeProvider {
                 // TextPattern. So `distribute` never reaches this line today; the branch stays so that a label
                 // TextPattern (should one ever be added) already reports it, and the "distribute reports Justified"
                 // line of the #84 spec contradicts #82 item 7 (labels are not text ranges) until then.
-                switch (detail::drawn_text_align(n.text_align, owner->ctx->ui->presentation())) {
+                switch (detail::drawnTextAlign(n.textAlign, owner->ctx->ui->presentation())) {
                 case TextAlign::justify: case TextAlign::distribute: out->lVal = HorizontalTextAlignment_Justified; break;
                 case TextAlign::center: out->lVal = HorizontalTextAlignment_Centered; break;
                 case TextAlign::right: out->lVal = HorizontalTextAlignment_Right; break;
@@ -778,7 +786,7 @@ class TextRange final : public ITextRangeProvider {
             }
             if (id == UIA_LineSpacingAttributeId) {  // #80: a VT_BSTR; the multiple of the font's line height, e.g. "1.4" ("1" is single spacing)
                 char digits[32];
-                std::snprintf(digits, sizeof digits, "%.2f", n.line_spacing);
+                std::snprintf(digits, sizeof digits, "%.2f", n.lineSpacing);
                 std::string text = digits;
                 while (text.back() == '0') text.pop_back();
                 if (text.back() == '.') text.pop_back();
@@ -786,8 +794,8 @@ class TextRange final : public ITextRangeProvider {
                 out->bstrVal = SysAllocString(std::wstring(text.begin(), text.end()).c_str());
                 return out->bstrVal ? S_OK : E_OUTOFMEMORY;
             }
-            if (n.rich && rich_attribute(id)) {
-                auto runs = attribute_runs(n, id);
+            if (n.rich && richAttribute(id)) {
+                auto runs = attributeRuns(n, id);
                 if (!runs.empty()) {
                     const long key = std::get<2>(runs.front());
                     const bool mixed = std::any_of(runs.begin(), runs.end(), [&](const auto &run) { return std::get<2>(run) != key; });
@@ -816,26 +824,26 @@ class TextRange final : public ITextRangeProvider {
         return call([&](const auto &) {
             std::vector<Rect> rectangles;
             if (auto p = placement(); p && first != last) {
-                auto editor = p->field.editor;
+                auto editor = p->textField.editor;
                 editor.x += p->bounds.x; editor.y += p->bounds.y;
                 auto clip = intersect(editor, p->clip);
                 auto add = [&](unsigned a, unsigned b) {
                     if (p->multiline) {  // one rectangle per visible line the range touches
                         const auto &v = p->view;
-                        const auto end_line = static_cast<unsigned>(std::min<std::size_t>(v.first + v.visible, v.lines.size()));
-                        for (unsigned i = v.first; i < end_line; ++i) {
+                        const auto endLine = static_cast<unsigned>(std::min<std::size_t>(v.first + v.visible, v.lines.size()));
+                        for (unsigned i = v.first; i < endLine; ++i) {
                             const auto &line = v.lines[i];
                             auto from = std::max(a, line.begin), to = std::min(b, line.end);
                             if (from > to || (from == to && !(a == b))) continue;
                             if (from == to && line.end > line.begin) continue;
-                            int y = v.row_y(i);
-                            int left = v.text.x + static_cast<int>(std::lround(v.x_in_line(i, from))), right = v.text.x + static_cast<int>(std::lround(v.x_in_line(i, to)));
-                            auto r = intersect({left, y, std::max(0, right - left), v.row_height}, clip);
+                            int y = v.rowY(i);
+                            int left = v.text.x + static_cast<int>(std::lround(v.xInLine(i, from))), right = v.text.x + static_cast<int>(std::lround(v.xInLine(i, to)));
+                            auto r = intersect({left, y, std::max(0, right - left), v.rowHeight}, clip);
                             if (r.w > 0 && r.h > 0) rectangles.push_back(r);
                         }
                         return;
                     }
-                    int left = p->caret_x(a), right = p->caret_x(b);
+                    int left = p->caretX(a), right = p->caretX(b);
                     auto r = intersect({left, editor.y, std::max(0, right-left), editor.h}, clip);
                     if (r.w > 0 && r.h > 0) rectangles.push_back(r);
                 };
@@ -959,24 +967,24 @@ class TextRange final : public ITextRangeProvider {
     }
     HRESULT STDMETHODCALLTYPE Select() override {
         return call([&](const auto &) {
-            return status_hr(
+            return statusHr(
                 owner->ctx->ui->semantics().perform(owner->ref, Verb::select, Selection{first, last}).status);
         });
     }
     HRESULT STDMETHODCALLTYPE AddToSelection() override {
         return call([&](const auto &n) {
-            auto s = n.text_selection.value_or(Selection{});
+            auto s = n.textSelection.value_or(Selection{});
             if (s.anchor != s.caret &&
                 (std::min(s.anchor, s.caret) != first || std::max(s.anchor, s.caret) != last))
                 return static_cast<HRESULT>(UIA_E_INVALIDOPERATION);
-            return status_hr(
+            return statusHr(
                 owner->ctx->ui->semantics().perform(owner->ref, Verb::select, Selection{first, last}).status);
         });
     }
     HRESULT STDMETHODCALLTYPE RemoveFromSelection() override {
         return call([](const auto &) { return static_cast<HRESULT>(UIA_E_INVALIDOPERATION); });
     }
-    HRESULT STDMETHODCALLTYPE ScrollIntoView(BOOL align_to_top) override {
+    HRESULT STDMETHODCALLTYPE ScrollIntoView(BOOL alignToTop) override {
         return call([&](const auto &n) {
             auto p = placement();
             if (!p || !p->multiline || !n.scroll)
@@ -988,12 +996,12 @@ class TextRange final : public ITextRangeProvider {
                 at += static_cast<unsigned>(session->preedit.size()) - (session->end() - session->begin());
             auto view = p->view;
             view.upstream = false;
-            long long line = view.line_of(at), visible = n.scroll->visible_lines;
-            long long target = align_to_top ? line : line - visible + 1;
-            long long most = n.scroll->line_count > n.scroll->visible_lines ? n.scroll->line_count - n.scroll->visible_lines : 0;
-            if (line >= n.scroll->first_line && line < n.scroll->first_line + visible)
+            long long line = view.lineOf(at), visible = n.scroll->visibleLines;
+            long long target = alignToTop ? line : line - visible + 1;
+            long long most = n.scroll->lineCount > n.scroll->visibleLines ? n.scroll->lineCount - n.scroll->visibleLines : 0;
+            if (line >= n.scroll->firstLine && line < n.scroll->firstLine + visible)
                 return S_OK;
-            return status_hr(owner->ctx->ui->semantics().perform(owner->ref, Verb::scroll, static_cast<int>(std::clamp(target, 0LL, most))).status);
+            return statusHr(owner->ctx->ui->semantics().perform(owner->ref, Verb::scroll, static_cast<int>(std::clamp(target, 0LL, most))).status);
         });
     }
     HRESULT STDMETHODCALLTYPE GetChildren(SAFEARRAY **out) override {
@@ -1047,7 +1055,7 @@ HRESULT Provider::GetSelection(SAFEARRAY **out) {
         if (FAILED(hr))
             return hr;
         auto n = ctx->ui->semantics().get(ref);
-        auto s = n->text_selection.value_or(Selection{});
+        auto s = n->textSelection.value_or(Selection{});
         return ranges(new TextRange(this, std::min(s.anchor, s.caret), std::max(s.anchor, s.caret), n->value),
                       out);
     });
@@ -1065,17 +1073,17 @@ HRESULT Provider::GetVisibleRanges(SAFEARRAY **out) {
             return hr;
         auto n = ctx->ui->semantics().get(ref);
         const auto& frame = ctx->frame();
-        auto p = find_placement(frame, ref.id);
+        auto p = findPlacement(frame, ref.id);
         if (!p || n->hidden) return ranges(nullptr, out);
-        auto editor = p->field.editor; editor.x += p->bounds.x; editor.y += p->bounds.y;
+        auto editor = p->textField.editor; editor.x += p->bounds.x; editor.y += p->bounds.y;
         auto clip = intersect(editor, p->clip);
         if (clip.w <= 0 || clip.h <= 0) return ranges(nullptr, out);
-        auto first = placement_text_offset(frame, ref.id, clip.x);
-        auto last = placement_text_offset(frame, ref.id, clip.x + clip.w);
+        auto first = placementTextOffset(frame, ref.id, clip.x);
+        auto last = placementTextOffset(frame, ref.id, clip.x + clip.w);
         if (p->multiline) {  // the lines in view, from the start of the first to the end of the last
             const auto& v = p->view;
-            const auto end_line = std::min<std::size_t>(v.first + v.visible, v.lines.size());
-            first = v.lines[v.first].begin; last = v.lines[end_line - 1].end;
+            const auto endLine = std::min<std::size_t>(v.first + v.visible, v.lines.size());
+            first = v.lines[v.first].begin; last = v.lines[endLine - 1].end;
         }
         auto session = access(*ctx->ui).edit(ref.id);
         auto committed = [&](unsigned pos) {
@@ -1110,7 +1118,7 @@ HRESULT Provider::RangeFromPoint(UiaPoint point, ITextRangeProvider **out) {
         auto n = ctx->ui->semantics().get(ref);
         POINT p{static_cast<LONG>(point.x), static_cast<LONG>(point.y)};
         ScreenToClient(ctx->hwnd, &p);
-        unsigned offset = placement_text_hit(ctx->frame(), ref.id, p.x, p.y).offset;
+        unsigned offset = placementTextHit(ctx->frame(), ref.id, p.x, p.y).offset;
         auto session = access(*ctx->ui).edit(ref.id);
         if (session && session->composing && offset > session->begin()) {
             auto end = session->begin() + static_cast<unsigned>(session->preedit.size());
@@ -1140,66 +1148,83 @@ void UiaBridge::Impl::observe() {
     std::weak_ptr<Impl> weak = shared_from_this();
     subscription = ui->semantics().subscribe([weak](const SemanticEvent& event) {
         auto ctx = weak.lock(); if (!ctx || !ctx->alive) return;
-        if (event.kind == SemanticEventKind::structure_changed) {
+        if (event.kind == SemanticEventKind::structureChanged) {
             for (auto p : ctx->providers) if (!p->root() && p->valid && FAILED(p->check())) {
                 p->disconnecting = true; p->valid = false; UiaDisconnectProvider(p); p->disconnecting = false;
             }
         }
         if (!UiaClientsAreListening()) return;
-        if (event.kind == SemanticEventKind::property_changed && event.property == "hidden" && event.hidden) {
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "hidden" && event.hidden) {
             auto n = ctx->ui->semantics().get(event.ref); if (!n || (n->role != Role::dialog && n->role != Role::tooltip)) return;
             bool visible = !*event.hidden;
             EVENTID id = n->role == Role::dialog ? (visible ? UIA_Window_WindowOpenedEventId : UIA_Window_WindowClosedEventId)
                 : (visible ? UIA_ToolTipOpenedEventId : UIA_ToolTipClosedEventId);
             auto p = ctx->provider(event.ref); p->AddRef();
-            ctx->overlay_events->post([p, id] { UiaRaiseAutomationEvent(p, id); p->Release(); });
+            ctx->overlayEvents->post([p, id] { UiaRaiseAutomationEvent(p, id); p->Release(); });
         }
-        if (event.kind == SemanticEventKind::menu_opened || event.kind == SemanticEventKind::menu_closed) {
+        if (event.kind == SemanticEventKind::menuOpened || event.kind == SemanticEventKind::menuClosed) {
             // The closed menu no longer exists as a node, so its closing is raised on the component it hung from.
-            const bool opened = event.kind == SemanticEventKind::menu_opened;
+            const bool opened = event.kind == SemanticEventKind::menuOpened;
             NodeRef source = event.ref;
-            if (!opened) { auto owner = menu_target_id(event.ref.id); if (!owner) return; source = NodeRef{*owner}; }
+            if (!opened) { auto owner = menuTargetId(event.ref.id); if (!owner) return; source = NodeRef{*owner}; }
             auto p = ctx->provider(source); p->AddRef();
-            ctx->overlay_events->post([p, opened] { UiaRaiseAutomationEvent(p, opened ? UIA_MenuOpenedEventId : UIA_MenuClosedEventId); p->Release(); });
+            ctx->overlayEvents->post([p, opened] { UiaRaiseAutomationEvent(p, opened ? UIA_MenuOpenedEventId : UIA_MenuClosedEventId); p->Release(); });
         }
-        if (event.kind == SemanticEventKind::layout_changed) {
+        if (event.kind == SemanticEventKind::layoutChanged) {
             auto p = ctx->provider({}); p->AddRef();
-            ctx->text_events->post([p] {
+            ctx->textEvents->post([p] {
                 UiaRaiseAutomationEvent(p, UIA_LayoutInvalidatedEventId); p->Release(); });
         }
-        if (event.kind == SemanticEventKind::text_selection_changed) {
+        if (event.kind == SemanticEventKind::textSelectionChanged) {
             auto p = ctx->provider(event.ref); p->AddRef();
-            ctx->text_events->post([p] {
+            ctx->textEvents->post([p] {
                 UiaRaiseAutomationEvent(p, UIA_Text_TextSelectionChangedEventId); p->Release(); });
         }
-        if (event.kind == SemanticEventKind::text_changed) {
+        if (event.kind == SemanticEventKind::textChanged) {
             auto p = ctx->provider(event.ref); p->AddRef();
-            ctx->text_events->post([p] {
+            ctx->textEvents->post([p] {
                 UiaRaiseAutomationEvent(p, UIA_Text_TextChangedEventId); p->Release(); });
         }
-        if (event.kind == SemanticEventKind::focus_changed) {
+        if (event.kind == SemanticEventKind::focusChanged) {
             auto p = ctx->provider(event.ref); p->AddRef();
-            ctx->focus_events->post([p] {
+            ctx->focusEvents->post([p] {
                 UiaRaiseAutomationEvent(p, UIA_AutomationFocusChangedEventId);
                 p->Release(); });
         }
-        if (event.kind == SemanticEventKind::structure_changed) {
+        if (event.kind == SemanticEventKind::structureChanged) {
             auto p = ctx->provider(event.ref); p->AddRef();
-            ctx->structure_events->post([p] {
+            ctx->structureEvents->post([p] {
                 UiaRaiseStructureChangedEvent(p, StructureChangeType_ChildrenInvalidated, nullptr, 0);
                 p->Release(); });
         }
-        if (event.kind == SemanticEventKind::property_changed && event.property == "enabled") {
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "enabled") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
-            auto p = ctx->provider(event.ref); p->AddRef(); bool enabled = n->enabled;
-            ctx->events->post([p, enabled] {
-                VARIANT before, after; VariantInit(&before); VariantInit(&after);
-                before.vt = after.vt = VT_BOOL; before.boolVal = enabled ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = enabled ? VARIANT_TRUE : VARIANT_FALSE;
-                UiaRaiseAutomationPropertyChangedEvent(p, UIA_IsEnabledPropertyId, before, after);
-                p->Release(); });
+            auto raise = [&](const NodeSnapshot& node, bool parentChanged = false) {
+                // A setting changed under a disabled parent leaves UIA's effective state unchanged.
+                if (node.ref.item && !parentChanged) {
+                    auto parent = ctx->ui->semantics().get({node.ref.id});
+                    if (!parent || !parent->enabled) return;
+                }
+                auto p = ctx->provider(node.ref); p->AddRef(); bool enabled = ctx->effectiveEnabled(node);
+                ctx->events->post([p, enabled] {
+                    VARIANT before, after; VariantInit(&before); VariantInit(&after);
+                    before.vt = after.vt = VT_BOOL; before.boolVal = enabled ? VARIANT_FALSE : VARIANT_TRUE; after.boolVal = enabled ? VARIANT_TRUE : VARIANT_FALSE;
+                    UiaRaiseAutomationPropertyChangedEvent(p, UIA_IsEnabledPropertyId, before, after);
+                    p->Release(); });
+            };
+            raise(*n);
+            if (!event.ref.item) {
+                // Semantic item.enabled is its own setting; changing the parent still changes UIA's items.
+                auto children = ctx->ui->semantics().children(event.ref);
+                if (children) for (const auto& ref : *children) if (ref.item) {
+                    auto item = ctx->ui->semantics().get(ref);
+                    if (!item || !item->enabled) continue;
+                    raise(*item, true);
+                }
+            }
         }
-        if (event.kind == SemanticEventKind::property_changed && event.property == "value") {
-            auto n = ctx->ui->semantics().get(event.ref); if (!n || n->role != Role::text) return;
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "value") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || n->role != Role::textField) return;
             auto p = ctx->provider(event.ref); p->AddRef(); auto value = n->value;
             ctx->events->post([p, value = std::move(value)] {
                 VARIANT before, after; VariantInit(&before); VariantInit(&after);
@@ -1207,7 +1232,7 @@ void UiaBridge::Impl::observe() {
                 UiaRaiseAutomationPropertyChangedEvent(p, UIA_ValueValuePropertyId, before, after); VariantClear(&after);
                 p->Release(); });
         }
-        if (event.kind == SemanticEventKind::property_changed && event.property == "name") {
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "name") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
             auto p = ctx->provider(event.ref); p->AddRef(); auto name = n->name;
             ctx->events->post([p, name = std::move(name)] {
@@ -1216,16 +1241,16 @@ void UiaBridge::Impl::observe() {
                 UiaRaiseAutomationPropertyChangedEvent(p, UIA_NamePropertyId, before, after); VariantClear(&after);
                 p->Release(); });
         }
-        if (event.kind == SemanticEventKind::property_changed && event.property == "numeric_value") {
-            auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->numeric_value) return;
-            auto p = ctx->provider(event.ref); p->AddRef(); double value = *n->numeric_value;
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "numericValue") {
+            auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->numericValue) return;
+            auto p = ctx->provider(event.ref); p->AddRef(); double value = *n->numericValue;
             ctx->events->post([p, value] {
                 VARIANT before, after; VariantInit(&before); VariantInit(&after);
                 after.vt = VT_R8; after.dblVal = value;
                 UiaRaiseAutomationPropertyChangedEvent(p, UIA_RangeValueValuePropertyId, before, after);
                 p->Release(); });
         }
-        if (event.kind == SemanticEventKind::property_changed && event.property == "expanded") {
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "expanded") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
             auto p = ctx->provider(event.ref); p->AddRef(); bool expanded = n->expanded;
             ctx->events->post([p, expanded] {
@@ -1236,7 +1261,7 @@ void UiaBridge::Impl::observe() {
                 UiaRaiseAutomationPropertyChangedEvent(p, UIA_ExpandCollapseExpandCollapseStatePropertyId, before, after);
                 p->Release(); });
         }
-        if (event.kind == SemanticEventKind::property_changed && event.property == "selected") {
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "selected") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n) return;
             auto p = ctx->provider(event.ref); p->AddRef(); bool selected = n->selected;
             ctx->events->post([p, selected] {
@@ -1246,24 +1271,24 @@ void UiaBridge::Impl::observe() {
                 if (selected) UiaRaiseAutomationEvent(p, UIA_SelectionItem_ElementSelectedEventId);
                 p->Release(); });
         }
-        if (event.kind == SemanticEventKind::property_changed && event.property == "checked") {
+        if (event.kind == SemanticEventKind::propertyChanged && event.property == "checked") {
             auto n = ctx->ui->semantics().get(event.ref); if (!n || !n->checked) return;
             auto p = ctx->provider(event.ref); p->AddRef(); bool checked = *n->checked;
             ctx->events->post([p, checked] {
-                VARIANT old_value, new_value; VariantInit(&old_value); VariantInit(&new_value);
-                old_value.vt = new_value.vt = VT_I4;
-                new_value.lVal = checked ? ToggleState_On : ToggleState_Off;
-                old_value.lVal = checked ? ToggleState_Off : ToggleState_On;
-                UiaRaiseAutomationPropertyChangedEvent(p, UIA_ToggleToggleStatePropertyId, old_value, new_value);
+                VARIANT oldValue, newValue; VariantInit(&oldValue); VariantInit(&newValue);
+                oldValue.vt = newValue.vt = VT_I4;
+                newValue.lVal = checked ? ToggleState_On : ToggleState_Off;
+                oldValue.lVal = checked ? ToggleState_Off : ToggleState_On;
+                UiaRaiseAutomationPropertyChangedEvent(p, UIA_ToggleToggleStatePropertyId, oldValue, newValue);
                 p->Release(); });
         }
     });
 }
 UiaBridge::UiaBridge(Ui& ui, HWND hwnd, std::function<const Frame&()> frame) : impl_(std::make_shared<Impl>(ui,hwnd,std::move(frame))) {
-    impl_->com_init = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
+    impl_->comInit = CoInitializeEx(nullptr, COINIT_MULTITHREADED);
 }
 UiaBridge::~UiaBridge() { close(); }
-LRESULT UiaBridge::get_object(WPARAM w, LPARAM l) {
+LRESULT UiaBridge::getObject(WPARAM w, LPARAM l) {
     if (static_cast<LONG>(l) != UiaRootObjectId) return 0;
     impl_->observe();
     return UiaReturnRawElementProvider(impl_->hwnd, w, l, impl_->provider({}));
@@ -1273,7 +1298,7 @@ void UiaBridge::close() {
     if (!impl_) return; auto ctx=impl_; { std::lock_guard lock(ctx->mutex); if (!ctx->alive) return; ctx->alive=false; }
     ctx->subscription.reset(); ctx->dispatch(); UiaReturnRawElementProvider(ctx->hwnd,0,0,nullptr);
     for (auto p:ctx->providers) { p->disconnecting=true; p->valid=false; UiaDisconnectProvider(p); p->disconnecting=false; p->Release(); } ctx->providers.clear();
-    ctx->identity_available = false;
-    if (SUCCEEDED(ctx->com_init)) { CoUninitialize(); ctx->com_init = E_FAIL; }
+    ctx->identityAvailable = false;
+    if (SUCCEEDED(ctx->comInit)) { CoUninitialize(); ctx->comInit = E_FAIL; }
 }
 }

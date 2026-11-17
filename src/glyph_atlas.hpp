@@ -7,7 +7,7 @@
 #include <tuple>
 namespace lcars::detail {
 enum class BitmapMode { gray, mono, bgra, unsupported };
-inline std::vector<unsigned char> bitmap_coverage(BitmapMode mode, unsigned width, unsigned height, int pitch, const unsigned char* buffer) {
+inline std::vector<unsigned char> bitmapCoverage(BitmapMode mode, unsigned width, unsigned height, int pitch, const unsigned char* buffer) {
     if (mode == BitmapMode::unsupported || !width || !height || !buffer) return {};
     std::vector<unsigned char> pixels(static_cast<std::size_t>(width)*height);
     for (unsigned y=0; y<height; ++y) {
@@ -26,14 +26,14 @@ struct GlyphBitmap { int width, height, left, top; std::vector<unsigned char> pi
 struct AtlasGlyph { AtlasRegion region; int left=0, top=0; };
 class GlyphAtlas {
     struct ShelfPage { std::unique_ptr<AtlasPage> page; int x=1, y=1, row=0; };
-    int size_, max_pages_; std::vector<ShelfPage> pages_; std::map<GlyphKey,AtlasGlyph> glyphs_; unsigned clears_=0, batches_=0, peak_pages_=0;
+    int size_, maxPages_; std::vector<ShelfPage> pages_; std::map<GlyphKey,AtlasGlyph> glyphs_; unsigned clears_=0, batches_=0, peakPages_=0;
 public:
-    explicit GlyphAtlas(int size=1024,int max_pages=4)
-        :size_(std::clamp(size,3,1024)),max_pages_(std::clamp(max_pages,1,4)) {}
+    explicit GlyphAtlas(int size=1024,int maxPages=4)
+        :size_(std::clamp(size,3,1024)),maxPages_(std::clamp(maxPages,1,4)) {}
     void clear() { pages_.clear(); glyphs_.clear(); ++clears_; }
     unsigned clears() const { return clears_; }
     unsigned batches() const { return batches_; }
-    unsigned peak_pages() const { return peak_pages_; }
+    unsigned peakPages() const { return peakPages_; }
     std::vector<const AtlasPage*> pages() const { std::vector<const AtlasPage*> result; for (const auto& p : pages_) result.push_back(p.page.get()); return result; }
     AtlasGlyph get(GlyphKey key,const std::function<GlyphBitmap()>& rasterize) {
         auto found=glyphs_.find(key); if(found!=glyphs_.end()) return found->second;
@@ -44,9 +44,9 @@ public:
                 if(p.x+bitmap.width+1>size_) { p.x=1; p.y+=p.row+1; p.row=0; }
                 if(p.y+bitmap.height+1<=size_) return &p;
             }
-            if(static_cast<int>(pages_.size())>=max_pages_) return nullptr;
+            if(static_cast<int>(pages_.size())>=maxPages_) return nullptr;
             auto page=std::make_unique<AtlasPage>(); page->width=page->height=size_; page->pixels.resize(static_cast<std::size_t>(size_)*size_);
-            pages_.push_back({std::move(page)}); peak_pages_=std::max(peak_pages_,static_cast<unsigned>(pages_.size())); return &pages_.back();
+            pages_.push_back({std::move(page)}); peakPages_=std::max(peakPages_,static_cast<unsigned>(pages_.size())); return &pages_.back();
         };
         auto* p=place(); if(!p) { clear(); ++batches_; p=place(); }
         if(!p) return result;

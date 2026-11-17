@@ -9,7 +9,7 @@ namespace x04 {
 // Text a painter drew that has no ink by nature: spaces and ideographic spaces only. A justified or distributed line draws a
 // full-width space as a piece of its own (code review 2026-11-12, item 11), and a reader that wants every drawn character
 // must not drop it for lacking ink.
-inline bool blank_only(std::u16string_view text) {
+inline bool blankOnly(std::u16string_view text) {
     return !text.empty() && std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == 0x3000; });
 }
 // Enumerate the semantic tree; the existing typed drivers still exercise each component.
@@ -23,9 +23,9 @@ inline std::vector<Entry> inventory(lcars::Ui& ui) {
         for (const auto& ref : *children) {
             auto node = ui.semantics().get(ref);
             if (!node) continue;
-            const auto page = state.semantic_page(ref.id);
+            const auto page = state.semanticPage(ref.id);
             if (!ref.item && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
-                result.push_back({page, state.layout_handle(ref.id)});
+                result.push_back({page, state.layoutHandle(ref.id)});
             if (node->role == lcars::Role::dialog) self(self, ref);
         }
     };
@@ -34,14 +34,14 @@ inline std::vector<Entry> inventory(lcars::Ui& ui) {
     // even when the semantic tree's reading order changes with the arranged page.
     const auto& controls = state.controls();
     auto ordinal = [&](const Entry& entry) {
-        auto id = state.layout_id(entry.handle);
+        auto id = state.layoutId(entry.handle);
         return std::find_if(controls.begin(), controls.end(), [&](const auto& c) { return id && c.id == *id; }) - controls.begin();
     };
     std::stable_sort(result.begin(), result.end(), [&](const auto& a, const auto& b) { return ordinal(a) < ordinal(b); });
     return result;
 }
-inline std::vector<Entry> inventory(edit_form::Form& form) { return inventory(form.ui); }
-inline std::vector<std::string> pages(edit_form::Form& form) {
+inline std::vector<Entry> inventory(editForm::Form& form) { return inventory(form.ui); }
+inline std::vector<std::string> pages(editForm::Form& form) {
     std::vector<std::string> result;
     auto tabs = form.handles.tabs.describe();
     auto children = form.ui.semantics().children({tabs->id});
@@ -64,22 +64,22 @@ inline const lcars::Placement* placement(const lcars::Frame& frame, const lcars:
 }
 // Determine clipping applicability from the assembled layout tree, including modal
 // content even when closed. Associated labels use their field's placement.
-inline std::optional<bool> enclosing_scroll(const lcars::layout::Node& node, lcars::detail::UiState& ui,
+inline std::optional<bool> enclosingScroll(const lcars::layout::Node& node, lcars::detail::UiState& ui,
                                              std::string_view id, bool inside = false) {
     inside = inside || node.kind == lcars::layout::Node::Kind::scroll;
     if (node.kind == lcars::layout::Node::Kind::component) {
-        auto actual = ui.layout_id(node.component);
+        auto actual = ui.layoutId(node.component);
         if (actual && *actual == id) return inside;
     }
     for (const auto& child : node.children)
-        if (auto found = enclosing_scroll(child, ui, id, inside)) return found;
+        if (auto found = enclosingScroll(child, ui, id, inside)) return found;
     return std::nullopt;
 }
-inline std::optional<bool> enclosing_scroll(edit_form::Form& form, const lcars::ComponentSnapshot& semantic) {
-    return enclosing_scroll(form.page(), lcars::detail::access(form.ui),
+inline std::optional<bool> enclosingScroll(editForm::Form& form, const lcars::ComponentSnapshot& semantic) {
+    return enclosingScroll(form.page(), lcars::detail::access(form.ui),
                             semantic.target.empty() ? semantic.id : semantic.target);
 }
-inline bool inside_client(const lcars::Placement& placement, int width, int height) {
+inline bool insideClient(const lcars::Placement& placement, int width, int height) {
     lcars::Rect client{0, 0, width, height};
     return placement.bounds.w > 0 && placement.bounds.h > 0 &&
         lcars::intersect(placement.bounds, client) == placement.bounds &&
@@ -87,23 +87,23 @@ inline bool inside_client(const lcars::Placement& placement, int width, int heig
 }
 // Passive labels and progress have no user operation. All other page members retry a
 // typed operation; admission must reject it before examining the proposed value.
-inline bool hidden_retry(const lcars::ComponentHandle& value) {
+inline bool hiddenRetry(const lcars::ComponentHandle& value) {
     return std::visit([](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         using namespace lcars;
-        if constexpr (std::is_same_v<T, TextHandle>) return h.set_value(u"blocked").status == Status::hidden && h.focus().status == Status::hidden;
+        if constexpr (std::is_same_v<T, TextFieldHandle>) return h.setValue(u"blocked").status == Status::hidden && h.focus().status == Status::hidden;
         else if constexpr (std::is_same_v<T, ButtonHandle>) return h.invoke().status == Status::hidden && h.focus().status == Status::hidden;
         else if constexpr (std::is_same_v<T, CheckboxHandle>) return h.toggle().status == Status::hidden && h.focus().status == Status::hidden;
         else if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> || std::is_same_v<T, ListHandle>)
             return h.select({"blocked"}).status == Status::hidden && h.focus().status == Status::hidden;
-        else if constexpr (std::is_same_v<T, SliderHandle>) return h.set_value(0).status == Status::hidden && h.focus().status == Status::hidden;
+        else if constexpr (std::is_same_v<T, SliderHandle>) return h.setValue(0).status == Status::hidden && h.focus().status == Status::hidden;
         else return true;
     }, value);
 }
-inline bool normal_semantics(const lcars::ComponentSnapshot& s) {
+inline bool normalSemantics(const lcars::ComponentSnapshot& s) {
     using lcars::ComponentKind;
     if (s.kind == ComponentKind::checkbox) return s.checked && s.value == (*s.checked ? u"true" : u"false");
-    if (s.kind == ComponentKind::radio_group || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::list || s.kind == ComponentKind::tabs) {
+    if (s.kind == ComponentKind::radioGroup || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::list || s.kind == ComponentKind::tabs) {
         auto count = std::count_if(s.items.begin(), s.items.end(), [](const auto& option) { return option.selected; });
         if (count > 1) return false;
         if (count == 1) return std::any_of(s.items.begin(), s.items.end(), [&](const auto& o) { return o.selected && o.label == s.value; });
@@ -111,7 +111,7 @@ inline bool normal_semantics(const lcars::ComponentSnapshot& s) {
     }
     return true;
 }
-inline std::vector<std::u16string> normal_text(const lcars::ComponentSnapshot& s) {
+inline std::vector<std::u16string> normalText(const lcars::ComponentSnapshot& s) {
     using lcars::ComponentKind;
     std::vector<std::u16string> result;
     auto add = [&](std::u16string text) {
@@ -122,44 +122,44 @@ inline std::vector<std::u16string> normal_text(const lcars::ComponentSnapshot& s
     else {
         add(s.name);
         if (s.kind != ComponentKind::button && s.kind != ComponentKind::checkbox) add(s.value);
-        if (s.kind == ComponentKind::text) add(s.description);
+        if (s.kind == ComponentKind::textField) add(s.description);
     }
     return result;
 }
-inline bool baseline_context(edit_form::Form& form) {
+inline bool baselineContext(editForm::Form& form) {
     form.scroll.offset = 0; // save a zero offset for the page being left
     if (!form.handles.tabs.activate({"v01"})) return false;
     form.scroll.offset = 0;
     return bool(form.handles.tabs.focus());
 }
-inline bool set_enabled(const lcars::ComponentHandle& value, bool enabled) {
+inline bool setEnabled(const lcars::ComponentHandle& value, bool enabled) {
     return std::visit([&](const auto& h) {
         if constexpr (requires { h.enable(enabled); }) return bool(h.enable(enabled));
         else return false;
     }, value);
 }
-inline bool focus_applicable(const lcars::ComponentSnapshot& semantic) {
+inline bool focusApplicable(const lcars::ComponentSnapshot& semantic) {
     return semantic.enabled && semantic.focusable;
 }
 inline bool focus(lcars::Ui& ui, const lcars::ComponentHandle& value) {
-    auto id = lcars::detail::access(ui).layout_id(value);
+    auto id = lcars::detail::access(ui).layoutId(value);
     return id && bool(ui.semantics().perform({*id}, lcars::Verb::focus));
 }
-inline bool disabled_retry(const lcars::ComponentHandle& value) {
+inline bool disabledRetry(const lcars::ComponentHandle& value) {
     return std::visit([](const auto& h) {
         using T = std::decay_t<decltype(h)>; using namespace lcars;
-        if constexpr (std::is_same_v<T, TextHandle>) return h.set_value(u"blocked").status == Status::disabled && h.focus().status == Status::disabled;
+        if constexpr (std::is_same_v<T, TextFieldHandle>) return h.setValue(u"blocked").status == Status::disabled && h.focus().status == Status::disabled;
         else if constexpr (std::is_same_v<T, ButtonHandle>) return h.invoke().status == Status::disabled && h.focus().status == Status::disabled;
         else if constexpr (std::is_same_v<T, CheckboxHandle>) return h.toggle().status == Status::disabled && h.focus().status == Status::disabled;
         else if constexpr (std::is_same_v<T, RadioGroupHandle> || std::is_same_v<T, DropdownHandle> || std::is_same_v<T, ListHandle>)
             return h.select({"blocked"}).status == Status::disabled && h.focus().status == Status::disabled;
-        else if constexpr (std::is_same_v<T, SliderHandle>) return h.set_value(0).status == Status::disabled && h.focus().status == Status::disabled;
+        else if constexpr (std::is_same_v<T, SliderHandle>) return h.setValue(0).status == Status::disabled && h.focus().status == Status::disabled;
         else return false;
     }, value);
 }
 // Exercise a selected value using each component's public operation. The demo reset
 // actions restore each page's initial model after the observation.
-inline bool drive_selected(const Entry& entry) {
+inline bool driveSelected(const Entry& entry) {
     using namespace lcars;
     return std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
@@ -172,13 +172,13 @@ inline bool drive_selected(const Entry& entry) {
         else return false;
     }, entry.handle);
 }
-inline bool selected_semantics(const lcars::ComponentSnapshot& semantic) {
+inline bool selectedSemantics(const lcars::ComponentSnapshot& semantic) {
     using namespace lcars;
     if (semantic.kind == ComponentKind::checkbox) return semantic.checked == true;
     return !semantic.value.empty() && std::count_if(semantic.items.begin(), semantic.items.end(),
         [&](const auto& option) { return option.selected && option.label == semantic.value; }) == 1;
 }
-inline bool same_selection(const lcars::ComponentSnapshot& a, const lcars::ComponentSnapshot& b) {
+inline bool sameSelection(const lcars::ComponentSnapshot& a, const lcars::ComponentSnapshot& b) {
     if (a.checked != b.checked || a.items.size() != b.items.size()) return false;
     for (std::size_t i = 0; i < a.items.size(); ++i)
         if (a.items[i].value != b.items[i].value || a.items[i].label != b.items[i].label ||
@@ -186,21 +186,21 @@ inline bool same_selection(const lcars::ComponentSnapshot& a, const lcars::Compo
             a.items[i].invalid != b.items[i].invalid) return false;
     return true;
 }
-inline std::vector<lcars::ComponentSnapshot> snapshot(edit_form::Form& form) {
+inline std::vector<lcars::ComponentSnapshot> snapshot(editForm::Form& form) {
     std::vector<lcars::ComponentSnapshot> result;
     for (const auto& entry : inventory(form)) if (auto s = describe(entry.handle)) result.push_back(*s);
     return result;
 }
-inline bool same_model(const std::vector<lcars::ComponentSnapshot>& a, const std::vector<lcars::ComponentSnapshot>& b) {
+inline bool sameModel(const std::vector<lcars::ComponentSnapshot>& a, const std::vector<lcars::ComponentSnapshot>& b) {
     if (a.size() != b.size()) return false;
     for (std::size_t i = 0; i < a.size(); ++i)
         if (a[i].id != b[i].id || a[i].value != b[i].value || a[i].enabled != b[i].enabled ||
             a[i].focused != b[i].focused || a[i].candidate != b[i].candidate || a[i].expanded != b[i].expanded ||
-            a[i].read_only != b[i].read_only || a[i].invalid != b[i].invalid || a[i].error != b[i].error ||
-            a[i].source_conflict != b[i].source_conflict || !same_selection(a[i], b[i])) return false;
+            a[i].readOnly != b[i].readOnly || a[i].invalid != b[i].invalid || a[i].error != b[i].error ||
+            a[i].sourceConflict != b[i].sourceConflict || !sameSelection(a[i], b[i])) return false;
     return true;
 }
-inline bool restore_selected(edit_form::Form& form, const Entry& entry, const lcars::ComponentSnapshot& before, const lcars::PresentationSettings& presentation) {
+inline bool restoreSelected(editForm::Form& form, const Entry& entry, const lcars::ComponentSnapshot& before, const lcars::PresentationSettings& presentation) {
     using namespace lcars;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
@@ -212,86 +212,86 @@ inline bool restore_selected(edit_form::Form& form, const Entry& entry, const lc
         else if constexpr (std::is_same_v<T, TabsHandle>) return bool(h.activate({"v01"}));
         else return false;
     }, entry.handle);
-    return restored && bool(form.ui.set_presentation(presentation)) && baseline_context(form);
+    return restored && bool(form.ui.setPresentation(presentation)) && baselineContext(form);
 }
 // Applicability follows the application-owned connection, not component IDs.
-inline bool conflict_inapplicable(const edit_form::Form& form, const Entry& entry) {
-    auto field = std::get_if<lcars::TextHandle>(&entry.handle);
-    if (field) return (form.list && form.list->search_connection().owns(*field)) || *field == form.handles.preview;
+inline bool conflictInapplicable(const editForm::Form& form, const Entry& entry) {
+    auto field = std::get_if<lcars::TextFieldHandle>(&entry.handle);
+    if (field) return (form.list && form.list->searchConnection().owns(*field)) || *field == form.handles.preview;
     auto semantic = describe(entry.handle);
     return semantic && (semantic->kind == lcars::ComponentKind::slider || semantic->kind == lcars::ComponentKind::checkbox) &&
-        !lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, semantic->id);
+        !lcars::detail::access(form.ui).confirmationGroupContains(form.handles.apply.describe()->id, semantic->id);
 }
-inline bool group_conflict_supported(edit_form::Form& form, const lcars::ComponentSnapshot& s) {
+inline bool groupConflictSupported(editForm::Form& form, const lcars::ComponentSnapshot& s) {
     using lcars::ComponentKind;
-    bool type_supported = s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radio_group || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider;
-    return type_supported && lcars::detail::access(form.ui).confirmation_group_contains(form.handles.apply.describe()->id, s.id);
+    bool typeSupported = s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radioGroup || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider;
+    return typeSupported && lcars::detail::access(form.ui).confirmationGroupContains(form.handles.apply.describe()->id, s.id);
 }
-inline bool drive_group_conflict(edit_form::Form& form, const Entry& entry) {
+inline bool driveGroupConflict(editForm::Form& form, const Entry& entry) {
     using namespace lcars;
     return std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle>) {
-            form.reject_next_apply_with_notices_source_change();
-            return bool(h.toggle()) && form.handles.apply.invoke().status == Status::invalid_value && h.describe()->source_conflict;
+            form.rejectNextApplyWithNoticesSourceChange();
+            return bool(h.toggle()) && form.handles.apply.invoke().status == Status::invalidValue && h.describe()->sourceConflict;
         } else if constexpr (std::is_same_v<T, RadioGroupHandle>) {
             if (!h.select({"focus"})) return false;
-            form.update_mode_source({"offline"}); return h.describe()->source_conflict;
+            form.updateModeSource({"offline"}); return h.describe()->sourceConflict;
         } else if constexpr (std::is_same_v<T, DropdownHandle>) {
             if (!h.select({"central"})) return false;
-            form.update_region_source({"south"}); return h.describe()->source_conflict;
+            form.updateRegionSource({"south"}); return h.describe()->sourceConflict;
         } else if constexpr (std::is_same_v<T, SliderHandle>) {
-            if (!h.set_value(55)) return false;
-            form.update_volume_source(70); return h.describe()->source_conflict;
+            if (!h.setValue(55)) return false;
+            form.updateVolumeSource(70); return h.describe()->sourceConflict;
         } else return false;
     }, entry.handle);
 }
-inline lcars::ButtonHandle latest_for(edit_form::Form& form, const Entry& entry) {
+inline lcars::ButtonHandle latestFor(editForm::Form& form, const Entry& entry) {
     using namespace lcars;
     return std::visit([&](const auto& h) -> ButtonHandle {
         using T = std::decay_t<decltype(h)>;
-        if constexpr (std::is_same_v<T, CheckboxHandle>) return form.handles.notices_latest;
-        else if constexpr (std::is_same_v<T, RadioGroupHandle>) return form.handles.mode_latest;
-        else if constexpr (std::is_same_v<T, DropdownHandle>) return form.handles.region_latest;
-        else if constexpr (std::is_same_v<T, SliderHandle>) return form.handles.volume_latest;
+        if constexpr (std::is_same_v<T, CheckboxHandle>) return form.handles.noticesLatest;
+        else if constexpr (std::is_same_v<T, RadioGroupHandle>) return form.handles.modeLatest;
+        else if constexpr (std::is_same_v<T, DropdownHandle>) return form.handles.regionLatest;
+        else if constexpr (std::is_same_v<T, SliderHandle>) return form.handles.volumeLatest;
         else return {};
     }, entry.handle);
 }
-inline bool execution_supported(edit_form::Form&, const lcars::ButtonHandle& button) {
+inline bool executionSupported(editForm::Form&, const lcars::ButtonHandle& button) {
     auto semantic = button.describe();
     return semantic && semantic->kind == lcars::ComponentKind::button;
 }
-inline bool observe_execution(edit_form::Form& form, const lcars::ButtonHandle& button,
+inline bool observeExecution(editForm::Form& form, const lcars::ButtonHandle& button,
                               std::function<lcars::Result()> observer) {
     if (button.describe()->id == form.handles.apply.describe()->id) {
         // The confirmation action remains protected; observe its actual modification entry.
-        if (button.bind([] { return lcars::Result{}; }).status != lcars::Status::invalid_value) return false;
-        form.observe_next_apply([observer = std::move(observer)] { (void)observer(); });
+        if (button.bind([] { return lcars::Result{}; }).status != lcars::Status::invalidValue) return false;
+        form.observeNextApply([observer = std::move(observer)] { (void)observer(); });
         return true;
     }
     return bool(button.bind(std::move(observer)));
 }
-inline bool prepare_execution(edit_form::Form& form, const Entry& entry) {
+inline bool prepareExecution(editForm::Form& form, const Entry& entry) {
     auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
-    if (!button || !baseline_context(form)) return false;
+    if (!button || !baselineContext(form)) return false;
     if (entry.page == "modal") {
-        if (!form.handles.tabs.activate({"v03"}) || !form.handles.dialog_open.invoke()) return false;
+        if (!form.handles.tabs.activate({"v03"}) || !form.handles.dialogOpen.invoke()) return false;
     } else if (!form.handles.tabs.activate({std::string(entry.page)})) return false;
     return bool(button->enable(true)) && bool(button->focus());
 }
-inline bool restore_execution(edit_form::Form& form, const Entry& entry, bool enabled) {
+inline bool restoreExecution(editForm::Form& form, const Entry& entry, bool enabled) {
     auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
     if (!button) return false;
-    bool is_apply = button->describe()->id == form.handles.apply.describe()->id;
-    bool restored = (is_apply ? bool(form.handles.reset.invoke()) : bool(form.restore_fixture_action(*button))) && bool(button->enable(enabled));
+    bool isApply = button->describe()->id == form.handles.apply.describe()->id;
+    bool restored = (isApply ? bool(form.handles.reset.invoke()) : bool(form.restoreFixtureAction(*button))) && bool(button->enable(enabled));
     if (entry.page == "modal")
-        restored = bool(form.handles.dialog.settle(false)) && bool(form.handles.reset_v03.invoke()) && restored;
-    return baseline_context(form) && restored;
+        restored = bool(form.handles.dialog.settle(false)) && bool(form.handles.resetV03.invoke()) && restored;
+    return baselineContext(form) && restored;
 }
 // Give the active page enough content to exercise both edges at every viewport size.
 // The model fixture temporarily expands an existing label and restores its original
 // source after each component. The target itself is never used as the padding label.
-inline bool prepare_clipped(edit_form::Form& form, const Entry& entry) {
+inline bool prepareClipped(editForm::Form& form, const Entry& entry) {
     if (entry.page == "shared" || entry.page == "modal" || !form.handles.tabs.activate({std::string(entry.page)})) return false;
     auto target = describe(entry.handle);
     std::u16string padding;
@@ -299,33 +299,33 @@ inline bool prepare_clipped(edit_form::Form& form, const Entry& entry) {
     lcars::LabelHandle filler;
     if (entry.page == "v01") filler = target->id == form.handles.intro.describe()->id ? form.handles.title : form.handles.intro;
     else if (entry.page == "v02") filler = target->id == form.list->handles.title.describe()->id ? form.list->handles.detail : form.list->handles.title;
-    else if (entry.page == "v03") filler = target->id == form.handles.v03_title.describe()->id ? form.handles.dialog_result : form.handles.v03_title;
-    else filler = form.handles.v04_title;
-    if (!form.set_clip_padding(filler, std::move(padding))) return false;
-    if (target->kind == lcars::ComponentKind::label && target->label_kind == lcars::LabelKind::error && !target->target.empty())
-        return bool(form.handles.name.set_error(u"X04 clipped error"));
+    else if (entry.page == "v03") filler = target->id == form.handles.v03Title.describe()->id ? form.handles.dialogResult : form.handles.v03Title;
+    else filler = form.handles.v04Title;
+    if (!form.setClipPadding(filler, std::move(padding))) return false;
+    if (target->kind == lcars::ComponentKind::label && target->labelKind == lcars::LabelKind::error && !target->target.empty())
+        return bool(form.handles.name.setError(u"X04 clipped error"));
     return true;
 }
-inline bool restore_clipped(edit_form::Form& form, const Entry& entry) {
+inline bool restoreClipped(editForm::Form& form, const Entry& entry) {
     auto target = describe(entry.handle);
-    form.clear_clip_padding();
-    if (target && target->kind == lcars::ComponentKind::label && target->label_kind == lcars::LabelKind::error && !target->target.empty())
-        if (!form.handles.name.set_error(u"")) return false;
+    form.clearClipPadding();
+    if (target && target->kind == lcars::ComponentKind::label && target->labelKind == lcars::LabelKind::error && !target->target.empty())
+        if (!form.handles.name.setError(u"")) return false;
     form.scroll.offset = 0;
     return bool(form.handles.tabs.activate({"v01"}));
 }
-inline const lcars::Placement* clipped_owner(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
+inline const lcars::Placement* clippedOwner(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
     auto id = s.target.empty() ? s.id : s.target;
     auto it = std::find_if(frame.items.begin(), frame.items.end(), [&](const auto& item) { return item.id == id; });
     return it == frame.items.end() ? nullptr : &*it;
 }
-inline std::optional<lcars::Rect> clipped_rect(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
-    auto* owner = clipped_owner(frame, s); if (!owner) return std::nullopt;
+inline std::optional<lcars::Rect> clippedRect(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
+    auto* owner = clippedOwner(frame, s); if (!owner) return std::nullopt;
     if (s.target.empty()) return owner->bounds;
     const std::vector<lcars::Line>* lines = nullptr;
-    if (s.label_kind == lcars::LabelKind::name) lines = &owner->label_lines;
-    else if (s.label_kind == lcars::LabelKind::description) lines = &owner->description_lines;
-    else if (s.label_kind == lcars::LabelKind::error) lines = &owner->error_lines;
+    if (s.labelKind == lcars::LabelKind::name) lines = &owner->labelLines;
+    else if (s.labelKind == lcars::LabelKind::description) lines = &owner->descriptionLines;
+    else if (s.labelKind == lcars::LabelKind::error) lines = &owner->errorLines;
     if (!lines || lines->empty()) return std::nullopt;
     auto r = lines->front().bounds;
     for (const auto& line : *lines) {
@@ -336,7 +336,7 @@ inline std::optional<lcars::Rect> clipped_rect(const lcars::Frame& frame, const 
     }
     return r;
 }
-inline std::vector<int> clipped_offsets(const lcars::Frame& frame, lcars::Rect target) {
+inline std::vector<int> clippedOffsets(const lcars::Frame& frame, lcars::Rect target) {
     auto viewport = frame.viewport;
     int half = std::max(1, std::min(target.h, viewport.h) / 2);
     auto clamp = [&](int value) { return std::clamp(value, 0, frame.maximum); };
@@ -346,54 +346,54 @@ inline std::vector<int> clipped_offsets(const lcars::Frame& frame, lcars::Rect t
     std::sort(result.begin(), result.end()); result.erase(std::unique(result.begin(), result.end()), result.end());
     return result;
 }
-inline const std::u16string error_message = u"X04 field error";
-inline bool error_supported(const lcars::ComponentSnapshot& s) {
+inline const std::u16string errorMessage = u"X04 field error";
+inline bool errorSupported(const lcars::ComponentSnapshot& s) {
     using namespace lcars;
-    return (s.kind == ComponentKind::label && s.label_kind == LabelKind::error && !s.target.empty()) ||
-        s.kind == ComponentKind::text || s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radio_group ||
+    return (s.kind == ComponentKind::label && s.labelKind == LabelKind::error && !s.target.empty()) ||
+        s.kind == ComponentKind::textField || s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radioGroup ||
         s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider || s.kind == ComponentKind::tabs;
 }
-inline bool drive_error(edit_form::Form& form, const Entry& entry) {
+inline bool driveError(editForm::Form& form, const Entry& entry) {
     using namespace lcars;
     if (entry.page != "shared" && !form.handles.tabs.activate({std::string(entry.page)})) return false;
     return std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
-        if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.set_error(error_message));
-        else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(error_message));
+        if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.setError(errorMessage));
+        else if constexpr (std::is_same_v<T, TextFieldHandle>) return bool(h.setError(errorMessage));
         else if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle> ||
                            std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) {
-            return bool(detail::access(form.ui).set_error(h.describe()->id, error_message));
+            return bool(detail::access(form.ui).setError(h.describe()->id, errorMessage));
         } else return false;
     }, entry.handle);
 }
-inline bool error_semantics(edit_form::Form& form, const lcars::ComponentSnapshot& s) {
+inline bool errorSemantics(editForm::Form& form, const lcars::ComponentSnapshot& s) {
     using namespace lcars;
     if (s.kind == ComponentKind::tabs) return !s.items.empty() && s.items[0].invalid;
     if (s.kind == ComponentKind::label) {
         auto target = form.handles.name.describe();
-        return s.label_kind == LabelKind::error && s.value == error_message && s.target == target->id && target->invalid &&
-            target->error == error_message && std::find(target->labels.begin(), target->labels.end(), s.id) != target->labels.end();
+        return s.labelKind == LabelKind::error && s.value == errorMessage && s.target == target->id && target->invalid &&
+            target->error == errorMessage && std::find(target->labels.begin(), target->labels.end(), s.id) != target->labels.end();
     }
-    if (s.kind == ComponentKind::text && s.id == form.handles.name.describe()->id) {
-        auto label = form.handles.name_error.describe();
-        return s.invalid && s.error == error_message && label->label_kind == LabelKind::error && label->target == s.id &&
+    if (s.kind == ComponentKind::textField && s.id == form.handles.name.describe()->id) {
+        auto label = form.handles.nameError.describe();
+        return s.invalid && s.error == errorMessage && label->labelKind == LabelKind::error && label->target == s.id &&
             label->value == s.error && std::find(s.labels.begin(), s.labels.end(), label->id) != s.labels.end();
     }
-    return s.invalid && s.error == error_message;
+    return s.invalid && s.error == errorMessage;
 }
-inline bool restore_error(edit_form::Form& form, const Entry& entry) {
+inline bool restoreError(editForm::Form& form, const Entry& entry) {
     using namespace lcars;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
-        if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.set_error(u""));
-        else if constexpr (std::is_same_v<T, TextHandle>) return bool(h.set_error(u""));
+        if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.setError(u""));
+        else if constexpr (std::is_same_v<T, TextFieldHandle>) return bool(h.setError(u""));
         else if constexpr (std::is_same_v<T, CheckboxHandle> || std::is_same_v<T, RadioGroupHandle> ||
-                           std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) return bool(detail::access(form.ui).set_error(h.describe()->id, u""));
+                           std::is_same_v<T, DropdownHandle> || std::is_same_v<T, SliderHandle>) return bool(detail::access(form.ui).setError(h.describe()->id, u""));
         else return false;
     }, entry.handle);
-    return restored && baseline_context(form);
+    return restored && baselineContext(form);
 }
-inline bool prepare_candidate(edit_form::Form& form, const Entry& entry) {
+inline bool prepareCandidate(editForm::Form& form, const Entry& entry) {
     using namespace lcars;
     if (entry.page != "shared" && !form.handles.tabs.activate({std::string(entry.page)})) return false;
     return std::visit([](const auto& h) {
@@ -403,11 +403,11 @@ inline bool prepare_candidate(edit_form::Form& form, const Entry& entry) {
         else return false;
     }, entry.handle);
 }
-inline bool open_candidate(const Entry& entry) {
+inline bool openCandidate(const Entry& entry) {
     if (const auto* dropdown = std::get_if<lcars::DropdownHandle>(&entry.handle)) return bool(dropdown->open());
     return true;
 }
-inline const lcars::Placement* candidate_placement(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
+inline const lcars::Placement* candidatePlacement(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
     if (s.kind == lcars::ComponentKind::dropdown) {
         auto it = std::find_if(frame.overlays.begin(), frame.overlays.end(), [&](const auto& p) { return p.id == s.id && p.popup && !p.tooltip; });
         return it == frame.overlays.end() ? nullptr : &*it;
@@ -415,12 +415,12 @@ inline const lcars::Placement* candidate_placement(const lcars::Frame& frame, co
     auto it = std::find_if(frame.items.begin(), frame.items.end(), [&](const auto& p) { return p.id == s.id; });
     return it == frame.items.end() ? nullptr : &*it;
 }
-inline std::optional<std::u16string> candidate_label(const lcars::ComponentSnapshot& s) {
+inline std::optional<std::u16string> candidateLabel(const lcars::ComponentSnapshot& s) {
     if (!s.candidate) return std::nullopt;
     auto it = std::find_if(s.items.begin(), s.items.end(), [&](const auto& o) { return o.value == *s.candidate && o.enabled; });
     return it == s.items.end() ? std::nullopt : std::optional<std::u16string>{it->label};
 }
-inline bool restore_candidate(edit_form::Form& form, const Entry& entry) {
+inline bool restoreCandidate(editForm::Form& form, const Entry& entry) {
     using namespace lcars;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
@@ -429,42 +429,42 @@ inline bool restore_candidate(edit_form::Form& form, const Entry& entry) {
         else if constexpr (std::is_same_v<T, ListHandle>) return bool(form.list->handles.zero.invoke()) && bool(form.list->handles.twenty.invoke());
         else return false;
     }, entry.handle);
-    return restored && baseline_context(form);
+    return restored && baselineContext(form);
 }
-inline bool drive_search_read_only(edit_form::Form& form) {
-    return bool(form.handles.tabs.activate({"v02"})) && bool(form.list->handles.search.set_value(u"X04")) &&
-           bool(form.list->handles.search.read_only(true));
+inline bool driveSearchReadOnly(editForm::Form& form) {
+    return bool(form.handles.tabs.activate({"v02"})) && bool(form.list->handles.search.setValue(u"X04")) &&
+           bool(form.list->handles.search.readOnly(true));
 }
-inline bool restore_search_read_only(edit_form::Form& form) {
-    return bool(form.list->handles.search.read_only(false)) && bool(form.list->handles.search.set_value(u"")) &&
+inline bool restoreSearchReadOnly(editForm::Form& form) {
+    return bool(form.list->handles.search.readOnly(false)) && bool(form.list->handles.search.setValue(u"")) &&
            bool(form.handles.tabs.activate({"v01"}));
 }
-inline bool open_modal(edit_form::Form& form) {
-    return bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialog_open.invoke());
+inline bool openModal(editForm::Form& form) {
+    return bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.dialogOpen.invoke());
 }
-inline bool close_modal(edit_form::Form& form) { return bool(form.handles.dialog.settle(false)); }
-inline bool prepare_tip(edit_form::Form& form) {
-    return bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.progress_half.focus());
+inline bool closeModal(editForm::Form& form) { return bool(form.handles.dialog.settle(false)); }
+inline bool prepareTip(editForm::Form& form) {
+    return bool(form.handles.tabs.activate({"v03"})) && bool(form.handles.progressHalf.focus());
 }
 struct TextStateDriver {
     const char* name;
-    lcars::Result (*drive)(edit_form::Form&);
-    lcars::Result (*restore)(edit_form::Form&);
+    lcars::Result (*drive)(editForm::Form&);
+    lcars::Result (*restore)(editForm::Form&);
 };
-inline const TextStateDriver name_read_only{
+inline const TextStateDriver nameReadOnly{
     "read-only",
-    [](edit_form::Form& form) { return form.handles.read_only.invoke(); },
-    [](edit_form::Form& form) { return form.handles.normal.invoke(); }
+    [](editForm::Form& form) { return form.handles.readOnly.invoke(); },
+    [](editForm::Form& form) { return form.handles.normal.invoke(); }
 };
-inline const TextStateDriver name_conflict{
+inline const TextStateDriver nameConflict{
     "source conflict",
-    [](edit_form::Form& form) {
-        auto result = form.handles.name.set_value(u"Draft");
+    [](editForm::Form& form) {
+        auto result = form.handles.name.setValue(u"Draft");
         if (!result) return result;
-        form.update_source(u"Latest");
+        form.updateSource(u"Latest");
         return lcars::Result{};
     },
-    [](edit_form::Form& form) { return form.handles.latest.invoke(); }
+    [](editForm::Form& form) { return form.handles.latest.invoke(); }
 };
 }
 

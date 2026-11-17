@@ -9,22 +9,31 @@
 
 ## 公開名稱 (public names)
 
-Every name in `include/lcars/*.hpp`, and the comments there, follow the rules below. A renamed name keeps no alias. The
+All LcarsUI C++ names across the repository (public headers, implementation, tests, examples, demo and showcase), and
+comments referring to them, follow the rules below. A renamed name keeps no alias. The
 rules come from the author's glossary (`CONTEXT.md`, not in the repository), but this section is complete without it:
 the words public names use are these.
 
-- Terms. A component is one UI element the application creates with a `Ui::add_` function (a button, a text field, a
+- Terms. A component is one UI element the application creates with a `Ui::addX` function (a button, a text field, a
   list); its component type is its `ComponentKind`. An item is one entry a user can choose: an option of a radio group,
   a dropdown or a list (`OptionItem`, identified by an `OptionValue`), or a context menu's `MenuItem`. A handle is a
   typed reference to one thing that does not keep it alive (`XxxHandle`). A read source is how a component reads the
   application's value and hears that it changed (`Source<T>`); a change record is what a write hands the application:
   the field, the new value and the value it started from (`Change<Field, Value>`); a confirmation group is a set of
-  fields one button writes together (`connect_confirmation`).
-- Existing patterns. Types are PascalCase; functions, fields and enumerators are snake_case. One component type is one
-  word everywhere: its `ComponentKind` enumerator, the suffix of its `Ui::add_` function and the prefix of its handle
-  (`ComponentKind::radio_group`, `Ui::add_radio_group`, `RadioGroupHandle`). A typed reference to one thing is
+  fields one button writes together (`connectConfirmation`).
+- Existing patterns. Types are PascalCase; functions, fields, enumerators and constants are camelCase
+  (`addRadioGroup`, `readOnly`, `Status::notFound`, `defaultMaxTextLength`, `menuUndo`). Single-word names stay as they
+  are (`focus`). Acronyms are ordinary words (`componentId`, `apiMisuse`, `uiEnvironment`). Private members keep their
+  trailing underscore (`componentLifetimes_`). One component type is one word everywhere: its `ComponentKind`
+  enumerator, the suffix of its `Ui::addX` function and the prefix of its handle
+  (`ComponentKind::radioGroup`, `Ui::addRadioGroup`, `RadioGroupHandle`). A typed reference to one thing is
   `XxxHandle`; what an operation hands back, when it is more than a `Result`, is `XxxResult` (`ConfirmationResult`,
   `CreateResult`, `RunResult`).
+- Boundaries. Semantic property-event strings follow their C++ names (`"readOnly"`, `"numericValue"`). Standard-library
+  and foreign API names keep their required spelling. CMake targets, file names, persisted demo `settings.json` keys,
+  macros (`LCARS_OP`), menu command identifiers (`"lcars.undo"`) and other runtime text are unchanged. CTest
+  `public_names` checks public header declarations (including the generated version header template); its fixtures
+  reject snake_case and exclude comments, literals, `std::` names, macros and private trailing underscores.
 - A. An enumeration that says which kind of thing something is, is `XxxKind` (`ComponentKind`, `LabelKind`,
   `DiagnosticKind`, `layout::Node::Kind`, `SemanticEventKind`). Kind only classifies a thing: a choice of how something
   behaves is `XxxMode` or `XxxMethod` (`MenuMode`, `FocusIndicatorMode`, `WritingMode`, `JustifyMethod`), and `Density`,
@@ -37,13 +46,19 @@ the words public names use are these.
 - C. Parameters given once, when something is created, are `XxxConfig` (`ComponentConfig`, `DesktopConfig`); ones that
   can change while it runs are `XxxSettings` (`PresentationSettings`). "Option" only means an item the user can choose
   (`OptionItem`, `OptionValue`, `OptionSnapshot`), never a setting.
-- D. The same thing takes the same word. The options of a component are its items: set with `set_items`
-  (`DropdownHandle`, `ListHandle`, `ContextMenuHandle`), passed as `items` (`add_radio_group`, `add_dropdown`,
-  `add_list`), listed as `ComponentSnapshot::items`; a scroll state anchored on one names it `anchor_item`.
-  `layout::Placement::options` and `option_start` keep their names: they hold the bounds of the placed options, and of
+- D. The same thing takes the same word. The options of a component are its items: set with `setItems`
+  (`DropdownHandle`, `ListHandle`, `ContextMenuHandle`), passed as `items` (`addRadioGroup`, `addDropdown`,
+  `addList`), listed as `ComponentSnapshot::items`; a scroll state anchored on one names it `anchorItem`.
+  `layout::Placement::options` and `optionStart` keep their names: they hold the bounds of the placed options, and of
   tab and navigation pages, as laid out, not a component's items.
-- E. A read-only snapshot is `XxxSnapshot`: a struct that describes the whole state of one component, option, menu, menu
+- E. `Field` means a writable field (a text field, checkbox, radio group, slider, dropdown or list); a list writes
+  immediately only, and a navigation list is not a field. `TextField` means only the text-field component
+  (`ComponentKind::textField`, `Ui::addTextField`, `TextFieldHandle`). Names beginning with `Text` otherwise mean
+  general text layout or styling shared by labels and text fields (`TextAlign`, `TextRun`, `TextStyle`, `TextSpan`,
+  `TextMeasure`, `TextSegment`). Public header comments use "text field" for that component and "field" for writable
+  fields in general. `ConfirmFieldChange` and `ConfirmFieldError` belong to confirmation groups.
+- F. A read-only snapshot is `XxxSnapshot`: a struct that describes the whole state of one component, option, menu, menu
   item or semantic tree node at one moment, and is only read back, never passed in (`ComponentSnapshot`,
   `OptionSnapshot`, `MenuSnapshot`, `MenuItemSnapshot`, `NodeSnapshot`). A struct that holds a part of such state, or
-  that the application passes in, keeps its own name (`Placement`, `Frame`, `Palette`, `TextSpan`, `TextScroll`,
+  that the application passes in, keeps its own name (`CommonState`, `Placement`, `Frame`, `Palette`, `TextSpan`, `TextFieldScroll`,
   `HoverTarget`, `OptionValue`); so do `describe()`, `SemanticTree`, `NodeRef` and `Ui::semantics()`.
