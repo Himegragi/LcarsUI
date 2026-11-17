@@ -1,3 +1,10 @@
+> Acceptance follow-up (2026-11-17): the original Debug smoke, both original
+> fixture UIA cases, both demo UIA cases and native checks have now passed.
+> Required desktop Debug/Release test-name coverage is 73/73 each; Release core
+> is 43/43. See [final acceptance evidence](ticket-26-acceptance.md) for logs,
+> measured timeout history, authorization and process cleanup. The remaining
+> acceptance section below describes the earlier implementation checkpoint.
+
 # #26 Debug UIA readiness implementation
 
 Base: integration/refactor-26d, f0e5df6490baaa0d605f21e469aff06e6deefc93.

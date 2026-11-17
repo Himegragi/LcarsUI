@@ -1,0 +1,44 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+
+[HANDLER_OUTPUT] 
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+
+      Start  1: presentation_matrix_native
+ 1/17 Test  #1: presentation_matrix_native .......   Passed  397.96 sec
+      Start  2: demo_render_compare
+ 2/17 Test  #2: demo_render_compare ..............   Passed   69.77 sec
+      Start  3: render_compare
+ 3/17 Test  #3: render_compare ...................   Passed   44.14 sec
+      Start  4: palette_override
+ 4/17 Test  #4: palette_override .................   Passed    0.06 sec
+      Start  5: hover
+ 5/17 Test  #5: hover ............................   Passed    1.44 sec
+      Start  6: outline
+ 6/17 Test  #6: outline ..........................   Passed    0.11 sec
+      Start  7: focus_ring
+ 7/17 Test  #7: focus_ring .......................   Passed   20.35 sec
+      Start  8: navigation
+ 8/17 Test  #8: navigation .......................   Passed    0.04 sec
+      Start  9: component_registry
+ 9/17 Test  #9: component_registry ...............   Passed    0.11 sec
+      Start 10: settings_demo
+10/17 Test #10: settings_demo ....................   Passed    2.55 sec
+      Start 11: settings_persistence
+11/17 Test #11: settings_persistence .............   Passed    0.98 sec
+      Start 12: source_text
+12/17 Test #12: source_text ......................   Passed    2.28 sec
+      Start 13: v1_final_plan
+13/17 Test #13: v1_final_plan ....................   Passed    0.42 sec
+      Start 14: demo_perf_list
+14/17 Test #14: demo_perf_list ...................   Passed    0.19 sec
+      Start 15: real_close_list
+15/17 Test #15: real_close_list ..................   Passed    0.22 sec
+      Start 16: demo_dry_run
+16/17 Test #16: demo_dry_run .....................   Passed    0.42 sec
+      Start 17: demo_backup_restore
+17/17 Test #17: demo_backup_restore ..............   Passed    0.30 sec
+
+100% tests passed, 0 tests failed out of 17
+
+Total Test time (real) = 541.39 sec
