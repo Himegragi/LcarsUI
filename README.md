@@ -424,6 +424,39 @@ Request the components you use: `Core`, `AppearanceWeb`, `AppearanceMaterial`, `
 
 If you link Desktop, credit FreeType in your product documentation: show `isoduo::thirdPartyNotices()` in an About box or ship `THIRD_PARTY_NOTICES.txt`. The framework license is available as `Isoduo_LICENSE_FILE`. Source archives and headers are vendored under `third_party/` and verified by SHA256 at configure time; no network access or package manager is required to build.
 
+## Windows and WSL worktrees
+
+Windows-created linked worktrees can contain drive-letter Git pointers that WSL
+cannot resolve. `tools/repair-worktree-paths.ps1` preserves the worktree location
+and uses relative pointers through NTFS junctions. Run it from the main checkout,
+with Git operations on the affected worktree idle:
+
+```powershell
+$repair = @{
+    Worktree = 'C:/worktrees/isoduo-task'
+    Bridge = 'C:/worktrees/isoduo-task-bridge'
+    Backup = 'E:/Isoduo/.git/interop-backups/isoduo-task'
+}
+./tools/repair-worktree-paths.ps1 @repair -Mode Plan
+./tools/repair-worktree-paths.ps1 @repair -Mode Apply
+# To restore the original pointer bytes:
+./tools/repair-worktree-paths.ps1 @repair -Mode Restore
+```
+
+Choose unused bridge and backup paths; the bridge must be on the worktree's
+volume. Apply backs up both pointer files, including hidden files, before writing.
+Verify discovery and `worktree list` in both environments after applying. Restore
+refuses subsequent pointer changes and retains the junctions and backups.
+Keep junctions in place while using repaired pointers; moving or recreating a
+worktree requires rechecking its metadata. This is a per-worktree repair, not a
+hook into tools that create new worktrees. A `prunable` label alone does not mean
+the worktree's files are absent.
+
+`tests/worktree_paths.ps1` exercises cross-volume and same-volume repair, Git
+operations and restoration using two explicitly supplied fresh fixture roots.
+The optional `-WindowsGitExecutable` takes a WSL path to Windows Git for read-only
+compatibility checks. The fixtures are retained for inspection.
+
 ## Updating third-party dependencies
 
 1. Replace the relevant vendored archive or Khronos header under `third_party/`, retaining the exact upstream bytes. Review the new source and license files, including any added or changed license obligations.

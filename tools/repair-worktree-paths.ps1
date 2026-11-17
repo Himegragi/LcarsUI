@@ -17,14 +17,23 @@ function RelativePath($fromDirectory, $to) {
     if ($relative.IsAbsoluteUri) { throw 'Bridge must be on the worktree volume' }
     [uri]::UnescapeDataString($relative.ToString())
 }
-function WriteUtf8($path, $value) { [IO.File]::WriteAllText($path, $value, (New-Object Text.UTF8Encoding($false))) }
+function WriteMetadata($path, [byte[]]$bytes) {
+    # Open the existing file: Create/WriteAllBytes rejects Hidden files on Windows.
+    # Preserve attributes and refuse to recreate metadata removed by another process.
+    $stream = [IO.File]::Open($path, [IO.FileMode]::Open, [IO.FileAccess]::Write, [IO.FileShare]::Read)
+    try {
+        $stream.Write($bytes, 0, $bytes.Length)
+        $stream.SetLength($bytes.Length)
+    } finally { $stream.Dispose() }
+}
+function WriteUtf8($path, $value) { WriteMetadata $path ([Text.Encoding]::UTF8.GetBytes($value)) }
 if ($Mode -eq 'Restore') {
     $state = Get-Content -LiteralPath (Join-Path $Backup 'manifest.json') -Raw | ConvertFrom-Json
     if ($state.Worktree -ne $Worktree -or $state.Bridge -ne $Bridge) { throw 'Backup belongs to another repair' }
     if ([IO.File]::ReadAllText($dotGit) -ne $state.Forward -or [IO.File]::ReadAllText($state.ReverseFile) -ne $state.Reverse) { throw 'Metadata changed since repair; restore refused' }
     # Leave bridge junctions in place: restoration never recursively deletes anything.
-    [IO.File]::WriteAllBytes($dotGit, [IO.File]::ReadAllBytes((Join-Path $Backup 'dotgit.bin')))
-    [IO.File]::WriteAllBytes($state.ReverseFile, [IO.File]::ReadAllBytes((Join-Path $Backup 'gitdir.bin')))
+    WriteMetadata $dotGit ([IO.File]::ReadAllBytes((Join-Path $Backup 'dotgit.bin')))
+    WriteMetadata $state.ReverseFile ([IO.File]::ReadAllBytes((Join-Path $Backup 'gitdir.bin')))
     Write-Output 'Restored original metadata bytes; bridge junctions and backup retained.'
     return
 }
@@ -63,8 +72,8 @@ try {
     WriteUtf8 $dotGit $forward
     WriteUtf8 $reverseFile $reverse
 } catch {
-    [IO.File]::WriteAllBytes($dotGit, [IO.File]::ReadAllBytes((Join-Path $Backup 'dotgit.bin')))
-    [IO.File]::WriteAllBytes($reverseFile, [IO.File]::ReadAllBytes((Join-Path $Backup 'gitdir.bin')))
+    WriteMetadata $dotGit ([IO.File]::ReadAllBytes((Join-Path $Backup 'dotgit.bin')))
+    WriteMetadata $reverseFile ([IO.File]::ReadAllBytes((Join-Path $Backup 'gitdir.bin')))
     throw
 }
 Write-Output 'Applied relative pointers. Validate Windows path resolution and WSL Git before resuming tools.'
