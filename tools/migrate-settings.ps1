@@ -15,7 +15,7 @@ New-Item -ItemType Directory -Force -Path $parent | Out-Null
 if ((Get-Item -LiteralPath $parent).Attributes -band [IO.FileAttributes]::ReparsePoint) { throw 'Destination parent is a linked path' }
 $stage = Join-Path $parent ('migration-' + [guid]::NewGuid().ToString('N'))
 try {
-    Copy-Item -LiteralPath $source -Destination $stage -Recurse -ErrorAction Stop
+    Copy-Item -LiteralPath $source -Destination $stage -Recurse -Force -ErrorAction Stop
     # Directory.Move refuses an existing destination, including one created during the copy.
     [IO.Directory]::Move($stage, $destination)
 } finally {
