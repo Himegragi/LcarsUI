@@ -3531,8 +3531,11 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
         return {Status::ok, {}, n};
     }
     if (u.removalPending(ref.id)) return {Status::notFound, {}, {}};
-    const auto snapshot = u.describe(ref.id);
-    const auto& s = *snapshot;
+    return u.semanticNode(ref, *u.describe(ref.id));
+}
+Query<NodeSnapshot> detail::UiState::semanticNode(const NodeRef& ref, const ComponentSnapshot& s) {
+    auto& u = *this;
+    const auto* c = find(ref.id);
     NodeSnapshot n;
     n.ref = ref; n.role = detail::componentType(c->kind).role();
     auto [instance, inserted] = u.semanticInstances_.try_emplace(ref.id, 0);
@@ -3631,14 +3634,20 @@ Query<std::u16string> SemanticTree::text(std::string_view id) const {
 }
 std::vector<NodeSnapshot> detail::UiState::semanticSnapshot() {
     SemanticTree tree(*this); std::vector<NodeSnapshot> nodes;
-    auto visit = [&](auto&& self, const NodeRef& parent) -> void {
+    auto visit = [&](auto&& self, const NodeRef& parent, const ComponentSnapshot* owner) -> void {
         auto children = tree.children(parent); if (!children) return;
         for (const auto& ref : *children) {
-            auto node = tree.get(ref); if (!node) continue;
-            nodes.push_back(*node); self(self, ref);
+            // Options share their owner's component description for this capture. Rebuilding
+            // its entire items vector per option made event capture quadratic in allocations.
+            auto node = ref.item && owner ? semanticNode(ref, *owner) : tree.get(ref);
+            if (!node) continue;
+            nodes.push_back(*node);
+            if (ref.item) continue;  // option and menu-item nodes are leaves
+            const auto description = find(ref.id) ? describe(ref.id) : std::nullopt;
+            self(self, ref, description ? &*description : nullptr);
         }
     };
-    visit(visit, {}); return nodes;
+    visit(visit, {}, nullptr); return nodes;
 }
 void detail::UiState::semanticDiff() {
     const bool wasEmpty = semanticPending_.empty();

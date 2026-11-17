@@ -649,6 +649,7 @@ private:
     bool semanticInspecting_ = false;
     std::function<void()> semanticSchedule_;
     std::function<void(const Id&)> revealRequested_;
+    Query<NodeSnapshot> semanticNode(const NodeRef&, const ComponentSnapshot&);
     std::vector<NodeSnapshot> semanticSnapshot();
     void semanticDiff();
     bool committingRemovals_ = false;
