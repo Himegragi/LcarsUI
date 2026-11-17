@@ -19,6 +19,13 @@ thread_local int rootRequests = 0;
 thread_local lcars::detail::RendererTestHooks* activeHooks = nullptr;
 LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     if (msg == WM_APP + 81) return reinterpret_cast<LRESULT>(companionWindow.load());
+    if (msg == WM_APP + 82) {
+        auto tree = activeForm->ui.semantics();
+        if (w == 0) { auto node = tree.get({"form.name"}); return node && node->value == u"UIA baseline"; }
+        if (w == 1) { auto node = tree.get({"form.apply"}); return node && node->focused; }
+        if (w == 2) { auto node = tree.get({"form.title.pages.v03.progress"}); return node && !node->hidden; }
+        return 0;
+    }
     if (msg == WM_GETOBJECT && static_cast<LONG>(l) == UiaRootObjectId) ++rootRequests;
     if (msg == WM_APP + 80) {
         switch (w) {
