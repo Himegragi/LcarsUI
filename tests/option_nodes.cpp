@@ -1,3 +1,4 @@
+#include <algorithm>
 #include "lcars/core.hpp"
 #include "lcars/semantics.hpp"
 #include "lcars/layout.hpp"
@@ -356,6 +357,28 @@ void focusStates() {
         }
     }
 }
+void snapshotReadBudget() {
+    Ui ui;
+    std::vector<OptionItem> items;
+    for (int i = 0; i < 64; ++i) items.push_back({{std::to_string(i)}, u"Item"});
+    auto list = ui.addList({.id = "list", .label = u"List"}, items).value.value();
+    int reads = 0;
+    list.connectSource({[&] { ++reads; return std::optional{OptionValue{"0"}}; }, [](auto) { return [] {}; }});
+    list.connectImmediate([](const auto&) { return Result{}; });
+    auto button = ui.addButton({.id = "button", .label = u"Button"}).value.value();
+    std::vector<SemanticEvent> events;
+    auto subscription = ui.semantics().subscribe([&](const auto& event) { events.push_back(event); });
+    reads = 0;
+    check(bool(button.focus()), "focus with an observed large option collection");
+    // Capturing a semantic event must not re-read the whole collection for every option.
+    // This generous constant budget permits several complete before/after reads, independently of item count.
+    check(reads <= 32, "semantic capture reads a collection a bounded number of times");
+    ui.semantics().dispatchEvents();
+    check(std::any_of(events.begin(), events.end(), [](const auto& event) {
+        return event.kind == SemanticEventKind::focusChanged && event.ref == NodeRef{"button"};
+    }), "bounded capture still delivers the focus event");
+    check(ui.semantics().get({"list", OptionValue{"0"}})->selected, "bounded capture preserves option selection");
+}
 void contextMenuOpen() {
     World w; w.arrangePage();
     for (const auto& subject : w.subjects)
@@ -378,6 +401,6 @@ int main() {
                               {"page_errors", pageErrors}, {"dropdown_open", dropdownOpen}, {"focus_events", focusEvents},
                               {"programmatic_focus", programmaticFocus}, {"focus_states", focusStates},
                               {"focus_admission_and_reveal", focusAdmissionAndReveal}, {"page_focus_after_blur", pageFocusRechecksAfterBlur},
-                              {"context_menu_open", contextMenuOpen}};
+                              {"snapshot_read_budget", snapshotReadBudget}, {"context_menu_open", contextMenuOpen}};
     return test::run("option_nodes", cases);
 }

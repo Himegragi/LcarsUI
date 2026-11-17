@@ -294,6 +294,34 @@ bool rendererFailureCases(const wchar_t* host, const wchar_t* appearance) {
     std::cout << "UIA18 renderer lifecycle: " << (handled && unhandled ? "PASS" : "FAIL") << " handled=" << handled << " unhandled=" << unhandled << '\n';
     return handled && unhandled;
 }
+// The settings host is nonactivating. UIA focus only changes framework focus; no input is injected.
+// A successful focus must leave its existing ValuePattern immediately available (no settle sleep).
+bool readinessCase(const wchar_t* host, const wchar_t* appearance) {
+    std::wstring command = L"\"" + std::wstring(host) + L"\" " + appearance;
+    STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) return false;
+    CloseHandle(process.hThread);
+    Search search{process.dwProcessId};
+    for (int i = 0; i < 100 && !search.window; ++i) { EnumWindows(findWindow, reinterpret_cast<LPARAM>(&search)); Sleep(100); }
+    IUIAutomation* automation = nullptr; IUIAutomationElement* root = nullptr; IUIAutomationElement* field = nullptr;
+    bool ok = search.window && SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation))) &&
+        SUCCEEDED(automation->ElementFromHandle(search.window, &root)) && (field = findId(automation, root, L"general.name"));
+    for (int i = 0; ok && i < 3; ++i) {
+        auto focusStart = GetTickCount64();
+        auto focus = field->SetFocus();
+        std::cout << "Focus ms=" << GetTickCount64()-focusStart << "\n";
+        const auto start = GetTickCount64();
+        IUIAutomationValuePattern* value = nullptr;
+        const auto pattern = field->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&value));
+        std::cout << "Immediate ValuePattern after focus: focus=0x" << std::hex << focus << " pattern=0x" << pattern << std::dec << " ms=" << GetTickCount64() - start << '\n';
+        ok = SUCCEEDED(focus) && SUCCEEDED(pattern) && value;
+        if (value) value->Release();
+    }
+    if (field) field->Release(); if (root) root->Release(); if (automation) automation->Release();
+    if (search.window) PostMessageW(search.window, WM_CLOSE, 0, 0);
+    if (WaitForSingleObject(process.hProcess, 5000) == WAIT_TIMEOUT) { TerminateProcess(process.hProcess, 1); ok = false; }
+    CloseHandle(process.hProcess); return ok;
+}
 bool accessibilityCase(const wchar_t* host, const wchar_t* appearance) {
     bool pass = true;
     for (const auto mode : {L"", L"--accessibility-enabled", L"--accessibility-disabled", L"--accessibility-mixed"}) {
@@ -373,7 +401,7 @@ int wmain(int argc, wchar_t** argv) {
         bool ok = imeProbe(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(std::stoull(argv[2])))); CoUninitialize(); return ok ? 0 : 1;
     }
     if ((argc != 3 && argc != 4) || FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 1;
-    if (argc == 4) { const std::wstring mode(argv[3]); bool ok = mode == L"--accessibility" ? accessibilityCase(argv[1], argv[2]) : mode == L"--uia18" ? rendererFailureCases(argv[1], argv[2]) : mode == L"--uia-dpi" ? dpiCase(argv[1], argv[2]) : mode == L"--preflight" ? preflight(argv[1], argv[2]) : mode == L"--ime-simulation" ? imeSimulation(argv[1], argv[2]) : false; CoUninitialize(); return ok ? 0 : 1; }
+    if (argc == 4) { const std::wstring mode(argv[3]); bool ok = mode == L"--readiness" ? readinessCase(argv[1], argv[2]) : mode == L"--accessibility" ? accessibilityCase(argv[1], argv[2]) : mode == L"--uia18" ? rendererFailureCases(argv[1], argv[2]) : mode == L"--uia-dpi" ? dpiCase(argv[1], argv[2]) : mode == L"--preflight" ? preflight(argv[1], argv[2]) : mode == L"--ime-simulation" ? imeSimulation(argv[1], argv[2]) : false; CoUninitialize(); return ok ? 0 : 1; }
     std::wstring command = L"\"" + std::wstring(argv[1]) + L"\" " + argv[2];
     STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) return 1;

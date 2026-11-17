@@ -1,0 +1,134 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Release
+
+[HANDLER_OUTPUT] 
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Release
+
+      Start  1: public_names
+ 1/62 Test  #1: public_names .....................   Passed    1.39 sec
+      Start  2: perf_instrumentation
+ 2/62 Test  #2: perf_instrumentation .............   Passed    0.03 sec
+      Start  3: perf_script
+ 3/62 Test  #3: perf_script ......................   Passed    1.19 sec
+      Start  4: visual_studio_selection
+ 4/62 Test  #4: visual_studio_selection ..........   Passed    0.25 sec
+      Start  5: render_cpu
+ 5/62 Test  #5: render_cpu .......................   Passed    0.03 sec
+      Start  6: render_boundary
+ 6/62 Test  #6: render_boundary ..................   Passed    0.10 sec
+      Start  7: third_party_notices
+ 7/62 Test  #7: third_party_notices ..............   Passed    0.64 sec
+      Start  8: components
+ 8/62 Test  #8: components .......................   Passed    0.05 sec
+      Start  9: error_lines
+ 9/62 Test  #9: error_lines ......................   Passed    0.04 sec
+      Start 10: edit_form
+10/62 Test #10: edit_form ........................   Passed   14.40 sec
+      Start 11: multiline
+11/62 Test #11: multiline ........................   Passed    0.05 sec
+      Start 12: text_flow
+12/62 Test #12: text_flow ........................   Passed    0.04 sec
+      Start 13: justify
+13/62 Test #13: justify ..........................   Passed    0.04 sec
+      Start 14: animation
+14/62 Test #14: animation ........................   Passed    0.03 sec
+      Start 15: vertical
+15/62 Test #15: vertical .........................   Passed    0.04 sec
+      Start 16: richtext
+16/62 Test #16: richtext .........................   Passed    0.04 sec
+      Start 17: word_select
+17/62 Test #17: word_select ......................   Passed    0.03 sec
+      Start 18: word_select_icu
+18/62 Test #18: word_select_icu ..................   Passed    0.02 sec
+      Start 19: list_page
+19/62 Test #19: list_page ........................   Passed    0.03 sec
+      Start 20: package_install
+20/62 Test #20: package_install ..................   Passed    0.20 sec
+      Start 21: about_package_no_json
+21/62 Test #21: about_package_no_json ............   Passed    0.05 sec
+      Start 22: consumer_example
+22/62 Test #22: consumer_example .................   Passed    4.14 sec
+      Start 23: package_contract
+23/62 Test #23: package_contract .................   Passed   15.37 sec
+      Start 24: diagnostics
+24/62 Test #24: diagnostics ......................   Passed    0.03 sec
+      Start 25: diagnostic_queue
+25/62 Test #25: diagnostic_queue .................   Passed    0.03 sec
+      Start 26: about_desktop
+26/62 Test #26: about_desktop ....................   Passed    0.56 sec
+      Start 27: about_executable_diagnostics
+27/62 Test #27: about_executable_diagnostics .....   Passed    1.10 sec
+      Start 28: about_executable_nodiag
+28/62 Test #28: about_executable_nodiag ..........   Passed    1.01 sec
+      Start 29: uia_demo_web
+29/62 Test #29: uia_demo_web .....................   Passed   12.70 sec
+      Start 30: uia_web
+30/62 Test #30: uia_web ..........................   Passed   63.13 sec
+      Start 31: uia_ime_simulation_web
+31/62 Test #31: uia_ime_simulation_web ...........   Passed    1.09 sec
+      Start 32: uia_global_web
+32/62 Test #32: uia_global_web ...................   Passed    1.28 sec
+      Start 33: uia_demo_material
+33/62 Test #33: uia_demo_material ................   Passed   12.62 sec
+      Start 34: uia_material
+34/62 Test #34: uia_material .....................   Passed   63.35 sec
+      Start 35: uia_ime_simulation_material
+35/62 Test #35: uia_ime_simulation_material ......   Passed    1.09 sec
+      Start 36: uia_global_material
+36/62 Test #36: uia_global_material ..............   Passed    1.34 sec
+      Start 37: demo_keyboard
+37/62 Test #37: demo_keyboard ....................   Passed    3.78 sec
+      Start 38: settings_close_host
+38/62 Test #38: settings_close_host ..............   Passed    7.04 sec
+      Start 39: renderer_failure
+39/62 Test #39: renderer_failure .................   Passed   12.45 sec
+      Start 40: presentation_recovery
+40/62 Test #40: presentation_recovery ............   Passed    0.76 sec
+      Start 41: text
+41/62 Test #41: text .............................   Passed    0.34 sec
+      Start 42: vertical_text
+42/62 Test #42: vertical_text ....................   Passed    0.31 sec
+      Start 43: perf_report_only_setup
+43/62 Test #43: perf_report_only_setup ...........   Passed    0.11 sec
+      Start 44: host_native
+44/62 Test #44: host_native ......................   Passed  264.56 sec
+      Start 45: presentation_matrix_native
+45/62 Test #45: presentation_matrix_native .......   Passed   16.15 sec
+      Start 46: demo_render_compare
+46/62 Test #46: demo_render_compare ..............   Passed   11.78 sec
+      Start 47: render_compare
+47/62 Test #47: render_compare ...................   Passed    5.32 sec
+      Start 48: palette_override
+48/62 Test #48: palette_override .................   Passed    0.03 sec
+      Start 49: hover
+49/62 Test #49: hover ............................   Passed    0.09 sec
+      Start 50: outline
+50/62 Test #50: outline ..........................   Passed    0.04 sec
+      Start 51: focus_ring
+51/62 Test #51: focus_ring .......................   Passed    0.53 sec
+      Start 52: navigation
+52/62 Test #52: navigation .......................   Passed    0.03 sec
+      Start 53: component_registry
+53/62 Test #53: component_registry ...............   Passed    0.04 sec
+      Start 54: settings_demo
+54/62 Test #54: settings_demo ....................   Passed    0.13 sec
+      Start 55: settings_persistence
+55/62 Test #55: settings_persistence .............   Passed    0.79 sec
+      Start 56: source_text
+56/62 Test #56: source_text ......................   Passed    0.91 sec
+      Start 57: v1_final_plan
+57/62 Test #57: v1_final_plan ....................   Passed    0.40 sec
+      Start 58: demo_perf_list
+58/62 Test #58: demo_perf_list ...................   Passed    0.20 sec
+      Start 59: real_close_list
+59/62 Test #59: real_close_list ..................   Passed    0.21 sec
+      Start 60: demo_dry_run
+60/62 Test #60: demo_dry_run .....................   Passed    0.38 sec
+      Start 61: demo_backup_restore
+61/62 Test #61: demo_backup_restore ..............   Passed    0.28 sec
+      Start 62: demo_settings_smoke
+62/62 Test #62: demo_settings_smoke ..............   Passed    4.66 sec
+
+100% tests passed, 0 tests failed out of 62
+
+Total Test time (real) = 528.92 sec

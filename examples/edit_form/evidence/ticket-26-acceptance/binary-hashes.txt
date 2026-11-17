@@ -1,0 +1,17 @@
+
+
+Algorithm : SHA256
+Hash      : 2B598EE34E02547FEFA23C7D4174F6864316005ADCFBC976C8965D38D2B15E35
+Path      : C:\Users\user\.t3\worktrees\LcarsUI\t3-6586e5ee-6be5a2eeeed9b7de\build\Debug\lcars_uia_client.exe
+
+Algorithm : SHA256
+Hash      : 224CE63500B702AD0375879B64EEC4AA346F2744BD68087D869060753D772E01
+Path      : C:\Users\user\.t3\worktrees\LcarsUI\t3-6586e5ee-6be5a2eeeed9b7de\build\Debug\lcars_uia_host.exe
+
+Algorithm : SHA256
+Hash      : 8D0C2AE252E3E34AA710DBF42C99D655306C35B0EAE92BE07AF8556480C87F73
+Path      : C:\Users\user\.t3\worktrees\LcarsUI\t3-6586e5ee-6be5a2eeeed9b7de\build\Release\lcars_uia_client.exe
+
+Algorithm : SHA256
+Hash      : 158BF711166E2C175751FB61ECB8A2FF6793742F899049D0E853FF4B7A4C8201
+Path      : C:\Users\user\.t3\worktrees\LcarsUI\t3-6586e5ee-6be5a2eeeed9b7de\build\Release\lcars_host_verify.exe

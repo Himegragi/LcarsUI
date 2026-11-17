@@ -1,0 +1,96 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-b9a83cd8-7567de4ded5a750d/build/Release-core
+
+[HANDLER_OUTPUT] 
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-b9a83cd8-7567de4ded5a750d/build/Release-core
+
+      Start  1: public_names
+ 1/43 Test  #1: public_names .....................   Passed    1.38 sec
+      Start  2: perf_instrumentation
+ 2/43 Test  #2: perf_instrumentation .............   Passed    0.03 sec
+      Start  3: perf_script
+ 3/43 Test  #3: perf_script ......................   Passed    1.28 sec
+      Start  4: visual_studio_selection
+ 4/43 Test  #4: visual_studio_selection ..........   Passed    0.27 sec
+      Start  5: render_cpu
+ 5/43 Test  #5: render_cpu .......................   Passed    0.03 sec
+      Start  6: render_boundary
+ 6/43 Test  #6: render_boundary ..................   Passed    0.09 sec
+      Start  7: sem01
+ 7/43 Test  #7: sem01 ............................   Passed    0.04 sec
+      Start  8: third_party_notices
+ 8/43 Test  #8: third_party_notices ..............   Passed    0.67 sec
+      Start  9: core_regressions
+ 9/43 Test  #9: core_regressions .................   Passed    0.03 sec
+      Start 10: components
+10/43 Test #10: components .......................   Passed    0.04 sec
+      Start 11: layout
+11/43 Test #11: layout ...........................   Passed    0.05 sec
+      Start 12: error_lines
+12/43 Test #12: error_lines ......................   Passed    0.04 sec
+      Start 13: edit_form
+13/43 Test #13: edit_form ........................   Passed   18.27 sec
+      Start 14: multiline
+14/43 Test #14: multiline ........................   Passed    0.04 sec
+      Start 15: text_flow
+15/43 Test #15: text_flow ........................   Passed    0.04 sec
+      Start 16: justify
+16/43 Test #16: justify ..........................   Passed    0.05 sec
+      Start 17: animation
+17/43 Test #17: animation ........................   Passed    0.03 sec
+      Start 18: context_menu
+18/43 Test #18: context_menu .....................   Passed    0.04 sec
+      Start 19: vertical
+19/43 Test #19: vertical .........................   Passed    0.04 sec
+      Start 20: richtext
+20/43 Test #20: richtext .........................   Passed    0.03 sec
+      Start 21: word_select
+21/43 Test #21: word_select ......................   Passed    0.03 sec
+      Start 22: handles
+22/43 Test #22: handles ..........................   Passed    0.04 sec
+      Start 23: snapshots
+23/43 Test #23: snapshots ........................   Passed    0.04 sec
+      Start 24: option_nodes
+24/43 Test #24: option_nodes .....................   Passed    0.04 sec
+      Start 25: removals
+25/43 Test #25: removals .........................   Passed    0.05 sec
+      Start 26: word_select_icu
+26/43 Test #26: word_select_icu ..................   Passed    0.02 sec
+      Start 27: list_page
+27/43 Test #27: list_page ........................   Passed    0.03 sec
+      Start 28: package_install
+28/43 Test #28: package_install ..................   Passed    0.14 sec
+      Start 29: about_package_no_json
+29/43 Test #29: about_package_no_json ............   Passed    0.04 sec
+      Start 30: consumer_example
+30/43 Test #30: consumer_example .................   Passed    3.28 sec
+      Start 31: package_contract
+31/43 Test #31: package_contract .................   Passed   15.35 sec
+      Start 32: palette_override
+32/43 Test #32: palette_override .................   Passed    0.03 sec
+      Start 33: hover
+33/43 Test #33: hover ............................   Passed    0.08 sec
+      Start 34: outline
+34/43 Test #34: outline ..........................   Passed    0.03 sec
+      Start 35: focus_ring
+35/43 Test #35: focus_ring .......................   Passed    0.56 sec
+      Start 36: navigation
+36/43 Test #36: navigation .......................   Passed    0.03 sec
+      Start 37: component_registry
+37/43 Test #37: component_registry ...............   Passed    0.04 sec
+      Start 38: settings_demo
+38/43 Test #38: settings_demo ....................   Passed    0.13 sec
+      Start 39: settings_persistence
+39/43 Test #39: settings_persistence .............   Passed    0.78 sec
+      Start 40: source_text
+40/43 Test #40: source_text ......................   Passed    0.92 sec
+      Start 41: v1_final_plan
+41/43 Test #41: v1_final_plan ....................   Passed    0.43 sec
+      Start 42: demo_perf_list
+42/43 Test #42: demo_perf_list ...................   Passed    0.21 sec
+      Start 43: real_close_list
+43/43 Test #43: real_close_list ..................   Passed    0.23 sec
+
+100% tests passed, 0 tests failed out of 43
+
+Total Test time (real) =  45.09 sec

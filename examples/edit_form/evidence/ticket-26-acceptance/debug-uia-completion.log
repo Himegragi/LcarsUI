@@ -1,0 +1,130 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+
+[HANDLER_VERBOSE_OUTPUT] 
+UpdateCTestConfiguration  from :C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/DartConfiguration.tcl
+
+UpdateCTestConfiguration  from :C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/DartConfiguration.tcl
+[HANDLER_OUTPUT] 
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+
+[HANDLER_VERBOSE_OUTPUT] 
+Constructing a list of tests
+
+Done constructing a list of tests
+Updating test list for fixtures
+Added 0 tests to meet fixture requirements
+Checking test dependency graph...
+Checking test dependency graph end
+test 40
+[HANDLER_OUTPUT] 
+    Start 40: uia_web
+
+[HANDLER_VERBOSE_OUTPUT] 
+
+40: Test command: C:\Users\user\.t3\worktrees\LcarsUI\t3-6586e5ee-6be5a2eeeed9b7de\build\Debug\lcars_uia_client.exe "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_host.exe" "web"
+
+40: Working Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+40: Test timeout computed to be: 1800
+40: UIA native frame root_bounds=1 close_bounds=1
+40: UIA23 option focus: PASS
+40: UIA14 field focus: PASS
+40: UIA10 cached edit: PASS
+40: UIA10 structure event: PASS
+40: UIA09 option HelpText empty: PASS
+40: UIA09 disabled row not focusable: PASS
+40: UIA14 list focus: PASS
+40: UIA09 list: PASS
+40: UIA01 details field=1 items=1
+40: UIA07 Value: PASS
+40: rect=293,669,21,32 paint=293,669,314 cmp=0
+40: GPU ink-derived advance cell=293,314 matches=1
+40: resized=293,1055,42,63 paint=293,335 layout=0
+40: UIA08 selection=1 geometry=1 UIA17 size=1
+40: UIA08 DocumentRange: PASS
+40: UIA01 tree and identity: PASS hr=0x0
+40: UIA14 focus event: PASS
+40: Name event: PASS
+40: UIA02 Invoke: PASS
+40: UIA03 Toggle: PASS
+40: UIA04 radio selection: PASS
+40: UIA05 dropdown: PASS
+40: UIA06 slider: PASS
+40: UIA11 progress: PASS
+40: UIA12 rapid window transitions: PASS
+40: UIA12 window opened event: PASS
+40: UIA12 window closed event: PASS
+40: UIA12 modal window: PASS
+40: UIA12 background: PASS
+40: UIA13 tooltip closed event: PASS
+40: UIA13 tooltip: PASS
+40: UIA15 status mapping: PASS
+40: UIA19 removal: PASS hr=0x80040201 80040201
+40: UIA19 close: PASS hr=0x80040201
+40: UIA18 renderer lifecycle: PASS handled=1 unhandled=1
+[HANDLER_OUTPUT] 
+1/2 Test #40: uia_web ..........................
+   Passed  1258.64 sec
+[HANDLER_VERBOSE_OUTPUT] 
+test 45
+
+[HANDLER_OUTPUT] 
+    Start 45: uia_material
+
+[HANDLER_VERBOSE_OUTPUT] 
+
+45: Test command: C:\Users\user\.t3\worktrees\LcarsUI\t3-6586e5ee-6be5a2eeeed9b7de\build\Debug\lcars_uia_client.exe "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_host.exe" "material"
+
+45: Working Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+45: Test timeout computed to be: 1800
+45: UIA native frame root_bounds=1 close_bounds=1
+45: UIA23 option focus: PASS
+45: UIA14 field focus: PASS
+45: UIA10 cached edit: PASS
+45: UIA10 structure event: PASS
+45: UIA09 option HelpText empty: PASS
+45: UIA09 disabled row not focusable: PASS
+45: UIA14 list focus: PASS
+45: UIA09 list: PASS
+45: UIA01 details field=1 items=1
+45: UIA07 Value: PASS
+45: rect=144,496,21,32 paint=144,496,165 cmp=0
+45: GPU ink-derived advance cell=144,165 matches=1
+45: resized=144,945,42,63 paint=144,186 layout=0
+45: UIA08 selection=1 geometry=1 UIA17 size=1
+45: UIA08 DocumentRange: PASS
+45: UIA01 tree and identity: PASS hr=0x0
+45: UIA14 focus event: PASS
+45: Name event: PASS
+45: UIA02 Invoke: PASS
+45: UIA03 Toggle: PASS
+45: UIA04 radio selection: PASS
+45: UIA05 dropdown: PASS
+45: UIA06 slider: PASS
+45: UIA11 progress: PASS
+45: UIA12 rapid window transitions: PASS
+45: UIA12 window opened event: PASS
+45: UIA12 window closed event: PASS
+45: UIA12 modal window: PASS
+45: UIA12 background: PASS
+45: UIA13 tooltip closed event: PASS
+45: UIA13 tooltip: PASS
+45: UIA15 status mapping: PASS
+45: UIA19 removal: PASS hr=0x80040201 80040201
+45: UIA19 close: PASS hr=0x80040201
+45: UIA18 renderer lifecycle: PASS handled=1 unhandled=1
+[HANDLER_OUTPUT] 
+2/2 Test #45: uia_material .....................
+   Passed  1228.86 sec
+[HANDLER_VERBOSE_OUTPUT] 
+
+The following tests passed:
+
+	uia_web
+	uia_material
+[HANDLER_OUTPUT] 
+
+100% tests passed, 0 tests failed out of 2
+
+
+Total Test time (real) = 2487.51 sec

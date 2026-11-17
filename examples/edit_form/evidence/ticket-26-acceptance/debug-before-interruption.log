@@ -1,0 +1,89 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+
+[HANDLER_OUTPUT] 
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+
+      Start  1: public_names
+ 1/58 Test  #1: public_names .....................   Passed    1.34 sec
+      Start  2: perf_instrumentation
+ 2/58 Test  #2: perf_instrumentation .............   Passed    0.03 sec
+      Start  3: perf_script
+ 3/58 Test  #3: perf_script ......................   Passed    1.23 sec
+      Start  4: visual_studio_selection
+ 4/58 Test  #4: visual_studio_selection ..........   Passed    0.27 sec
+      Start  5: render_cpu
+ 5/58 Test  #5: render_cpu .......................   Passed    0.03 sec
+      Start  6: render_boundary
+ 6/58 Test  #6: render_boundary ..................   Passed    0.09 sec
+      Start  7: third_party_notices
+ 7/58 Test  #7: third_party_notices ..............   Passed    0.62 sec
+      Start  8: components
+ 8/58 Test  #8: components .......................   Passed    0.12 sec
+      Start  9: error_lines
+ 9/58 Test  #9: error_lines ......................   Passed    0.25 sec
+      Start 10: edit_form
+10/58 Test #10: edit_form ........................   Passed  330.99 sec
+      Start 11: multiline
+11/58 Test #11: multiline ........................   Passed    0.08 sec
+      Start 12: text_flow
+12/58 Test #12: text_flow ........................   Passed    0.08 sec
+      Start 13: justify
+13/58 Test #13: justify ..........................   Passed    0.13 sec
+      Start 14: animation
+14/58 Test #14: animation ........................   Passed    0.05 sec
+      Start 15: context_menu
+15/58 Test #15: context_menu .....................   Passed    0.10 sec
+      Start 16: vertical
+16/58 Test #16: vertical .........................   Passed    0.30 sec
+      Start 17: richtext
+17/58 Test #17: richtext .........................   Passed    0.07 sec
+      Start 18: word_select
+18/58 Test #18: word_select ......................   Passed    0.05 sec
+      Start 19: word_select_icu
+19/58 Test #19: word_select_icu ..................   Passed    0.02 sec
+      Start 20: list_page
+20/58 Test #20: list_page ........................   Passed    0.04 sec
+      Start 21: package_install
+21/58 Test #21: package_install ..................   Passed    0.41 sec
+      Start 22: about_package_no_json
+22/58 Test #22: about_package_no_json ............   Passed    0.06 sec
+      Start 23: consumer_example
+23/58 Test #23: consumer_example .................   Passed    3.99 sec
+      Start 24: package_contract
+24/58 Test #24: package_contract .................   Passed   14.64 sec
+      Start 25: diagnostics
+25/58 Test #25: diagnostics ......................   Passed    0.04 sec
+      Start 26: diagnostic_queue
+26/58 Test #26: diagnostic_queue .................   Passed    0.03 sec
+      Start 27: about_desktop
+27/58 Test #27: about_desktop ....................   Passed    0.57 sec
+      Start 28: about_executable_diagnostics
+28/58 Test #28: about_executable_diagnostics .....   Passed    3.50 sec
+      Start 29: about_executable_nodiag
+29/58 Test #29: about_executable_nodiag ..........   Passed    3.55 sec
+      Start 30: uia_demo_web
+30/58 Test #30: uia_demo_web .....................   Passed  289.12 sec
+      Start 31: uia_demo_material
+31/58 Test #31: uia_demo_material ................   Passed  303.95 sec
+      Start 32: uia_ime_simulation_material
+32/58 Test #32: uia_ime_simulation_material ......   Passed    9.37 sec
+      Start 33: uia_global_material
+33/58 Test #33: uia_global_material ..............   Passed    2.97 sec
+      Start 34: demo_keyboard
+34/58 Test #34: demo_keyboard ....................   Passed    4.82 sec
+      Start 35: settings_close_host
+35/58 Test #35: settings_close_host ..............   Passed    7.38 sec
+      Start 36: renderer_failure
+36/58 Test #36: renderer_failure .................   Passed   20.72 sec
+      Start 37: presentation_recovery
+37/58 Test #37: presentation_recovery ............   Passed    2.16 sec
+      Start 38: text
+38/58 Test #38: text .............................   Passed    0.39 sec
+      Start 39: vertical_text
+39/58 Test #39: vertical_text ....................   Passed    0.41 sec
+      Start 40: perf_report_only_setup
+40/58 Test #40: perf_report_only_setup ...........   Passed    0.11 sec
+      Start 41: host_native
+41/58 Test #41: host_native ......................   Passed  491.82 sec
+      Start 42: presentation_matrix_native
