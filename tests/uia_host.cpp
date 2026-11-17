@@ -162,7 +162,10 @@ int wmain(int argc, wchar_t** argv) {
             sourceBound = connected && described && unrelatedReads > 0;
         }
         const auto& appearance = material ? lcars::materialAppearance() : lcars::webAppearance();
-        lcars::DesktopConfig options; options.title = u"LcarsUI UIA test host";
+        lcars::DesktopConfig options;
+        if (argc > 2 && std::wstring_view(argv[2]) == L"--accessibility-disabled") options.platformAccessibilityEnabled = false;
+        if (argc > 2 && std::wstring_view(argv[2]) == L"--accessibility-enabled") options.platformAccessibilityEnabled = true;
+        options.title = u"LcarsUI UIA test host";
         lcars::detail::RendererTestHooks hooks;
         lcars::detail::DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, options, false, true, &hooks);
         if (!unhandled) host.onRendererFailure([](const lcars::RendererFailure&) {});
