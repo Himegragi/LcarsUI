@@ -35,4 +35,28 @@ void configuration() {
     test::check(events > 0, "semantic events arrive through host loop");
     test::check(disabledForm.ui.semantics().get({"form.name"})->value == u"disabled host remains operational", "semantic query works");
 }
-int main() { const test::Case cases[] = {{"platform accessibility configuration", configuration}}; return test::run("Desktop accessibility", cases); }
+void disabledPointerInput() {
+    using namespace lcars;
+    editForm::Form form;
+    DesktopConfig config;
+    config.platformAccessibilityEnabled = false;
+    detail::DesktopHost host(form.ui, webAppearance(), [&] { return form.page(); }, form.scroll, config, false, true, nullptr);
+    host.paint();
+    const auto* field = host.frame().find(form.handles.name);
+    test::check(field != nullptr, "pointer target has measured placement");
+    if (!field) return;
+    // Frame placement is in physical pixels; convert to DIP before host-scale conversion.
+    const int x = static_cast<int>((field->bounds.x + field->textField.editor.x + 2) / host.scale() * host.scale());
+    const int y = static_cast<int>((field->bounds.y + field->textField.editor.y + field->textField.editor.h / 2) / host.scale() * host.scale());
+    SendMessageW(host.window(), WM_LBUTTONDOWN, MK_LBUTTON, MAKELPARAM(x, y));
+    host.pump();
+    SendMessageW(host.window(), WM_LBUTTONUP, 0, MAKELPARAM(x, y));
+    host.pump();
+    const auto before = form.ui.semantics().get({"form.name"})->value;
+    SendMessageW(host.window(), WM_CHAR, L'Z', 1);
+    host.pump();
+    const auto after = form.ui.semantics().get({"form.name"})->value;
+    test::check(after.size() == before.size() + 1 && after.find(u'Z') != std::u16string::npos,
+                "pointer focuses field and typing changes its value with platform accessibility disabled");
+}
+int main() { const test::Case cases[] = {{"platform accessibility configuration", configuration}, {"disabled pointer input", disabledPointerInput}}; return test::run("Desktop accessibility", cases); }
