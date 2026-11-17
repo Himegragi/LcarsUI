@@ -54,6 +54,76 @@ public:
     }
 };
 
+class OptionFocusEvents final : public UiaEventHandler<OptionFocusEvents, IUIAutomationFocusChangedEventHandler> {
+    std::mutex mutex_;
+    std::wstring expected_;
+    CONTROLTYPEID type_ = 0;
+public:
+    void expect(const wchar_t* id, CONTROLTYPEID type) {
+        std::lock_guard lock(mutex_); expected_ = id; type_ = type; ResetEvent(received);
+    }
+    HRESULT STDMETHODCALLTYPE HandleFocusChangedEvent(IUIAutomationElement* sender) override {
+        BSTR id = nullptr; CONTROLTYPEID type = 0; BOOL focused = FALSE, focusable = FALSE;
+        if (sender && SUCCEEDED(sender->get_CurrentAutomationId(&id)) && id &&
+            SUCCEEDED(sender->get_CurrentControlType(&type)) && SUCCEEDED(sender->get_CurrentHasKeyboardFocus(&focused)) &&
+            SUCCEEDED(sender->get_CurrentIsKeyboardFocusable(&focusable))) {
+            std::lock_guard lock(mutex_);
+            if (expected_ == id && type_ == type && test::optionFocusMatches(focused != FALSE, focusable != FALSE, true)) SetEvent(received);
+        }
+        SysFreeString(id); return S_OK;
+    }
+};
+
+bool selectedIdIs(IUIAutomationElement* container, const wchar_t* expected);
+bool optionFocusCase(IUIAutomation* automation, IUIAutomationElement* root, HWND window) {
+    auto events = new OptionFocusEvents();
+    const auto subscribed = automation->AddFocusChangedEventHandler(nullptr, events);
+    auto focus = [&](const wchar_t* id) {
+        auto element = findId(automation, root, id);
+        const bool ok = element && SUCCEEDED(element->SetFocus());
+        if (element) element->Release(); return ok;
+    };
+    auto key = [&](WPARAM value) { SendMessageW(window, WM_KEYDOWN, value, 1); SendMessageW(window, WM_KEYUP, value, 1); };
+    auto received = [&](const wchar_t* expected, CONTROLTYPEID expectedType) {
+        IUIAutomationElement* element = nullptr; BSTR id = nullptr;
+        BOOL focused = FALSE, focusable = FALSE; CONTROLTYPEID type = 0;
+        const bool ok = SUCCEEDED(subscribed) && WaitForSingleObject(events->received, 5000) == WAIT_OBJECT_0 &&
+            SUCCEEDED(automation->GetFocusedElement(&element)) && element &&
+            SUCCEEDED(element->get_CurrentAutomationId(&id)) && id && std::wstring(id) == expected &&
+            SUCCEEDED(element->get_CurrentControlType(&type)) && type == expectedType &&
+            SUCCEEDED(element->get_CurrentHasKeyboardFocus(&focused)) && SUCCEEDED(element->get_CurrentIsKeyboardFocusable(&focusable)) &&
+            test::optionFocusMatches(focused != FALSE, focusable != FALSE, true);
+        SysFreeString(id); if (element) element->Release(); return ok;
+    };
+    bool ok = focus(L"form.title.pages.tabs");
+    events->expect(L"v02", UIA_TabItemControlTypeId); key(VK_RIGHT);
+    ok = received(L"v02", UIA_TabItemControlTypeId) && ok;
+    auto tabs = findId(automation, root, L"form.title.pages.tabs");
+    ok = selectedIdIs(tabs, L"v01") && ok;
+    events->expect(L"v03", UIA_TabItemControlTypeId);
+    ok = focus(L"v03") && ok;
+    ok = received(L"v03", UIA_TabItemControlTypeId) && selectedIdIs(tabs, L"v01") && ok;
+    if (tabs) tabs->Release();
+    ok = focus(L"form.region") && ok;
+    events->expect(L"north", UIA_ListItemControlTypeId); key(VK_RETURN);
+    ok = received(L"north", UIA_ListItemControlTypeId) && ok;
+    events->expect(L"central", UIA_ListItemControlTypeId); key(VK_DOWN);
+    ok = received(L"central", UIA_ListItemControlTypeId) && ok;
+    events->expect(L"form.region", UIA_ComboBoxControlTypeId); key(VK_ESCAPE);
+    ok = received(L"form.region", UIA_ComboBoxControlTypeId) && ok;
+    auto closedOption = findId(automation, root, L"north"); BOOL focusable = TRUE;
+    ok = closedOption && SUCCEEDED(closedOption->get_CurrentIsKeyboardFocusable(&focusable)) && !focusable && ok;
+    if (closedOption) closedOption->Release();
+    ok = focus(L"form.mode") && ok;
+    events->expect(L"focus", UIA_RadioButtonControlTypeId); key(VK_DOWN);
+    ok = received(L"focus", UIA_RadioButtonControlTypeId) && ok;
+    selectId(automation, root, L"normal");
+    if (SUCCEEDED(subscribed)) automation->RemoveFocusChangedEventHandler(events);
+    events->Release();
+    std::cout << "UIA23 option focus: " << (ok ? "PASS" : "FAIL") << '\n';
+    return ok;
+}
+
 class TextEvents final : public UiaEventHandler<TextEvents, IUIAutomationEventHandler> {
 public:
     EVENTID expected = UIA_Text_TextSelectionChangedEventId;
@@ -266,6 +336,7 @@ int wmain(int argc, wchar_t** argv) {
         if (buttons) buttons->Release(); if (close) close->Release(); if (title) title->Release();
         if (buttonCondition) buttonCondition->Release(); if (titleCondition) titleCondition->Release();
     }
+    if (pass) pass = optionFocusCase(automation, root, search.window);
     auto focusEvents = new FocusEvents(); auto focusSubscribed = pass ? automation->AddFocusChangedEventHandler(nullptr, focusEvents) : E_FAIL;
     if (pass) {
         CONTROLTYPEID type = 0; BSTR name = nullptr, labelId = nullptr; RECT bounds{}, client{};

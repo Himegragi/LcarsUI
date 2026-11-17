@@ -150,9 +150,12 @@ struct CommonState {
     // This component or node's own error message, if any. Options have none, even when invalid is true.
     std::u16string error;
     // enabled is this component or node's own setting, including on items; parent restrictions affect verbs separately.
-    // focusable means keyboard focus can stop here now. List/navigation rows also require a focusable parent
-    // and their own enabled setting, unlike enabled, which never merges the parent. Other options are not focusable.
-    // focused means keyboard input goes here now; an open context menu takes it away from its component.
+    // focusable means keyboard focus can stop here now. Every option requires a focusable parent and its own
+    // enabled setting; dropdown options additionally require an open popup. enabled never merges the parent.
+    // focused on a component means it receives keyboard input; an open context menu takes that away.
+    // Its enabled focus option also reports focused: the candidate for lists/pages/open dropdowns, or the
+    // selected enabled radio option (otherwise the first enabled one). Focus events name that option, or the
+    // component when there is none (including a closed dropdown).
     // invalid is an error mark: components have a nonempty error; page options mark errors in their members,
     // without copying the members' messages. Other options have no error mark.
     bool enabled = true, readOnly = false, focusable = false, focused = false, invalid = false, executing = false;
@@ -579,6 +582,8 @@ public:
     Result setItems(std::vector<OptionItem> items) const;
     Result useLatest() const;
     Result focus() const;
+    // Move the open popup's candidate into view without selecting. A closed popup returns invalidValue.
+    Result focus(OptionValue value) const;
     Result enable(bool enabled) const;
     Result connectSource(Source<std::optional<OptionValue>> source) const;
     Result connectImmediate(std::function<Result(const Change<DropdownHandle>&)> write) const;
@@ -604,6 +609,8 @@ public:
     // Owner configuration: attach an existing component to a page.
     Result addMember(OptionValue page, ComponentHandle member) const;
     Result focus() const;
+    // Focus the candidate page without activating it; disabled pages return disabled.
+    Result focus(OptionValue page) const;
     Query<OptionValue> active() const;
     Query<ComponentSnapshot> describe() const;
     Result onPageChange(std::function<void(OptionValue, OptionValue)> callback) const;
@@ -621,6 +628,8 @@ public:
     // Owner configuration: attach an existing component to a page.
     Result addMember(OptionValue page, ComponentHandle member) const;
     Result focus() const;
+    // Focus the candidate page without selecting it; disabled pages return disabled.
+    Result focus(OptionValue page) const;
     Query<OptionValue> selected() const;
     Query<ComponentSnapshot> describe() const;
     Result onPageChange(std::function<void(OptionValue, OptionValue)> callback) const;

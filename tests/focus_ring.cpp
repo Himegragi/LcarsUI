@@ -236,6 +236,29 @@ const Placement* placed(const Frame& frame, const std::string& id) {
     return found == frame.items.end() ? nullptr : &*found;
 }
 
+void optionRingFollowsEnabledFocusTarget() {
+    for (const auto* appearance : builtins) {
+        Page page;
+        page.settings([](PresentationSettings& settings) { settings.focusIndicator = FocusIndicatorMode::always; });
+        auto radio = std::get<RadioGroupHandle>(page.state().layoutHandle("radio_sel"));
+        radio.enableOption({"b"}, false); radio.focus();
+        auto verify = [&](const char* id, std::size_t row) {
+            auto frame = page.frame(*appearance);
+            auto item = placed(frame, id);
+            auto snapshot = *page.state().describe(id);
+            Probe probe(page.state(), *item, snapshot, *appearance, 1.f, true);
+            detail::componentType(snapshot.kind).paint(probe);
+            const auto ring = findRing(probe.cmds);
+            check(ring && ring->outer == item->options[row], "ring frames the enabled focus option");
+        };
+        verify("radio_sel", 0);
+        page.state().keyDown({.key = Key::down});
+        check(*radio.draft() == OptionValue{"c"}, "radio arrow starts at enabled ring, skipping disabled selection");
+        auto nav = std::get<NavigationListHandle>(page.state().layoutHandle("nav"));
+        check(bool(nav.focus({"n2"})) && *nav.selected() == OptionValue{"n1"}, "navigation focus does not select");
+        verify("nav", 1);
+    }
+}
 struct Run { const Appearance& appearance; Density density; float scale; };
 const Run runs[] = {
     {webAppearance(), Density::standard, 1.f}, {webAppearance(), Density::compact, 1.f}, {webAppearance(), Density::standard, 1.5f}, {webAppearance(), Density::compact, 1.5f},
@@ -557,6 +580,7 @@ void neverLeavesTheSemanticLayerAndTheFocusTooltipAlone() {
 }
 int main() {
     static const test::Case cases[] = {
+        {"option_ring_follows_enabled_focus_target", optionRingFollowsEnabledFocusTarget},
         {"ring_width_and_radius_accept_their_bounds_and_refuse_the_rest", ringWidthAndRadiusAcceptTheirBoundsAndRefuseTheRest},
         {"focus_is_a_palette_role_equal_to_accent_by_default", focusIsAPaletteRoleEqualToAccentByDefault},
         {"a_custom_appearance_that_assigns_accent_afterwards_keeps_the_ring_on_its_accent", aCustomAppearanceThatAssignsAccentAfterwardsKeepsTheRingOnItsAccent},

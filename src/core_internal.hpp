@@ -80,6 +80,7 @@ public:
     TabsHandle addTabs(Component control, std::vector<TabPage> pages);
     NavigationListHandle addNavigationList(Component control, std::vector<NavigationPage> pages, OptionValue initial);
     Result activateTab(const Id& id, OptionValue page);
+    Result focusPage(const Id& id, OptionValue page);
     Result addPageMember(const Id& id, OptionValue page, ComponentHandle member);
     Result enablePage(const Id& id, const OptionValue& page, bool enabled);
     Result onPageChange(const Id& id, std::function<void(OptionValue, OptionValue)> callback);

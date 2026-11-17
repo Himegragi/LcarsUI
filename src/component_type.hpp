@@ -234,6 +234,8 @@ public:
 Result commandKeyDown(UiState& ui, KeyPress key);
 void commandPointerDown(UiState& ui);
 const ComponentType& componentType(ComponentKind kind);
+// The enabled option keyboard input acts on inside a component, whether or not it currently has focus.
+std::optional<OptionValue> focusOption(const ComponentSnapshot& snapshot);
 // The same, or null for a ComponentKind no type is registered for (the one place a stray ComponentKind value is tolerated).
 const ComponentType* findComponentType(ComponentKind kind);
 // The focus ring's thickness in physical pixels for these settings. Layout reserves at least this much room

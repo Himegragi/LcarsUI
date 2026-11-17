@@ -5,6 +5,7 @@
 #include "fake_measure.hpp"
 #include "option_properties.hpp"
 #include "constant_source.hpp"
+#include "core_internal.hpp"
 using namespace lcars;
 using test::check;
 using test::constantSource;
@@ -75,6 +76,7 @@ void compareAll(World& w, const char* stateName, const State& state = {}) {
     for (const auto& subject : w.subjects) {
         const auto component = subject.describe();
         const auto parent = w.ui.semantics().get({subject.id});
+        check(parent && parent->focused == component.focused, (std::string(stateName) + "/" + subject.id + ": component focus matches describe").c_str());
         for (const auto& item : component.items) {
             const auto context = std::string(stateName) + "/" + subject.id + "/" + item.value.id;
             const auto node = w.ui.semantics().get({subject.id, item.value});
@@ -88,12 +90,13 @@ void compareAll(World& w, const char* stateName, const State& state = {}) {
             expected.enabled = item.value.id == "a" || state.secondEnabled;
             expected.invalid = state.pageError && (std::holds_alternative<TabsHandle>(subject.handle) ||
                                std::holds_alternative<NavigationListHandle>(subject.handle)) && item.value.id == "b";
-            expected.focused = subject.row() && state.focused == subject.id && item.value.id == "a" && !state.menuOpen;
-            expected.focusable = subject.row() && component.focusable && expected.enabled;
+            expected.focused = (!subject.dropdown() || state.dropdownOpen) && state.focused == subject.id && item.value.id == "a" && !state.menuOpen;
+            expected.focusable = component.focusable && expected.enabled && (!subject.dropdown() || state.dropdownOpen);
             expected.visible = state.arranged && !state.hidden && (!subject.dropdown() || state.dropdownOpen);
             if (state.enabled && expected.enabled && !state.hidden && !state.blocked) {
                 expected.verbs = {Verb::select};
-                if (std::holds_alternative<ListHandle>(subject.handle)) expected.verbs.push_back(Verb::focus);
+                if (!std::holds_alternative<RadioGroupHandle>(subject.handle) && (!subject.dropdown() || state.dropdownOpen))
+                    expected.verbs.push_back(Verb::focus);
                 if (subject.row() && state.menus) expected.verbs.push_back(Verb::contextMenu);
             }
             check(static_cast<const CommonState&>(*node) == expected, (context + ": option-only CommonState").c_str());
@@ -189,7 +192,152 @@ void dropdownOpen() {
         w.arrangePage();
         check(h->describe()->expanded, "dropdown_open/dropdown/a: parent expanded");
     }
-    compareAll(w, "dropdown_open", {.dropdownOpen = true});
+    compareAll(w, "dropdown_open", {.dropdownOpen = true, .focused = "dropdown"});
+}
+void focusEvents() {
+    World w; w.arrangePage();
+    auto tree = w.ui.semantics();
+    std::vector<NodeRef> events;
+    auto subscription = tree.subscribe([&](const SemanticEvent& event) {
+        if (event.kind == SemanticEventKind::focusChanged) events.push_back(event.ref);
+    });
+    auto expect = [&](const char* state, NodeRef ref) {
+        tree.dispatchEvents();
+        check(events == std::vector<NodeRef>{ref}, (std::string(state) + "/" + ref.id + "/" +
+              (ref.item ? ref.item->id : "component") + ": exactly one focus event").c_str());
+        events.clear();
+    };
+    auto key = [&](Key value) { check(bool(detail::access(w.ui).keyDown({.key = value})), "focus event: key admitted"); };
+    auto tabs = std::get<TabsHandle>(w.subjects[3].handle);
+    tabs.focus(); expect("enter_tabs", {"tabs", OptionValue{"a"}});
+    key(Key::right); expect("candidate_page", {"tabs", OptionValue{"b"}});
+    check(*tabs.active() == OptionValue{"a"}, "candidate page does not activate");
+    auto dropdown = std::get<DropdownHandle>(w.subjects[2].handle);
+    dropdown.focus(); expect("closed_dropdown", {"dropdown"});
+    key(Key::enter); expect("open_dropdown", {"dropdown", OptionValue{"a"}});
+    key(Key::down); expect("dropdown_candidate", {"dropdown", OptionValue{"b"}});
+    key(Key::escape); expect("cancel_dropdown", {"dropdown"});
+    key(Key::enter); expect("reopen_dropdown", {"dropdown", OptionValue{"a"}});
+    key(Key::enter); expect("accept_dropdown", {"dropdown"});
+    auto radio = std::get<RadioGroupHandle>(w.subjects[0].handle);
+    radio.focus(); expect("enter_radio", {"radio", OptionValue{"a"}});
+    key(Key::down); expect("radio_selection", {"radio", OptionValue{"b"}});
+    radio.enableOption({"b"}, false); expect("disabled_selection", {"radio", OptionValue{"a"}});
+    radio.enableOption({"a"}, false); expect("all_radio_disabled", {"radio"});
+    auto list = std::get<ListHandle>(w.subjects[1].handle);
+    list.focus(); expect("enter_list", {"list", OptionValue{"a"}});
+    list.setItems({{{"a"}, u"Alpha", false}, {{"b"}, u"Beta"}});
+    expect("disabled_cursor", {"list", OptionValue{"b"}});
+    list.setItems({{{"a"}, u"Alpha"}}); expect("removed_cursor", {"list", OptionValue{"a"}});
+}
+void programmaticFocus() {
+    World w; w.arrangePage();
+    auto tree = w.ui.semantics();
+    std::vector<NodeRef> events;
+    auto subscription = tree.subscribe([&](const SemanticEvent& event) {
+        if (event.kind == SemanticEventKind::focusChanged) events.push_back(event.ref);
+    });
+    for (const auto& subject : w.subjects) std::visit([&](auto h) {
+        if constexpr (requires { h.focus(OptionValue{}); }) {
+            if (subject.dropdown()) check(bool(std::get<DropdownHandle>(subject.handle).open()), "open before option focus");
+            tree.dispatchEvents(); events.clear();
+            check(bool(h.focus({"b"})), (subject.id + "/b: typed focus").c_str());
+            tree.dispatchEvents();
+            check(events == std::vector<NodeRef>{{subject.id, OptionValue{"b"}}}, (subject.id + "/b: one focus event").c_str());
+            check(h.describe()->items[0].selected && !h.describe()->items[1].selected, (subject.id + "/b: focus preserves selection").c_str());
+            events.clear();
+            check(bool(tree.perform({subject.id, OptionValue{"b"}}, Verb::focus)), (subject.id + "/b: semantic focus").c_str());
+            tree.dispatchEvents();
+            check(events.empty(), (subject.id + "/b: repeated focus sends no event").c_str());
+            check(h.focus({"missing"}).status == Status::notFound, (subject.id + ": unknown focus target").c_str());
+        }
+    }, subject.handle);
+    auto dropdown = std::get<DropdownHandle>(w.subjects[2].handle);
+    dropdown.cancel();
+    check(dropdown.focus({"a"}).status == Status::invalidValue && !dropdown.describe()->expanded,
+          "closed dropdown rejects option focus without opening");
+    check(tree.perform({"dropdown", OptionValue{"a"}}, Verb::focus).status == Status::invalidValue,
+          "closed dropdown semantic focus uses same admission");
+}
+void compareFocus(World& w, const char* state, const Subject& subject, std::optional<OptionValue> expected) {
+    const auto component = subject.describe();
+    const auto parent = w.ui.semantics().get({subject.id});
+    check(parent && parent->focused == component.focused && (!parent->focused || parent->focusable),
+          (std::string(state) + "/" + subject.id + ": component focus matches describe").c_str());
+    int focused = 0;
+    for (const auto& item : component.items) {
+        const auto node = w.ui.semantics().get({subject.id, item.value});
+        const auto context = std::string(state) + "/" + subject.id + "/" + item.value.id;
+        check(node && test::optionFocusMatches(node->focused, node->focusable, expected == item.value),
+              (context + ": expected focus option and focused implies focusable").c_str());
+        check(node->focusable == (parent->focusable && item.enabled && (!subject.dropdown() || component.expanded)),
+              (context + ": option focusability").c_str());
+        focused += node->focused;
+    }
+    check(focused == (expected ? 1 : 0), (std::string(state) + "/" + subject.id + ": unique focus option").c_str());
+}
+void focusAdmissionAndReveal() {
+    World w(true, false); w.arrangePage();
+    for (const auto& subject : w.subjects) std::visit([&](auto h) {
+        if constexpr (requires { h.focus(OptionValue{}); }) {
+            check(h.focus({"b"}).status == Status::disabled &&
+                  w.ui.semantics().perform({subject.id, OptionValue{"b"}}, Verb::focus).status == Status::disabled,
+                  (subject.id + "/b: disabled focus target is rejected at both seams").c_str());
+        }
+    }, subject.handle);
+    auto dropdown = std::get<DropdownHandle>(w.subjects[2].handle);
+    std::vector<OptionItem> items;
+    for (int i = 0; i < 30; ++i) items.push_back({OptionValue{std::to_string(i)}, u"Region"});
+    check(bool(dropdown.setItems(items)) && bool(dropdown.open()), "large dropdown opens");
+    auto root = layout::component(dropdown);
+    arrange(root, w.ui, webAppearance(), w.measure, 400, 300, 1.f, w.scroll);
+    check(!w.ui.semantics().get({"dropdown", OptionValue{"29"}})->visible, "last option begins offscreen");
+    check(bool(dropdown.focus({"29"})), "programmatic dropdown focus targets offscreen option");
+    arrange(root, w.ui, webAppearance(), w.measure, 400, 300, 1.f, w.scroll);
+    const auto target = w.ui.semantics().get({"dropdown", OptionValue{"29"}});
+    check(target->focused && target->visible && !dropdown.draft()->has_value(), "focus reveals option without selecting it");
+}
+void focusStates() {
+    for (const auto* state : {"unfocused", "selected", "keyboard_candidate", "closed_dropdown", "disabled_selection", "all_disabled"}) {
+        World w; w.arrangePage();
+        for (const auto& subject : w.subjects) {
+            std::optional<OptionValue> expected;
+            if (std::string_view(state) != "unfocused") {
+                check(std::visit([](auto h) { return bool(h.focus()); }, subject.handle), "matrix focus component");
+                if (subject.dropdown() && std::string_view(state) != "closed_dropdown")
+                    check(bool(std::get<DropdownHandle>(subject.handle).open()), "matrix open dropdown");
+                if (!subject.dropdown() || std::string_view(state) != "closed_dropdown") expected = OptionValue{"a"};
+            }
+            if (std::string_view(state) == "keyboard_candidate") {
+                check(bool(detail::access(w.ui).keyDown({.key = std::holds_alternative<TabsHandle>(subject.handle) ? Key::right : Key::down})),
+                      "matrix keyboard moves focus option");
+                expected = OptionValue{"b"};
+            }
+            if (std::string_view(state) == "disabled_selection") {
+                std::visit([&](auto h) {
+                    if constexpr (std::is_same_v<decltype(h), RadioGroupHandle>) {
+                        h.select({"b"}); h.enableOption({"b"}, false); expected = OptionValue{"a"};
+                    } else if constexpr (std::is_same_v<decltype(h), ListHandle>) {
+                        h.setItems({{{"a"}, u"Alpha", false}, {{"b"}, u"Beta"}}); expected = OptionValue{"b"};
+                    }
+                }, subject.handle);
+            }
+            if (std::string_view(state) == "all_disabled") {
+                std::visit([&](auto h) {
+                    if constexpr (std::is_same_v<decltype(h), RadioGroupHandle>) {
+                        h.enableOption({"a"}, false); h.enableOption({"b"}, false); expected.reset();
+                    } else if constexpr (requires { h.setItems(std::vector<OptionItem>{}); }) {
+                        h.setItems({{{"a"}, u"Alpha", false}, {{"b"}, u"Beta", false}}); expected.reset();
+                    } else {
+                        // Page containers require one enabled active page: an all-disabled state is rejected.
+                        check(h.enablePage({"a"}, false).status == Status::invalidValue, "active page cannot be disabled");
+                        h.enablePage({"b"}, false);
+                    }
+                }, subject.handle);
+            }
+            compareFocus(w, state, subject, expected);
+        }
+    }
 }
 void contextMenuOpen() {
     World w; w.arrangePage();
@@ -210,6 +358,8 @@ void contextMenuOpen() {
 int main() {
     const test::Case cases[] = {{"normal", normal}, {"disabled", disabled}, {"option_disabled", optionDisabled},
                               {"hidden", hidden}, {"blocked_by_modal", blockedByModal}, {"errors", errors},
-                              {"page_errors", pageErrors}, {"dropdown_open", dropdownOpen}, {"context_menu_open", contextMenuOpen}};
+                              {"page_errors", pageErrors}, {"dropdown_open", dropdownOpen}, {"focus_events", focusEvents},
+                              {"programmatic_focus", programmaticFocus}, {"focus_states", focusStates},
+                              {"focus_admission_and_reveal", focusAdmissionAndReveal}, {"context_menu_open", contextMenuOpen}};
     return test::run("option_nodes", cases);
 }

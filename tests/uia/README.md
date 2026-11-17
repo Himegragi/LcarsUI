@@ -19,3 +19,11 @@ Each formal record includes commit, dirty state, Release build, appearance, envi
 Each appearance's `demo-uia.tsv` records the UA cases and the eight AX01 scans. `exclusions.txt` records excluded Axe rules; currently none are excluded. Each state keeps the CLI log and `.a11ytest` artifact. The host checks the requested state before and after each scan. CI trial stability remains unverified until its required trial runs complete.
 
 Shortcut metadata exposes the first registered chord for a button, including scoped shortcuts; the semantic tree is the provider's source. The UIA root still subscribes lazily on first observation.
+
+UIA23 (`lcars_uia_client`, edit-form host) checks option focus for tabs, an open dropdown, and radio groups:
+keyboard movement must raise focus events on the option returned by `GetFocusedElement`, with keyboard focusability
+set. `SetFocus` on tab `v03` preserves the active page; Esc restores the dropdown component's focus event, and
+closed dropdown options are not keyboard focusable. The core `option_nodes` matrix and event tests exercise the
+same contract, using the shared focus predicate in `option_properties.hpp`; `focus_ring` covers disabled radio
+selections and navigation candidates in both appearances. Run `verify-idle.ps1 -Only uia,axe,demo-uia` on an idle
+author machine after rebuilding Release. Do not run WSL during those desktop checks.

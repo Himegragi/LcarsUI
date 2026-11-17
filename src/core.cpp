@@ -748,6 +748,20 @@ Result DropdownHandle::cancel() const {
 Result DropdownHandle::focus() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
+Result DropdownHandle::focus(OptionValue value) const {
+    return detail::UiState::operate(*this, [&]() -> Result {
+        if (auto r = ui_->availableOption(id_, value); !r) return r;
+        auto& f = ui_->dropdowns_.at(id_);
+        const auto item = std::find_if(f.options.begin(), f.options.end(), [&](const auto& option) { return option.value == value; });
+        if (item == f.options.end()) return {Status::notFound, {}};
+        if (!item->enabled) return {Status::disabled, {}};
+        if (!ui_->popupOpen(id_)) return {Status::invalidValue, u"The dropdown is closed"};
+        if (auto r = ui_->focus(id_); !r) return r;
+        f.candidate = std::move(value); f.reveal = true;
+        if (ui_->invalidate_) ui_->invalidate_();
+        return {};
+    });
+}
 Result DropdownHandle::enable(bool enabled) const {
     return detail::UiState::operate(*this, [&]() -> Result {
         if (auto r = ui_->configurationAccess(id_); !r) return r;
@@ -1507,6 +1521,19 @@ Result detail::UiState::focusError(const Id& id) {
     }
     return focus(id);
 }
+Result detail::UiState::focusPage(const Id& id, OptionValue page) {
+    if (auto r = availableOption(id, page); !r) return r;
+    auto& t = tabs_.at(id);
+    const auto target = std::find_if(t.pages.begin(), t.pages.end(), [&](const auto& item) { return item.value == page; });
+    if (target == t.pages.end()) return {Status::notFound, {}};
+    if (!target->enabled) return {Status::disabled, {}};
+    const auto index = static_cast<std::size_t>(target - t.pages.begin());
+    if (auto r = focus(id); !r) return r;
+    t.candidate = index;
+    if (revealRequested_) revealRequested_(id);
+    if (invalidate_) invalidate_();
+    return {};
+}
 Result detail::UiState::addPageMember(const Id& id, OptionValue page, ComponentHandle component) {
     OperationScope operation(this);
     if (auto r = configurationAccess(id); !r) return r;
@@ -1556,6 +1583,9 @@ Result TabsHandle::addMember(OptionValue page, ComponentHandle component) const 
 Result TabsHandle::focus() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->focus(id_); });
 }
+Result TabsHandle::focus(OptionValue page) const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->focusPage(id_, std::move(page)); });
+}
 Result TabsHandle::enablePage(OptionValue page, bool enabled) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->enablePage(id_, page, enabled); });
 }
@@ -1576,6 +1606,9 @@ Result NavigationListHandle::addMember(OptionValue page, ComponentHandle compone
 }
 Result NavigationListHandle::focus() const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->focus(id_); });
+}
+Result NavigationListHandle::focus(OptionValue page) const {
+    return detail::UiState::operate(*this, [&]() -> Result { return ui_->focusPage(id_, std::move(page)); });
 }
 Result NavigationListHandle::enablePage(OptionValue page, bool enabled) const {
     return detail::UiState::operate(*this, [&]() -> Result { return ui_->enablePage(id_, page, enabled); });
@@ -3516,8 +3549,8 @@ Query<NodeSnapshot> SemanticTree::get(const NodeRef& ref) const {
         if (auto itemRole = detail::componentType(c->kind).itemRole()) n.role = *itemRole;
         else return {Status::notFound, {}, {}};
         n.name = it->label; n.selected = it->selected; n.enabled = it->enabled; n.invalid = it->invalid;
-        n.focusable = n.role == Role::listItem && s.focusable && it->enabled;
-        n.focused = n.role == Role::listItem && s.focused && !u.menu_ && s.candidate && *s.candidate == *ref.item;
+        n.focusable = s.focusable && it->enabled && (!detail::componentType(c->kind).opensPopup() || s.expanded);
+        n.focused = n.focusable && s.focused && detail::focusOption(s) == ref.item;
         n.bounds.reset(); auto pos = static_cast<size_t>(it - s.items.begin()); auto rects = u.semanticOptions_.find(ref.id);
         if (!n.hidden && (!detail::componentType(c->kind).opensPopup() || s.expanded) && rects != u.semanticOptions_.end() && pos < rects->second.size()) { auto r = rects->second[pos]; if (r.w > 0 && r.h > 0) n.bounds = r; }
         n.visible = n.bounds.has_value();
@@ -3616,6 +3649,18 @@ void detail::UiState::semanticDiff() {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
         return i == nodes.end() ? nullptr : &*i;
     };
+    auto deepestFocus = [](const auto& nodes) -> const NodeSnapshot* {
+        const NodeSnapshot* component = nullptr;
+        for (const auto& node : nodes) if (node.focused) {
+            if (node.ref.item) return &node;
+            component = &node;
+        }
+        return component;
+    };
+    const auto previousFocus = deepestFocus(semanticBefore_);
+    const auto nextFocus = deepestFocus(after);
+    if (nextFocus && (!previousFocus || previousFocus->ref != nextFocus->ref || previousFocus->instance != nextFocus->instance))
+        emit(SemanticEventKind::focusChanged, nextFocus->ref);
     // A menu's structure changes belong to the component that owns it.
     auto ownerOf = [](const NodeRef& ref) -> NodeRef {
         if (auto target = menuTargetId(ref.id)) return NodeRef{*target};
@@ -3636,7 +3681,6 @@ void detail::UiState::semanticDiff() {
         if (!old) {
             if (node.role == Role::menu) emit(SemanticEventKind::menuOpened, node.ref);
             emit(SemanticEventKind::structureChanged, node.role == Role::menu ? ownerOf(node.ref) : node.ref.item ? NodeRef{node.ref.id} : NodeRef{});
-            if (node.role == Role::menuItem && node.focused) emit(SemanticEventKind::focusChanged, node.ref);
             continue;
         }
         if (node.hidden != old->hidden) {
@@ -3644,10 +3688,6 @@ void detail::UiState::semanticDiff() {
                 emit(SemanticEventKind::propertyChanged, node.ref, "hidden", node.hidden);
             emit(SemanticEventKind::structureChanged, {});
         }
-        bool focusedItem = !node.ref.item && std::any_of(after.begin(), after.end(), [&](const auto& child) {
-            return child.ref.id == node.ref.id && child.ref.item && child.focused;
-        });
-        if (node.focused && !old->focused && !focusedItem) emit(SemanticEventKind::focusChanged, node.ref);
         auto property = [&](bool changed, const char* name) { if (changed) emit(SemanticEventKind::propertyChanged, node.ref, name); };
         property(node.name != old->name, "name"); property(node.value != old->value, "value");
         property(node.enabled != old->enabled, "enabled"); property(node.readOnly != old->readOnly, "readOnly");

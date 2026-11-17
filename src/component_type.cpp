@@ -8,6 +8,15 @@
 #include <stdexcept>
 
 namespace lcars::detail {
+std::optional<OptionValue> focusOption(const ComponentSnapshot& snapshot) {
+    if (snapshot.kind == ComponentKind::dropdown && !snapshot.expanded) return std::nullopt;
+    auto item = std::find_if(snapshot.items.begin(), snapshot.items.end(), [&](const auto& option) {
+        return option.enabled && (snapshot.kind == ComponentKind::radioGroup ? option.selected : snapshot.candidate == option.value);
+    });
+    if (item == snapshot.items.end() && snapshot.kind == ComponentKind::radioGroup)
+        item = std::find_if(snapshot.items.begin(), snapshot.items.end(), [](const auto& option) { return option.enabled; });
+    return item == snapshot.items.end() ? std::nullopt : std::optional{item->value};
+}
 // The per-type state and the engines a component type reaches into. UiState only declares this class, so nothing outside
 // this file can use it: the maps, and the helpers of the engines the types share with the rest of the state.
 struct UiState::Internals {
@@ -1031,13 +1040,12 @@ public:
         auto p = c.palette();
         const auto& item = c.placement;
         if (!item.lines.empty()) c.text(item.lines[0].text, item.textSize, item.lines[0].bounds.x, item.lines[0].bounds.y, c.semantics.enabled ? p.text : p.muted);
-        // The ring frames the selected option's row, or the first usable one while nothing is selected.
+        // The ring and keyboard input use the same enabled option, even when selection is disabled.
         std::optional<std::size_t> framed;
         if (c.focusVisible) {
+            const auto target = focusOption(c.semantics);
             for (std::size_t i = 0; i < c.semantics.items.size() && i < item.options.size(); ++i)
-                if (c.semantics.items[i].selected) { framed = i; break; }
-            for (std::size_t i = 0; !framed && i < c.semantics.items.size() && i < item.options.size(); ++i)
-                if (c.semantics.items[i].enabled) framed = i;
+                if (c.semantics.items[i].value == target) { framed = i; break; }
         }
         for (std::size_t i = 0; i < item.options.size(); ++i) {
             const auto& r = item.options[i]; const auto& option = c.semantics.items[i];
@@ -1065,11 +1073,13 @@ public:
         int direction = key.key == Key::right || key.key == Key::down ? 1 : key.key == Key::left || key.key == Key::up ? -1 : 0;
         if (!direction) return {};
         auto& field = UiState::Internals::radios(ui).at(ui.focused());
+        const auto target = focusOption(*ui.describe(ui.focused()));
         int n = static_cast<int>(field.options.size()), index = direction > 0 ? -1 : n;
-        for (int i = 0; i < n; ++i) if (field.value && field.options[i].value == *field.value) { index = i; break; }
+        for (int i = 0; i < n; ++i) if (field.options[i].value == target) { index = i; break; }
         for (int i = index + direction; i >= 0 && i < n; i += direction)
             if (field.options[i].enabled) return UiState::Internals::selectOption(ui, ui.focused(), field.options[i].value);
-        return {};
+        // At the boundary an unselected focus option can still be selected (including a sole enabled option).
+        return target ? UiState::Internals::selectOption(ui, ui.focused(), *target) : Result{};
     }
     void pointerDown(UiState& ui, const Component& c, std::optional<std::size_t> option) const override { ui.armPointer(c.id, option); }
     Result pointerUp(UiState& ui, const PointerRelease& release) const override {
@@ -1251,7 +1261,11 @@ public:
         if (it != dropdowns.end() && it->second.writable()) out.push_back(Admission::select);
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
-        if (c.item) { if (c.admits(Admission::select)) out.push_back(Verb::select); return; }
+        if (c.item) {
+            if (c.admits(Admission::select)) out.push_back(Verb::select);
+            if (c.admits(Admission::focus) && c.semantics.expanded) out.push_back(Verb::focus);
+            return;
+        }
         ComponentType::verbs(c, out);
         if (c.admits(Admission::select)) { out.push_back(Verb::open); out.push_back(Verb::cancel); }
     }
@@ -1260,6 +1274,7 @@ public:
         auto handle = c.ui.layoutHandle(c.ref.id);
         auto& dropdown = std::get<DropdownHandle>(handle);
         if (c.ref.item && c.verb == Verb::select) return dropdown.select(*c.ref.item);
+        if (c.ref.item && c.verb == Verb::focus) return dropdown.focus(*c.ref.item);
         if (!c.ref.item && c.verb == Verb::open) return dropdown.open();
         if (!c.ref.item && c.verb == Verb::cancel) return dropdown.cancel();
         return std::nullopt;
@@ -1519,9 +1534,11 @@ public:
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { ComponentType::verbs(c, out); return; }
         if (c.admits(Admission::focus) || c.admits(Admission::select)) out.push_back(Verb::select);
+        if (c.admits(Admission::focus)) out.push_back(Verb::focus);
     }
     std::optional<Result> perform(const PerformContext& c) const override {
         if (c.ref.item && c.verb == Verb::select) return std::get<TabsHandle>(c.ui.layoutHandle(c.ref.id)).activate(*c.ref.item);
+        if (c.ref.item && c.verb == Verb::focus) return std::get<TabsHandle>(c.ui.layoutHandle(c.ref.id)).focus(*c.ref.item);
         return std::nullopt;
     }
     std::string_view name() const override { return "tabs"; }
@@ -1606,10 +1623,12 @@ public:
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
         if (!c.item) { ComponentType::verbs(c, out); return; }
         if (c.admits(Admission::focus) || c.admits(Admission::select)) out.push_back(Verb::select);
+        if (c.admits(Admission::focus)) out.push_back(Verb::focus);
         if (c.ui.hasMenu(c.control) && !c.ui.rendererFailed()) out.push_back(Verb::contextMenu);
     }
     std::optional<Result> perform(const PerformContext& c) const override {
         if (c.ref.item && c.verb == Verb::select) return std::get<NavigationListHandle>(c.ui.layoutHandle(c.ref.id)).select(*c.ref.item);
+        if (c.ref.item && c.verb == Verb::focus) return std::get<NavigationListHandle>(c.ui.layoutHandle(c.ref.id)).focus(*c.ref.item);
         return std::nullopt;
     }
     std::string_view name() const override { return "navigation_list"; }
@@ -1647,9 +1666,10 @@ public:
             const auto& option = c.semantics.items[i]; auto rect = c.placement.options[i];
             const int radius = material ? rect.h / 2 : scaled(c.scale, 6);
             ComponentPaint::RingShape shape{rect, radius, radius};
+            // Programmatic focus can frame a page without selecting it.
+            if (c.focusVisible && c.semantics.candidate == option.value)
+                shape = c.focusRing(rect, radius, material ? palette.surface : palette.panel, c.semantics.invalid);
             if (option.selected) {
-                // The ring frames the selected row (the row that has the keyboard focus); its selection color sits inside the ring.
-                if (c.focusVisible) shape = c.focusRing(rect, radius, material ? palette.surface : palette.panel, c.semantics.invalid);
                 marked(c, PaintRole::selection, [&] {
                     c.rounded(shape.inner, shape.innerRadius, palette.selection);
                     if (!material) c.fill({shape.inner.x, shape.inner.y, scaled(c.scale, 3), shape.inner.h}, palette.accent);
@@ -1667,7 +1687,7 @@ public:
         UiState::OperationScope operation(&ui);
         if (auto r = ui.available(ui.focused()); !r) return r;
         auto& t = UiState::Internals::tabs(ui).at(ui.focused());
-        int index = static_cast<int>(t.active), last = static_cast<int>(t.pages.size()) - 1;
+        int index = static_cast<int>(t.candidate), last = static_cast<int>(t.pages.size()) - 1;
         if (key.key == Key::home) index = -1;
         else if (key.key == Key::end) index = last + 1;
         else if (key.key != Key::up && key.key != Key::down) return {};
