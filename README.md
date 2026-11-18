@@ -11,6 +11,8 @@ This project was renamed from LcarsUI to Isoduo. Consumers now use `<isoduo/...>
 `ISODUO_*`. Configure a fresh build directory and install into a clean prefix.
 The settings-demo data directory is now `%APPDATA%/Isoduo/SettingsDemo`; migrate
 existing settings with `powershell -NoProfile -File tools/migrate-settings.ps1` before first launch.
+The script also copies a legacy settings directory containing only backups and
+keeps each backup at its original relative path.
 Close both applications first. The script copies `%APPDATA%/LcarsUI/SettingsDemo` only when
 `%APPDATA%/Isoduo/SettingsDemo` does not exist, preserves the old directory as a backup,
 and refuses to merge or overwrite an existing destination. Optional `-AppDataRoot` selects
@@ -346,6 +348,11 @@ script to return a failure status.
 
 ## Real-platform runs per change
 
+The Windows CTest `clipboard_contract` exercises native clipboard formats in a
+private window station. It requires Windows Secondary Logon to start the local
+worker and fails if it cannot establish isolation. The `serialized_contract`
+test checks the same rich-text wire round trip without Windows.
+
 Production changes to layout or to the desktop host need runs that only a real, idle desktop can give (real clipboard,
 input method, display scales, foreground window, frame timing). The core-seam twin of each property runs in CTest; this table
 lists, per change, which idle-desktop runs the author still has to do before a release. Commands are
@@ -443,10 +450,19 @@ $repair = @{
 ./tools/repair-worktree-paths.ps1 @repair -Mode Restore
 ```
 
-Choose unused bridge and backup paths; the bridge must be on the worktree's
-volume. Apply backs up both pointer files, including hidden files, before writing.
-Verify discovery and `worktree list` in both environments after applying. Restore
-refuses subsequent pointer changes and retains the junctions and backups.
+Start with a fresh backup path on the first run. The bridge must be on the
+worktree's volume. Apply backs up both pointer files before writing and preserves
+their Hidden attributes. It reuses a junction only when it points to the expected
+directory. Verify discovery and `worktree list` in both environments after applying.
+
+After Restore or an interrupted Apply, rerun Apply with the same inputs and
+complete backup. You can also rerun Restore with those inputs. Both commands
+accept any mix of original and repaired pointers, compare exact bytes, and
+refuse other contents. If Apply stopped while creating the backup and both
+pointers still contain their original bytes, leave the incomplete backup in place
+and use a fresh backup path. If a write was interrupted within one pointer, keep
+the backup and inspect the pointer before resuming. Restore keeps existing
+junctions and backups.
 Keep junctions in place while using repaired pointers; moving or recreating a
 worktree requires rechecking its metadata. This is a per-worktree repair, not a
 hook into tools that create new worktrees. A `prunable` label alone does not mean

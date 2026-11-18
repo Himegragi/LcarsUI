@@ -1,4 +1,4 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 $fixture = Join-Path ([IO.Path]::GetTempPath()) ('isoduo-migration-' + [guid]::NewGuid().ToString('N'))
 $script = Join-Path $PSScriptRoot '../tools/migrate-settings.ps1'
 function Assert($condition, $message) { if (-not $condition) { throw $message } }
@@ -25,6 +25,17 @@ try {
     $refused = $false
     try { & $script -AppDataRoot (Join-Path $fixture 'missing') } catch { $refused = $true }
     Assert $refused 'Missing source must be refused'
+    foreach ($backupFile in 'backup/settings.json', 'settings.json.bad') {
+        $backupRoot = Join-Path $fixture ([guid]::NewGuid().ToString('N'))
+        $oldBackup = Join-Path $backupRoot "LcarsUI/SettingsDemo/$backupFile"
+        $newBackup = Join-Path $backupRoot "Isoduo/SettingsDemo/$backupFile"
+        New-Item -ItemType Directory -Force (Split-Path $oldBackup) | Out-Null
+        [IO.File]::WriteAllBytes($oldBackup, [byte[]](0,1,2,255))
+        & $script -AppDataRoot $backupRoot
+        Assert (([IO.File]::ReadAllBytes($newBackup) -join ',') -eq '0,1,2,255') "Copy backup-only $backupFile byte for byte"
+        Assert (([IO.File]::ReadAllBytes($oldBackup) -join ',') -eq '0,1,2,255') "Retain source $backupFile"
+        Assert (-not (Test-Path -LiteralPath (Join-Path $backupRoot 'Isoduo/SettingsDemo/settings.json'))) 'Do not promote a backup to active settings'
+    }
     $fileRoot = Join-Path $fixture 'destination-file'
     New-Item -ItemType Directory -Force (Join-Path $fileRoot 'LcarsUI/SettingsDemo'), (Join-Path $fileRoot 'Isoduo') | Out-Null
     [IO.File]::WriteAllText((Join-Path $fileRoot 'LcarsUI/SettingsDemo/settings.json'), 'source')
