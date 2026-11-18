@@ -1,5 +1,5 @@
-#include "lcars/diagnostics.hpp"
-namespace lcars {
+#include "isoduo/diagnostics.hpp"
+namespace isoduo {
 Diagnostics::Diagnostics(std::size_t capacity) : capacity_(capacity) {}
 void Diagnostics::record(const RenderDiagnostic& event) {
     if (!capacity_) return;
@@ -26,7 +26,7 @@ const std::deque<RenderDiagnostic>& Diagnostics::recent() const { return recent_
 #include <iomanip>
 #include <charconv>
 
-namespace lcars {
+namespace isoduo {
 namespace {
 std::uint32_t crc32(const std::string& text) {
     std::uint32_t crc = 0xffffffffu;
@@ -70,7 +70,7 @@ bool unpack(const std::string& line, RenderDiagnostic& e) {
 }
 }
 bool Diagnostics::save(std::ostream& out) const {
-    out << "LCARSDIAG 1 0\n";
+    out << "ISODUODIAG 1 0\n";
     auto write=[&](char kind, const RenderDiagnostic& e) { auto line=std::string(1,kind)+" "+pack(e); out << line << ' ' << std::hex << std::setw(8) << std::setfill('0') << crc32(line) << std::dec << '\n'; };
     if (first_) write('F',*first_);
     for (const auto& e : recent_) write('R',e);
@@ -78,7 +78,7 @@ bool Diagnostics::save(std::ostream& out) const {
 }
 DiagnosticLoadResult Diagnostics::load(std::istream& in) {
     DiagnosticLoadResult result; std::string line;
-    if (!std::getline(in,line) || line != "LCARSDIAG 1 0" || in.eof()) { result.incomplete=true; return result; }
+    if (!std::getline(in,line) || (line != "ISODUODIAG 1 0" && line != "LCARSDIAG 1 0") || in.eof()) { result.incomplete=true; return result; }
     while (std::getline(in,line)) {
         if (in.eof()) { result.incomplete=true; break; }
         auto pos=line.rfind(' '); std::uint32_t expected=0;

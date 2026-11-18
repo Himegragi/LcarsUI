@@ -13,20 +13,20 @@ inline bool blankOnly(std::u16string_view text) {
     return !text.empty() && std::all_of(text.begin(), text.end(), [](char16_t c) { return c == u' ' || c == 0x3000; });
 }
 // Enumerate the semantic tree; the existing typed drivers still exercise each component.
-struct Entry { std::string page; lcars::ComponentHandle handle; };
-inline std::vector<Entry> inventory(lcars::Ui& ui) {
+struct Entry { std::string page; isoduo::ComponentHandle handle; };
+inline std::vector<Entry> inventory(isoduo::Ui& ui) {
     std::vector<Entry> result;
-    auto& state = lcars::detail::access(ui);
-    auto visit = [&](auto&& self, const lcars::NodeRef& parent) -> void {
+    auto& state = isoduo::detail::access(ui);
+    auto visit = [&](auto&& self, const isoduo::NodeRef& parent) -> void {
         auto children = ui.semantics().children(parent);
         if (!children) return;
         for (const auto& ref : *children) {
             auto node = ui.semantics().get(ref);
             if (!node) continue;
             const auto page = state.semanticPage(ref.id);
-            if (!ref.item && node->role != lcars::Role::dialog && node->role != lcars::Role::tooltip)
+            if (!ref.item && node->role != isoduo::Role::dialog && node->role != isoduo::Role::tooltip)
                 result.push_back({page, state.layoutHandle(ref.id)});
-            if (node->role == lcars::Role::dialog) self(self, ref);
+            if (node->role == isoduo::Role::dialog) self(self, ref);
         }
     };
     visit(visit, {});
@@ -48,15 +48,15 @@ inline std::vector<std::string> pages(editForm::Form& form) {
     if (children) for (const auto& ref : *children) if (ref.item) result.push_back(ref.item->id);
     return result;
 }
-inline std::optional<lcars::ComponentSnapshot> describe(const lcars::ComponentHandle& value) {
-    return std::visit([](const auto& handle) -> std::optional<lcars::ComponentSnapshot> {
+inline std::optional<isoduo::ComponentSnapshot> describe(const isoduo::ComponentHandle& value) {
+    return std::visit([](const auto& handle) -> std::optional<isoduo::ComponentSnapshot> {
         using T = std::decay_t<decltype(handle)>;
         if constexpr (std::is_same_v<T, std::monostate>) return std::nullopt;
         else return handle.describe().value;
     }, value);
 }
-inline const lcars::Placement* placement(const lcars::Frame& frame, const lcars::ComponentHandle& value) {
-    return std::visit([&](const auto& handle) -> const lcars::Placement* {
+inline const isoduo::Placement* placement(const isoduo::Frame& frame, const isoduo::ComponentHandle& value) {
+    return std::visit([&](const auto& handle) -> const isoduo::Placement* {
         using T = std::decay_t<decltype(handle)>;
         if constexpr (std::is_same_v<T, std::monostate>) return nullptr;
         else return frame.find(handle);
@@ -64,10 +64,10 @@ inline const lcars::Placement* placement(const lcars::Frame& frame, const lcars:
 }
 // Determine clipping applicability from the assembled layout tree, including modal
 // content even when closed. Associated labels use their field's placement.
-inline std::optional<bool> enclosingScroll(const lcars::layout::Node& node, lcars::detail::UiState& ui,
+inline std::optional<bool> enclosingScroll(const isoduo::layout::Node& node, isoduo::detail::UiState& ui,
                                              std::string_view id, bool inside = false) {
-    inside = inside || node.kind == lcars::layout::Node::Kind::scroll;
-    if (node.kind == lcars::layout::Node::Kind::component) {
+    inside = inside || node.kind == isoduo::layout::Node::Kind::scroll;
+    if (node.kind == isoduo::layout::Node::Kind::component) {
         auto actual = ui.layoutId(node.component);
         if (actual && *actual == id) return inside;
     }
@@ -75,22 +75,22 @@ inline std::optional<bool> enclosingScroll(const lcars::layout::Node& node, lcar
         if (auto found = enclosingScroll(child, ui, id, inside)) return found;
     return std::nullopt;
 }
-inline std::optional<bool> enclosingScroll(editForm::Form& form, const lcars::ComponentSnapshot& semantic) {
-    return enclosingScroll(form.page(), lcars::detail::access(form.ui),
+inline std::optional<bool> enclosingScroll(editForm::Form& form, const isoduo::ComponentSnapshot& semantic) {
+    return enclosingScroll(form.page(), isoduo::detail::access(form.ui),
                             semantic.target.empty() ? semantic.id : semantic.target);
 }
-inline bool insideClient(const lcars::Placement& placement, int width, int height) {
-    lcars::Rect client{0, 0, width, height};
+inline bool insideClient(const isoduo::Placement& placement, int width, int height) {
+    isoduo::Rect client{0, 0, width, height};
     return placement.bounds.w > 0 && placement.bounds.h > 0 &&
-        lcars::intersect(placement.bounds, client) == placement.bounds &&
-        lcars::intersect(placement.bounds, placement.clip) == placement.bounds;
+        isoduo::intersect(placement.bounds, client) == placement.bounds &&
+        isoduo::intersect(placement.bounds, placement.clip) == placement.bounds;
 }
 // Passive labels and progress have no user operation. All other page members retry a
 // typed operation; admission must reject it before examining the proposed value.
-inline bool hiddenRetry(const lcars::ComponentHandle& value) {
+inline bool hiddenRetry(const isoduo::ComponentHandle& value) {
     return std::visit([](const auto& h) {
         using T = std::decay_t<decltype(h)>;
-        using namespace lcars;
+        using namespace isoduo;
         if constexpr (std::is_same_v<T, TextFieldHandle>) return h.setValue(u"blocked").status == Status::hidden && h.focus().status == Status::hidden;
         else if constexpr (std::is_same_v<T, ButtonHandle>) return h.invoke().status == Status::hidden && h.focus().status == Status::hidden;
         else if constexpr (std::is_same_v<T, CheckboxHandle>) return h.toggle().status == Status::hidden && h.focus().status == Status::hidden;
@@ -100,8 +100,8 @@ inline bool hiddenRetry(const lcars::ComponentHandle& value) {
         else return true;
     }, value);
 }
-inline bool normalSemantics(const lcars::ComponentSnapshot& s) {
-    using lcars::ComponentKind;
+inline bool normalSemantics(const isoduo::ComponentSnapshot& s) {
+    using isoduo::ComponentKind;
     if (s.kind == ComponentKind::checkbox) return s.checked && s.value == (*s.checked ? u"true" : u"false");
     if (s.kind == ComponentKind::radioGroup || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::list || s.kind == ComponentKind::tabs) {
         auto count = std::count_if(s.items.begin(), s.items.end(), [](const auto& option) { return option.selected; });
@@ -111,8 +111,8 @@ inline bool normalSemantics(const lcars::ComponentSnapshot& s) {
     }
     return true;
 }
-inline std::vector<std::u16string> normalText(const lcars::ComponentSnapshot& s) {
-    using lcars::ComponentKind;
+inline std::vector<std::u16string> normalText(const isoduo::ComponentSnapshot& s) {
+    using isoduo::ComponentKind;
     std::vector<std::u16string> result;
     auto add = [&](std::u16string text) {
         text.erase(std::remove(text.begin(), text.end(), u'\n'), text.end());
@@ -132,22 +132,22 @@ inline bool baselineContext(editForm::Form& form) {
     form.scroll.offset = 0;
     return bool(form.handles.tabs.focus());
 }
-inline bool setEnabled(const lcars::ComponentHandle& value, bool enabled) {
+inline bool setEnabled(const isoduo::ComponentHandle& value, bool enabled) {
     return std::visit([&](const auto& h) {
         if constexpr (requires { h.enable(enabled); }) return bool(h.enable(enabled));
         else return false;
     }, value);
 }
-inline bool focusApplicable(const lcars::ComponentSnapshot& semantic) {
+inline bool focusApplicable(const isoduo::ComponentSnapshot& semantic) {
     return semantic.enabled && semantic.focusable;
 }
-inline bool focus(lcars::Ui& ui, const lcars::ComponentHandle& value) {
-    auto id = lcars::detail::access(ui).layoutId(value);
-    return id && bool(ui.semantics().perform({*id}, lcars::Verb::focus));
+inline bool focus(isoduo::Ui& ui, const isoduo::ComponentHandle& value) {
+    auto id = isoduo::detail::access(ui).layoutId(value);
+    return id && bool(ui.semantics().perform({*id}, isoduo::Verb::focus));
 }
-inline bool disabledRetry(const lcars::ComponentHandle& value) {
+inline bool disabledRetry(const isoduo::ComponentHandle& value) {
     return std::visit([](const auto& h) {
-        using T = std::decay_t<decltype(h)>; using namespace lcars;
+        using T = std::decay_t<decltype(h)>; using namespace isoduo;
         if constexpr (std::is_same_v<T, TextFieldHandle>) return h.setValue(u"blocked").status == Status::disabled && h.focus().status == Status::disabled;
         else if constexpr (std::is_same_v<T, ButtonHandle>) return h.invoke().status == Status::disabled && h.focus().status == Status::disabled;
         else if constexpr (std::is_same_v<T, CheckboxHandle>) return h.toggle().status == Status::disabled && h.focus().status == Status::disabled;
@@ -160,7 +160,7 @@ inline bool disabledRetry(const lcars::ComponentHandle& value) {
 // Exercise a selected value using each component's public operation. The demo reset
 // actions restore each page's initial model after the observation.
 inline bool driveSelected(const Entry& entry) {
-    using namespace lcars;
+    using namespace isoduo;
     return std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle>) {
@@ -172,13 +172,13 @@ inline bool driveSelected(const Entry& entry) {
         else return false;
     }, entry.handle);
 }
-inline bool selectedSemantics(const lcars::ComponentSnapshot& semantic) {
-    using namespace lcars;
+inline bool selectedSemantics(const isoduo::ComponentSnapshot& semantic) {
+    using namespace isoduo;
     if (semantic.kind == ComponentKind::checkbox) return semantic.checked == true;
     return !semantic.value.empty() && std::count_if(semantic.items.begin(), semantic.items.end(),
         [&](const auto& option) { return option.selected && option.label == semantic.value; }) == 1;
 }
-inline bool sameSelection(const lcars::ComponentSnapshot& a, const lcars::ComponentSnapshot& b) {
+inline bool sameSelection(const isoduo::ComponentSnapshot& a, const isoduo::ComponentSnapshot& b) {
     if (a.checked != b.checked || a.items.size() != b.items.size()) return false;
     for (std::size_t i = 0; i < a.items.size(); ++i)
         if (a.items[i].value != b.items[i].value || a.items[i].label != b.items[i].label ||
@@ -186,12 +186,12 @@ inline bool sameSelection(const lcars::ComponentSnapshot& a, const lcars::Compon
             a.items[i].invalid != b.items[i].invalid) return false;
     return true;
 }
-inline std::vector<lcars::ComponentSnapshot> snapshot(editForm::Form& form) {
-    std::vector<lcars::ComponentSnapshot> result;
+inline std::vector<isoduo::ComponentSnapshot> snapshot(editForm::Form& form) {
+    std::vector<isoduo::ComponentSnapshot> result;
     for (const auto& entry : inventory(form)) if (auto s = describe(entry.handle)) result.push_back(*s);
     return result;
 }
-inline bool sameModel(const std::vector<lcars::ComponentSnapshot>& a, const std::vector<lcars::ComponentSnapshot>& b) {
+inline bool sameModel(const std::vector<isoduo::ComponentSnapshot>& a, const std::vector<isoduo::ComponentSnapshot>& b) {
     if (a.size() != b.size()) return false;
     for (std::size_t i = 0; i < a.size(); ++i)
         if (a[i].id != b[i].id || a[i].value != b[i].value || a[i].enabled != b[i].enabled ||
@@ -200,8 +200,8 @@ inline bool sameModel(const std::vector<lcars::ComponentSnapshot>& a, const std:
             a[i].sourceConflict != b[i].sourceConflict || !sameSelection(a[i], b[i])) return false;
     return true;
 }
-inline bool restoreSelected(editForm::Form& form, const Entry& entry, const lcars::ComponentSnapshot& before, const lcars::PresentationSettings& presentation) {
-    using namespace lcars;
+inline bool restoreSelected(editForm::Form& form, const Entry& entry, const isoduo::ComponentSnapshot& before, const isoduo::PresentationSettings& presentation) {
+    using namespace isoduo;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle>) {
@@ -216,19 +216,19 @@ inline bool restoreSelected(editForm::Form& form, const Entry& entry, const lcar
 }
 // Applicability follows the application-owned connection, not component IDs.
 inline bool conflictInapplicable(const editForm::Form& form, const Entry& entry) {
-    auto field = std::get_if<lcars::TextFieldHandle>(&entry.handle);
+    auto field = std::get_if<isoduo::TextFieldHandle>(&entry.handle);
     if (field) return (form.list && form.list->searchConnection().owns(*field)) || *field == form.handles.preview;
     auto semantic = describe(entry.handle);
-    return semantic && (semantic->kind == lcars::ComponentKind::slider || semantic->kind == lcars::ComponentKind::checkbox) &&
-        !lcars::detail::access(form.ui).confirmationGroupContains(form.handles.apply.describe()->id, semantic->id);
+    return semantic && (semantic->kind == isoduo::ComponentKind::slider || semantic->kind == isoduo::ComponentKind::checkbox) &&
+        !isoduo::detail::access(form.ui).confirmationGroupContains(form.handles.apply.describe()->id, semantic->id);
 }
-inline bool groupConflictSupported(editForm::Form& form, const lcars::ComponentSnapshot& s) {
-    using lcars::ComponentKind;
+inline bool groupConflictSupported(editForm::Form& form, const isoduo::ComponentSnapshot& s) {
+    using isoduo::ComponentKind;
     bool typeSupported = s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radioGroup || s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider;
-    return typeSupported && lcars::detail::access(form.ui).confirmationGroupContains(form.handles.apply.describe()->id, s.id);
+    return typeSupported && isoduo::detail::access(form.ui).confirmationGroupContains(form.handles.apply.describe()->id, s.id);
 }
 inline bool driveGroupConflict(editForm::Form& form, const Entry& entry) {
-    using namespace lcars;
+    using namespace isoduo;
     return std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle>) {
@@ -246,8 +246,8 @@ inline bool driveGroupConflict(editForm::Form& form, const Entry& entry) {
         } else return false;
     }, entry.handle);
 }
-inline lcars::ButtonHandle latestFor(editForm::Form& form, const Entry& entry) {
-    using namespace lcars;
+inline isoduo::ButtonHandle latestFor(editForm::Form& form, const Entry& entry) {
+    using namespace isoduo;
     return std::visit([&](const auto& h) -> ButtonHandle {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, CheckboxHandle>) return form.handles.noticesLatest;
@@ -257,22 +257,22 @@ inline lcars::ButtonHandle latestFor(editForm::Form& form, const Entry& entry) {
         else return {};
     }, entry.handle);
 }
-inline bool executionSupported(editForm::Form&, const lcars::ButtonHandle& button) {
+inline bool executionSupported(editForm::Form&, const isoduo::ButtonHandle& button) {
     auto semantic = button.describe();
-    return semantic && semantic->kind == lcars::ComponentKind::button;
+    return semantic && semantic->kind == isoduo::ComponentKind::button;
 }
-inline bool observeExecution(editForm::Form& form, const lcars::ButtonHandle& button,
-                              std::function<lcars::Result()> observer) {
+inline bool observeExecution(editForm::Form& form, const isoduo::ButtonHandle& button,
+                              std::function<isoduo::Result()> observer) {
     if (button.describe()->id == form.handles.apply.describe()->id) {
         // The confirmation action remains protected; observe its actual modification entry.
-        if (button.bind([] { return lcars::Result{}; }).status != lcars::Status::invalidValue) return false;
+        if (button.bind([] { return isoduo::Result{}; }).status != isoduo::Status::invalidValue) return false;
         form.observeNextApply([observer = std::move(observer)] { (void)observer(); });
         return true;
     }
     return bool(button.bind(std::move(observer)));
 }
 inline bool prepareExecution(editForm::Form& form, const Entry& entry) {
-    auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
+    auto* button = std::get_if<isoduo::ButtonHandle>(&entry.handle);
     if (!button || !baselineContext(form)) return false;
     if (entry.page == "modal") {
         if (!form.handles.tabs.activate({"v03"}) || !form.handles.dialogOpen.invoke()) return false;
@@ -280,7 +280,7 @@ inline bool prepareExecution(editForm::Form& form, const Entry& entry) {
     return bool(button->enable(true)) && bool(button->focus());
 }
 inline bool restoreExecution(editForm::Form& form, const Entry& entry, bool enabled) {
-    auto* button = std::get_if<lcars::ButtonHandle>(&entry.handle);
+    auto* button = std::get_if<isoduo::ButtonHandle>(&entry.handle);
     if (!button) return false;
     bool isApply = button->describe()->id == form.handles.apply.describe()->id;
     bool restored = (isApply ? bool(form.handles.reset.invoke()) : bool(form.restoreFixtureAction(*button))) && bool(button->enable(enabled));
@@ -296,36 +296,36 @@ inline bool prepareClipped(editForm::Form& form, const Entry& entry) {
     auto target = describe(entry.handle);
     std::u16string padding;
     for (int i = 0; i < 60; ++i) padding += u"X04 padding\n";
-    lcars::LabelHandle filler;
+    isoduo::LabelHandle filler;
     if (entry.page == "v01") filler = target->id == form.handles.intro.describe()->id ? form.handles.title : form.handles.intro;
     else if (entry.page == "v02") filler = target->id == form.list->handles.title.describe()->id ? form.list->handles.detail : form.list->handles.title;
     else if (entry.page == "v03") filler = target->id == form.handles.v03Title.describe()->id ? form.handles.dialogResult : form.handles.v03Title;
     else filler = form.handles.v04Title;
     if (!form.setClipPadding(filler, std::move(padding))) return false;
-    if (target->kind == lcars::ComponentKind::label && target->labelKind == lcars::LabelKind::error && !target->target.empty())
+    if (target->kind == isoduo::ComponentKind::label && target->labelKind == isoduo::LabelKind::error && !target->target.empty())
         return bool(form.handles.name.setError(u"X04 clipped error"));
     return true;
 }
 inline bool restoreClipped(editForm::Form& form, const Entry& entry) {
     auto target = describe(entry.handle);
     form.clearClipPadding();
-    if (target && target->kind == lcars::ComponentKind::label && target->labelKind == lcars::LabelKind::error && !target->target.empty())
+    if (target && target->kind == isoduo::ComponentKind::label && target->labelKind == isoduo::LabelKind::error && !target->target.empty())
         if (!form.handles.name.setError(u"")) return false;
     form.scroll.offset = 0;
     return bool(form.handles.tabs.activate({"v01"}));
 }
-inline const lcars::Placement* clippedOwner(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
+inline const isoduo::Placement* clippedOwner(const isoduo::Frame& frame, const isoduo::ComponentSnapshot& s) {
     auto id = s.target.empty() ? s.id : s.target;
     auto it = std::find_if(frame.items.begin(), frame.items.end(), [&](const auto& item) { return item.id == id; });
     return it == frame.items.end() ? nullptr : &*it;
 }
-inline std::optional<lcars::Rect> clippedRect(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
+inline std::optional<isoduo::Rect> clippedRect(const isoduo::Frame& frame, const isoduo::ComponentSnapshot& s) {
     auto* owner = clippedOwner(frame, s); if (!owner) return std::nullopt;
     if (s.target.empty()) return owner->bounds;
-    const std::vector<lcars::Line>* lines = nullptr;
-    if (s.labelKind == lcars::LabelKind::name) lines = &owner->labelLines;
-    else if (s.labelKind == lcars::LabelKind::description) lines = &owner->descriptionLines;
-    else if (s.labelKind == lcars::LabelKind::error) lines = &owner->errorLines;
+    const std::vector<isoduo::Line>* lines = nullptr;
+    if (s.labelKind == isoduo::LabelKind::name) lines = &owner->labelLines;
+    else if (s.labelKind == isoduo::LabelKind::description) lines = &owner->descriptionLines;
+    else if (s.labelKind == isoduo::LabelKind::error) lines = &owner->errorLines;
     if (!lines || lines->empty()) return std::nullopt;
     auto r = lines->front().bounds;
     for (const auto& line : *lines) {
@@ -336,7 +336,7 @@ inline std::optional<lcars::Rect> clippedRect(const lcars::Frame& frame, const l
     }
     return r;
 }
-inline std::vector<int> clippedOffsets(const lcars::Frame& frame, lcars::Rect target) {
+inline std::vector<int> clippedOffsets(const isoduo::Frame& frame, isoduo::Rect target) {
     auto viewport = frame.viewport;
     int half = std::max(1, std::min(target.h, viewport.h) / 2);
     auto clamp = [&](int value) { return std::clamp(value, 0, frame.maximum); };
@@ -347,14 +347,14 @@ inline std::vector<int> clippedOffsets(const lcars::Frame& frame, lcars::Rect ta
     return result;
 }
 inline const std::u16string errorMessage = u"X04 field error";
-inline bool errorSupported(const lcars::ComponentSnapshot& s) {
-    using namespace lcars;
+inline bool errorSupported(const isoduo::ComponentSnapshot& s) {
+    using namespace isoduo;
     return (s.kind == ComponentKind::label && s.labelKind == LabelKind::error && !s.target.empty()) ||
         s.kind == ComponentKind::textField || s.kind == ComponentKind::checkbox || s.kind == ComponentKind::radioGroup ||
         s.kind == ComponentKind::dropdown || s.kind == ComponentKind::slider || s.kind == ComponentKind::tabs;
 }
 inline bool driveError(editForm::Form& form, const Entry& entry) {
-    using namespace lcars;
+    using namespace isoduo;
     if (entry.page != "shared" && !form.handles.tabs.activate({std::string(entry.page)})) return false;
     return std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
@@ -366,8 +366,8 @@ inline bool driveError(editForm::Form& form, const Entry& entry) {
         } else return false;
     }, entry.handle);
 }
-inline bool errorSemantics(editForm::Form& form, const lcars::ComponentSnapshot& s) {
-    using namespace lcars;
+inline bool errorSemantics(editForm::Form& form, const isoduo::ComponentSnapshot& s) {
+    using namespace isoduo;
     if (s.kind == ComponentKind::tabs) return !s.items.empty() && s.items[0].invalid;
     if (s.kind == ComponentKind::label) {
         auto target = form.handles.name.describe();
@@ -382,7 +382,7 @@ inline bool errorSemantics(editForm::Form& form, const lcars::ComponentSnapshot&
     return s.invalid && s.error == errorMessage;
 }
 inline bool restoreError(editForm::Form& form, const Entry& entry) {
-    using namespace lcars;
+    using namespace isoduo;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, LabelHandle> || std::is_same_v<T, TabsHandle>) return bool(form.handles.name.setError(u""));
@@ -394,7 +394,7 @@ inline bool restoreError(editForm::Form& form, const Entry& entry) {
     return restored && baselineContext(form);
 }
 inline bool prepareCandidate(editForm::Form& form, const Entry& entry) {
-    using namespace lcars;
+    using namespace isoduo;
     if (entry.page != "shared" && !form.handles.tabs.activate({std::string(entry.page)})) return false;
     return std::visit([](const auto& h) {
         using T = std::decay_t<decltype(h)>;
@@ -404,24 +404,24 @@ inline bool prepareCandidate(editForm::Form& form, const Entry& entry) {
     }, entry.handle);
 }
 inline bool openCandidate(const Entry& entry) {
-    if (const auto* dropdown = std::get_if<lcars::DropdownHandle>(&entry.handle)) return bool(dropdown->open());
+    if (const auto* dropdown = std::get_if<isoduo::DropdownHandle>(&entry.handle)) return bool(dropdown->open());
     return true;
 }
-inline const lcars::Placement* candidatePlacement(const lcars::Frame& frame, const lcars::ComponentSnapshot& s) {
-    if (s.kind == lcars::ComponentKind::dropdown) {
+inline const isoduo::Placement* candidatePlacement(const isoduo::Frame& frame, const isoduo::ComponentSnapshot& s) {
+    if (s.kind == isoduo::ComponentKind::dropdown) {
         auto it = std::find_if(frame.overlays.begin(), frame.overlays.end(), [&](const auto& p) { return p.id == s.id && p.popup && !p.tooltip; });
         return it == frame.overlays.end() ? nullptr : &*it;
     }
     auto it = std::find_if(frame.items.begin(), frame.items.end(), [&](const auto& p) { return p.id == s.id; });
     return it == frame.items.end() ? nullptr : &*it;
 }
-inline std::optional<std::u16string> candidateLabel(const lcars::ComponentSnapshot& s) {
+inline std::optional<std::u16string> candidateLabel(const isoduo::ComponentSnapshot& s) {
     if (!s.candidate) return std::nullopt;
     auto it = std::find_if(s.items.begin(), s.items.end(), [&](const auto& o) { return o.value == *s.candidate && o.enabled; });
     return it == s.items.end() ? std::nullopt : std::optional<std::u16string>{it->label};
 }
 inline bool restoreCandidate(editForm::Form& form, const Entry& entry) {
-    using namespace lcars;
+    using namespace isoduo;
     bool restored = std::visit([&](const auto& h) {
         using T = std::decay_t<decltype(h)>;
         if constexpr (std::is_same_v<T, DropdownHandle>) return bool(h.cancel());
@@ -448,8 +448,8 @@ inline bool prepareTip(editForm::Form& form) {
 }
 struct TextStateDriver {
     const char* name;
-    lcars::Result (*drive)(editForm::Form&);
-    lcars::Result (*restore)(editForm::Form&);
+    isoduo::Result (*drive)(editForm::Form&);
+    isoduo::Result (*restore)(editForm::Form&);
 };
 inline const TextStateDriver nameReadOnly{
     "read-only",
@@ -462,7 +462,7 @@ inline const TextStateDriver nameConflict{
         auto result = form.handles.name.setValue(u"Draft");
         if (!result) return result;
         form.updateSource(u"Latest");
-        return lcars::Result{};
+        return isoduo::Result{};
     },
     [](editForm::Form& form) { return form.handles.latest.invoke(); }
 };

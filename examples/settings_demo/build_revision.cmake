@@ -3,7 +3,7 @@ execute_process(COMMAND git rev-parse --short=12 HEAD WORKING_DIRECTORY "${SOURC
 if(NOT result EQUAL 0 OR NOT revision MATCHES "^[0-9a-fA-F]+$")
   set(revision "未知")
 endif()
-set(content "#pragma once\n#define LCARS_DEMO_REVISION u\"${revision}\"\n")
+set(content "#pragma once\n#define ISODUO_DEMO_REVISION u\"${revision}\"\n")
 if(EXISTS "${OUTPUT_FILE}")
   file(READ "${OUTPUT_FILE}" previous)
 endif()

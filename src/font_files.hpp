@@ -4,7 +4,7 @@
 #include <vector>
 #include <cstdint>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 struct FontAxis { std::uint32_t tag; float value; };
 struct FontFile { std::filesystem::path path; unsigned faceIndex = 0; std::vector<FontAxis> axes; };
 FontFile systemFontFile(std::u16string_view family);

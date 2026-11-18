@@ -4,7 +4,7 @@ param([string]$OutDir = "$PSScriptRoot/../../build/Release/evidence/demo-perf", 
 $cases=@('startup','startup-font','list-hold-down','typing','idle','delay')
 if ($List) { 'Demo performance: web/material, 1080p/4K, startup, hold-down, typing, idle, 20 ms self-check'; exit 0 }
 $ErrorActionPreference='Stop'
-$exe=Join-Path $PSScriptRoot '../../build/Release/lcars_host_verify.exe'
+$exe=Join-Path $PSScriptRoot '../../build/Release/isoduo_host_verify.exe'
 $results=[System.Collections.Generic.List[object]]::new()
 foreach($appearance in @('web','material')) { foreach($size in @('1080','4k')) { foreach($scenario in $cases) {
  if($size -eq '4k' -and $scenario -in @('startup','startup-font')) { continue }

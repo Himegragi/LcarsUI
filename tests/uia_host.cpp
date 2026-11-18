@@ -14,9 +14,9 @@ int wmain(int, wchar_t**);
 namespace {
 thread_local WNDPROC originalProc = nullptr;
 thread_local editForm::Form* activeForm = nullptr;
-thread_local lcars::detail::DesktopHost* activeHost = nullptr;
+thread_local isoduo::detail::DesktopHost* activeHost = nullptr;
 thread_local int rootRequests = 0;
-thread_local lcars::detail::RendererTestHooks* activeHooks = nullptr;
+thread_local isoduo::detail::RendererTestHooks* activeHooks = nullptr;
 LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
     if (msg == WM_APP + 81) return reinterpret_cast<LRESULT>(companionWindow.load());
     if (msg == WM_APP + 82) {
@@ -41,17 +41,17 @@ LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
         case 11: {
             auto focused = activeForm->handles.name.focus();
             if (!focused) return static_cast<LRESULT>(focused.status);
-            return static_cast<LRESULT>(lcars::detail::access(activeForm->ui).compositionUpdate(u"測", 1).status);
+            return static_cast<LRESULT>(isoduo::detail::access(activeForm->ui).compositionUpdate(u"測", 1).status);
         }
-        case 12: return static_cast<LRESULT>(lcars::detail::access(activeForm->ui).compositionCancel().status);
-        case 13: lcars::detail::access(activeForm->ui).rendererFailed(true); return 0;
-        case 14: lcars::detail::access(activeForm->ui).rendererFailed(false); return 0;
+        case 12: return static_cast<LRESULT>(isoduo::detail::access(activeForm->ui).compositionCancel().status);
+        case 13: isoduo::detail::access(activeForm->ui).rendererFailed(true); return 0;
+        case 14: isoduo::detail::access(activeForm->ui).rendererFailed(false); return 0;
         case 15: return static_cast<LRESULT>(activeForm->handles.notices.toggle().status);
         case 16: return rootRequests;
         case 20: return static_cast<LRESULT>(activeForm->handles.apply.focus().status);
-        case 21: lcars::detail::access(activeForm->ui).windowActive(true); lcars::detail::access(activeForm->ui).setSystemKeyboardCues(true); return 0;  // focus tooltips need the indicator state on; UIA SetFocus does not turn it on
+        case 21: isoduo::detail::access(activeForm->ui).windowActive(true); isoduo::detail::access(activeForm->ui).setSystemKeyboardCues(true); return 0;  // focus tooltips need the indicator state on; UIA SetFocus does not turn it on
         case 23: return static_cast<LRESULT>(activeForm->handles.dialogOpen.focus().status);
-        case 24: return lcars::detail::access(activeForm->ui).focused() == "form.title.pages.v03.half";
+        case 24: return isoduo::detail::access(activeForm->ui).focused() == "form.title.pages.v03.half";
         case 26: activeHooks->errorAtFrame = activeHost->frames() + 1; activeHost->paint(); return activeHost->rendererFailed() ? 0 : 1;
         case 27: return static_cast<LRESULT>(activeHost->rebuildRenderer().status);
         case 28: return activeHost->rendererFailed() ? 1 : 0;
@@ -59,8 +59,8 @@ LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
             auto tree = activeForm->ui.semantics();
             auto name = tree.get({"form.name"});
             auto region = tree.get({"form.region"});
-            auto item20 = tree.get({"form.title.pages.v02.list", lcars::OptionValue{"T020"}});
-            auto item21 = tree.get({"form.title.pages.v02.list", lcars::OptionValue{"T021"}});
+            auto item20 = tree.get({"form.title.pages.v02.list", isoduo::OptionValue{"T020"}});
+            auto item21 = tree.get({"form.title.pages.v02.list", isoduo::OptionValue{"T021"}});
             auto progress = tree.get({"form.title.pages.v03.progress"});
             auto dialog = activeForm->handles.dialog.isOpen();
             switch (l) {
@@ -72,12 +72,12 @@ LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
             default: return 0;
             }
         }
-        case 30: { auto e = lcars::detail::access(activeForm->ui).edit("form.name"); return e && e->composing ? 1 : 0; }
+        case 30: { auto e = isoduo::detail::access(activeForm->ui).edit("form.name"); return e && e->composing ? 1 : 0; }
         case 31: return static_cast<LRESULT>(activeForm->handles.name.setValue(u"UIA baseline").status);
         case 34: {
             auto focused = activeForm->handles.region.focus(); if (!focused) return static_cast<LRESULT>(focused.status);
             activeHost->paint();
-            const auto* region = lcars::detail::findPlacement(activeHost->frame(), "form.region");
+            const auto* region = isoduo::detail::findPlacement(activeHost->frame(), "form.region");
             if (!region) return 1;
             activeForm->scroll.offset = std::max(0, activeForm->scroll.offset + region->bounds.y - activeHost->frame().viewport.y - 100);
             activeHost->paint(); return 0;
@@ -89,12 +89,12 @@ LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
             activeHost->paint();
             RECT client{}; GetClientRect(window, &client);
             auto image = activeHost->compareGpu(client.right, client.bottom, activeHost->scale()).actual;
-            const auto* field = lcars::detail::findPlacement(activeHost->frame(), "form.name");
+            const auto* field = isoduo::detail::findPlacement(activeHost->frame(), "form.name");
             if (!field) return -1;
-            lcars::detail::Text text;
+            isoduo::detail::Text text;
             auto glyph = text.shape(u"\u5de5", field->textSize);
-            lcars::detail::Canvas sample(128, 128, {255,255,255});
-            text.draw(sample, glyph, 32, 32 + lcars::detail::ShapedMeasure::baseline(field->textSize), {0,0,0});
+            isoduo::detail::Canvas sample(128, 128, {255,255,255});
+            text.draw(sample, glyph, 32, 32 + isoduo::detail::ShapedMeasure::baseline(field->textSize), {0,0,0});
             int sampleLeft = 128, sampleRight = -1;
             for (int y = 0; y < 128; ++y) for (int x = 0; x < 128; ++x) {
                 auto i = (static_cast<std::size_t>(y) * 128 + x) * 4;
@@ -124,16 +124,16 @@ LRESULT CALLBACK testProc(HWND window, UINT msg, WPARAM w, LPARAM l) {
             return MAKELPARAM(origin.x, origin.x + static_cast<int>(std::lround(glyph.width)));
         }
         case 35: {
-            const auto* field = lcars::detail::findPlacement(activeHost->frame(), "form.name");
+            const auto* field = isoduo::detail::findPlacement(activeHost->frame(), "form.name");
             if (!field) return -1;
             POINT point{field->bounds.x + (l ? field->bounds.w : 0), field->bounds.y + (l ? field->bounds.h : 0)};
             ClientToScreen(window, &point); return MAKELPARAM(point.x, point.y);
         }
         case 29: return static_cast<LRESULT>(activeForm->handles.region.open().status);
         case 25: { auto opened = activeForm->handles.dialogOpen.invoke(); if (!opened) return static_cast<LRESULT>(opened.status); return static_cast<LRESULT>(activeForm->handles.dialogCancel.invoke().status); }
-        case 22: { auto r = activeForm->list->handles.list.focus({"T003"}); if (!r) return static_cast<LRESULT>(r.status); return static_cast<LRESULT>(lcars::detail::access(activeForm->ui).keyDown({.key=lcars::Key::down}).status); }
+        case 22: { auto r = activeForm->list->handles.list.focus({"T003"}); if (!r) return static_cast<LRESULT>(r.status); return static_cast<LRESULT>(isoduo::detail::access(activeForm->ui).keyDown({.key=isoduo::Key::down}).status); }
         case 17: { auto settings = activeForm->ui.presentation(); settings.textSize = static_cast<int>(l); return static_cast<LRESULT>(activeForm->ui.setPresentation(settings).status); }
-        case 19: { const auto* item = lcars::detail::findPlacement(activeHost->frame(), "form.name"); if (!item) return -1; POINT p{item->caretX(static_cast<unsigned>(l)), item->bounds.y + item->textField.editor.y}; ClientToScreen(window, &p); return MAKELPARAM(p.x, p.y); }
+        case 19: { const auto* item = isoduo::detail::findPlacement(activeHost->frame(), "form.name"); if (!item) return -1; POINT p{item->caretX(static_cast<unsigned>(l)), item->bounds.y + item->textField.editor.y}; ClientToScreen(window, &p); return MAKELPARAM(p.x, p.y); }
         case 18: { auto node = activeForm->ui.semantics().get({"form.name"}); if (!node || !node->textSelection) return -1; return MAKELPARAM(node->textSelection->anchor, node->textSelection->caret); }
         }
     }
@@ -149,13 +149,13 @@ int wmain(int argc, wchar_t** argv) {
         int unrelatedReads = 0;
         bool sourceBound = false;
         editForm::Form form(editForm::defaultIds(), true, [](std::u16string_view family) {
-            lcars::PresentationSettings settings; settings.fontFamily = family;
-            return lcars::systemFontCatalog().resolve(settings);
+            isoduo::PresentationSettings settings; settings.fontFamily = family;
+            return isoduo::systemFontCatalog().resolve(settings);
         });
-        for (int i = 0; i <= static_cast<int>(lcars::Status::rendererFailed); ++i) {
+        for (int i = 0; i <= static_cast<int>(isoduo::Status::rendererFailed); ++i) {
             auto id = "fixture.status." + std::to_string(i);
             auto button = form.ui.addButton({.id = id, .label = u"Status fixture"}).value.value();
-            button.bind([i] { return lcars::Result{static_cast<lcars::Status>(i), {}}; });
+            button.bind([i] { return isoduo::Result{static_cast<isoduo::Status>(i), {}}; });
         }
         auto disabled = form.ui.addButton({.id = "fixture.real_disabled", .label = u"Disabled"}).value.value();
         disabled.enable(false);
@@ -166,21 +166,21 @@ int wmain(int argc, wchar_t** argv) {
         auto write = form.ui.addButton({.id = "fixture.name_write", .label = u"Write name"}).value.value();
         write.bind([&form] { return form.handles.name.setValue(u"UIA test"); });
         auto invalid = form.ui.addButton({.id = "fixture.name_invalid", .label = u"Invalid name"}).value.value();
-        invalid.bind([&form] { return form.handles.name.setValue(std::u16string(lcars::defaultMaxTextLength + 1, u'x')); });
+        invalid.bind([&form] { return form.handles.name.setValue(std::u16string(isoduo::defaultMaxTextLength + 1, u'x')); });
         if (probeUnobserved) {
             auto label = form.ui.addLabel({.id = "fixture.unrelated_label"}).value.value();
             auto connected = label.connectSource([&] { ++unrelatedReads; return std::u16string(u"Unrelated label"); });
             auto described = label.describe();
             sourceBound = connected && described && unrelatedReads > 0;
         }
-        const auto& appearance = material ? lcars::materialAppearance() : lcars::webAppearance();
-        lcars::DesktopConfig options;
+        const auto& appearance = material ? isoduo::materialAppearance() : isoduo::webAppearance();
+        isoduo::DesktopConfig options;
         if (argc > 2 && std::wstring_view(argv[2]) == L"--accessibility-disabled") options.platformAccessibilityEnabled = false;
         if (argc > 2 && std::wstring_view(argv[2]) == L"--accessibility-enabled") options.platformAccessibilityEnabled = true;
-        options.title = u"LcarsUI UIA test host";
-        lcars::detail::RendererTestHooks hooks;
-        lcars::detail::DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, options, false, true, &hooks);
-        if (!unhandled) host.onRendererFailure([](const lcars::RendererFailure&) {});
+        options.title = u"Isoduo UIA test host";
+        isoduo::detail::RendererTestHooks hooks;
+        isoduo::detail::DesktopHost host(form.ui, appearance, [&] { return form.page(); }, form.scroll, options, false, true, &hooks);
+        if (!unhandled) host.onRendererFailure([](const isoduo::RendererFailure&) {});
         if (probeUnobserved) {
             form.ui.semantics().dispatchEvents();
             unrelatedReads = 0;
@@ -202,6 +202,6 @@ int wmain(int argc, wchar_t** argv) {
             }).detach();
         }
         const int result = host.run();
-        return host.rendererFailed() ? static_cast<int>(lcars::Status::rendererFailed) : result;
+        return host.rendererFailed() ? static_cast<int>(isoduo::Status::rendererFailed) : result;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

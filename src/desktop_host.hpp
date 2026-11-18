@@ -1,6 +1,6 @@
 #pragma once
 // Internal host type shared by runDesktop and the native verification driver.
-#include "lcars/desktop.hpp"
+#include "isoduo/desktop.hpp"
 #include "renderer.hpp"
 #include "text.hpp"
 #include "diagnostic_queue.hpp"
@@ -12,7 +12,7 @@
 #include <thread>
 #include <vector>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 class UiaBridge;
 struct PaintObservation {
     enum class Type { text, fill, rounded } type;

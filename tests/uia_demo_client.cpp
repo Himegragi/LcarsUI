@@ -374,8 +374,8 @@ int wmain(int argc, wchar_t** argv) {
             IUIAutomationElement* fieldMenu = nullptr;
             for (int attempt = 0; attempt < 30 && !fieldMenu; ++attempt) { fieldMenu = findId(uia, root, L"items.search/menu"); if (!fieldMenu) Sleep(100); }
             bool fieldOpen = fieldStatus == 0 && fieldMenu && secondOpenedEvent;
-            auto copyItem = fieldMenu ? findId(uia, fieldMenu, L"lcars.copy") : nullptr;
-            auto selectAllItem = fieldMenu ? findId(uia, fieldMenu, L"lcars.select_all") : nullptr;
+            auto copyItem = fieldMenu ? findId(uia, fieldMenu, L"isoduo.copy") : nullptr;
+            auto selectAllItem = fieldMenu ? findId(uia, fieldMenu, L"isoduo.select_all") : nullptr;
             bool fieldItems = menuItemIs(copyItem, UIA_MenuItemControlTypeId, L"複製(C)", L"C", L"Ctrl+C", false) &&
                 menuItemIs(selectAllItem, UIA_MenuItemControlTypeId, L"全選(A)", L"A", L"Ctrl+A", true);
             VARIANT separatorType; VariantInit(&separatorType); separatorType.vt = VT_I4; separatorType.lVal = UIA_SeparatorControlTypeId;

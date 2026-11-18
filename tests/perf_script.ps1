@@ -1,5 +1,5 @@
 $ErrorActionPreference = 'Stop'
-$root = Join-Path $env:TEMP ('lcars-perf-script-' + [guid]::NewGuid())
+$root = Join-Path $env:TEMP ('isoduo-perf-script-' + [guid]::NewGuid())
 try {
   foreach ($appearance in 'web','material') { foreach ($size in '1080','4k') { foreach ($case in 'startup','list-hold-down','typing','idle','delay') {
     $dir = Join-Path $root "perf/$appearance/$size/$case"; New-Item -ItemType Directory -Force $dir | Out-Null

@@ -1,12 +1,12 @@
 #pragma once
 // Vertical writing for labels (display only): classification of characters, flow into columns.
 // Pure logic over the measuring backend: no fonts, no drawing. Painting lives in text.cpp.
-#include "lcars/layout.hpp"
+#include "isoduo/layout.hpp"
 #include <string>
 #include <string_view>
 #include <vector>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 // UAX #50 Vertical_Orientation. Data: vertical_orientation_data.inc (see third-party notices).
 enum class VerticalOrientation { U, R, Tu, Tr };
 VerticalOrientation verticalOrientation(char32_t codePoint);

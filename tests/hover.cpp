@@ -1,8 +1,8 @@
 // Pointer hover (#74): palette values, the presentation switch, the hover target state machine,
 // the paint seam (PaintRole::hover) and the typed / semantic simulation entries.
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/semantics.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "render.hpp"
@@ -11,7 +11,7 @@
 #include <algorithm>
 #include <cmath>
 #include <set>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 namespace {
 const Appearance* const builtins[] = {&webAppearance(), &materialAppearance()};
@@ -75,7 +75,7 @@ struct Page {
         return layout::modal(std::move(page), layout::component(ok), dialog);
     }
     Frame arrange(const Appearance& look = webAppearance(), int width = 480) {
-        return lcars::arrange(root(), ui, look, measure, width, height, 1.f, scroll);
+        return isoduo::arrange(root(), ui, look, measure, width, height, 1.f, scroll);
     }
     detail::UiState& state() { return detail::access(ui); }
 };
@@ -428,7 +428,7 @@ void contextMenuRowsHoverAsTheirHighlight() {
         const auto menu = menuNodeId("field");
         check(tree.perform({"field"}, Verb::hover).status == Status::blockedByModal, "the semantic verb agrees with the typed entry");
         check(tree.perform({menu}, Verb::hover).status == Status::notSupported, "the menu panel itself is not hoverable");
-        check(bool(tree.perform({menu, OptionValue{"lcars.select_all"}}, Verb::hover)) && highlightedItem(page) == "lcars.select_all", "the semantic hover on a row highlights it");
+        check(bool(tree.perform({menu, OptionValue{"isoduo.select_all"}}, Verb::hover)) && highlightedItem(page) == "isoduo.select_all", "the semantic hover on a row highlights it");
         // Closing the menu gives the pointer back at once, to what lies under its resting position.
         check(bool(page.ui.closeContextMenu()), "the menu closes");
         frame = page.arrange(*look);

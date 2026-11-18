@@ -1,8 +1,8 @@
 // Component types are told apart only by what the registry says about them (#93). This suite pins what a built-in
 // type does today (key policy, semantic roles, verbs, debug names) through public seams, and runs a
 // registered test-only type through the same dispatch points. `--print` writes the observed tables instead of checking them.
-#include "lcars/core.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/semantics.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "fake_measure.hpp"
@@ -13,7 +13,7 @@
 #include <iostream>
 #include <stdexcept>
 #include <sstream>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 
 namespace {

@@ -5,7 +5,7 @@
 
 int wmain(int argc, wchar_t** argv) {
     if (argc != 3 || FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 1;
-    auto directory = std::filesystem::temp_directory_path() / (L"lcars-about-" + std::to_wstring(GetCurrentProcessId()));
+    auto directory = std::filesystem::temp_directory_path() / (L"isoduo-about-" + std::to_wstring(GetCurrentProcessId()));
     std::filesystem::create_directories(directory);
     std::wstring command = L"\"" + std::wstring(argv[1]) + L"\" --settings-dir \"" + directory.wstring() + L"\"";
     STARTUPINFOW si{sizeof(si)}; PROCESS_INFORMATION pi{};

@@ -2,28 +2,28 @@
 // Launches the V01 edit form. The appearance is chosen at link time (web or material);
 // the form, its data and behavior are the same source for both executables.
 #include "edit_form.hpp"
-#include "lcars/desktop.hpp"
+#include "isoduo/desktop.hpp"
 #include <iostream>
 
 int wmain() {
     try {
         editForm::Form form(editForm::defaultIds(), true, [](std::u16string_view family) {
-            lcars::PresentationSettings settings; settings.fontFamily = family;
-            return lcars::systemFontCatalog().resolve(settings);
+            isoduo::PresentationSettings settings; settings.fontFamily = family;
+            return isoduo::systemFontCatalog().resolve(settings);
         });
-#ifdef LCARS_APPEARANCE_material
-        const auto& appearance = lcars::materialAppearance();
+#ifdef ISODUO_APPEARANCE_material
+        const auto& appearance = isoduo::materialAppearance();
 #else
-        const auto& appearance = lcars::webAppearance();
+        const auto& appearance = isoduo::webAppearance();
 #endif
         auto name = appearance.name();
-        lcars::DesktopConfig options;
-        options.title = u"LcarsUI 編輯表單 — " + std::u16string(name.begin(), name.end());
-        auto creation = lcars::Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll, options);
+        isoduo::DesktopConfig options;
+        options.title = u"Isoduo 編輯表單 — " + std::u16string(name.begin(), name.end());
+        auto creation = isoduo::Desktop::create(form.ui, appearance, [&] { return form.page(); }, form.scroll, options);
         if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
-        return creation.desktop->run().status == lcars::Status::ok ? 0 : 1;
+        return creation.desktop->run().status == isoduo::Status::ok ? 0 : 1;
     } catch (const std::exception& e) {
-        std::cerr << "LcarsUI: " << e.what() << '\n';
+        std::cerr << "Isoduo: " << e.what() << '\n';
         return 1;
     }
 }

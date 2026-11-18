@@ -1,5 +1,5 @@
 file(GLOB_RECURSE headers "${PREFIX}/include/*")
-list(APPEND headers "${PREFIX}/share/doc/LcarsUI/THIRD_PARTY_NOTICES.txt")
+list(APPEND headers "${PREFIX}/share/doc/Isoduo/THIRD_PARTY_NOTICES.txt")
 foreach(path IN LISTS headers)
   if(NOT IS_DIRECTORY "${path}")
     file(READ "${path}" contents)

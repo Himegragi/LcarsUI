@@ -32,9 +32,9 @@ public:
 
 class StructureEvents final : public UiaEventHandler<StructureEvents, IUIAutomationStructureChangedEventHandler> {
 public:
-    bool lcarsOnly = false;
+    bool isoduoOnly = false;
     HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement* sender, StructureChangeType type, SAFEARRAY*) override {
-        if (lcarsOnly) {
+        if (isoduoOnly) {
             BSTR id = nullptr;
             const bool matches = sender && SUCCEEDED(sender->get_CurrentAutomationId(&id)) && (!id || !*id || std::wstring(id).starts_with(L"form."));
             SysFreeString(id); if (!matches) return S_OK;
@@ -353,7 +353,7 @@ bool accessibilityCase(const wchar_t* host, const wchar_t* appearance) {
             ok &= SendMessageW(search.window, WM_APP+80, 31, 0) == 0;
             ok &= WaitForSingleObject(events->received, enabled ? 5000 : 500) == (enabled ? WAIT_OBJECT_0 : WAIT_TIMEOUT);
             auto focus = new FocusEvents();
-            auto structure = new StructureEvents(); structure->lcarsOnly = true;
+            auto structure = new StructureEvents(); structure->isoduoOnly = true;
             ok &= SUCCEEDED(uia->AddFocusChangedEventHandler(nullptr, focus));
             ok &= SUCCEEDED(uia->AddStructureChangedEventHandler(root, TreeScope_Subtree, nullptr, structure));
             ok &= SendMessageW(search.window, WM_APP+80, 20, 0) == 0;

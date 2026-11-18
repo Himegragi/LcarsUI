@@ -1,4 +1,4 @@
-function Get-LcarsVisualStudioGenerator([string]$Version) {
+function Get-IsoduoVisualStudioGenerator([string]$Version) {
     $major = ([version]$Version).Major
     switch ($major) {
         17 { return 'Visual Studio 17 2022' }
@@ -7,17 +7,17 @@ function Get-LcarsVisualStudioGenerator([string]$Version) {
     }
 }
 
-function Get-LcarsVisualStudio {
+function Get-IsoduoVisualStudio {
     $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
     $json = & $vswhere -latest -version '[17.0,)' -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -format json -utf8
     if ($LASTEXITCODE -ne 0) { throw 'vswhere failed to find Visual Studio' }
     $instances = @($json | ConvertFrom-Json)
     if (-not $instances -or -not $instances[0].installationPath) { throw 'Visual Studio 2022 or later with C++ Build Tools not found' }
     $instance = $instances[0]
-    [pscustomobject]@{ InstallationPath = $instance.installationPath; InstallationVersion = $instance.installationVersion; Generator = (Get-LcarsVisualStudioGenerator $instance.installationVersion) }
+    [pscustomobject]@{ InstallationPath = $instance.installationPath; InstallationVersion = $instance.installationVersion; Generator = (Get-IsoduoVisualStudioGenerator $instance.installationVersion) }
 }
 
-function Import-LcarsVisualStudioEnvironment([string]$InstallationPath, [string]$ToolsetVersion = '') {
+function Import-IsoduoVisualStudioEnvironment([string]$InstallationPath, [string]$ToolsetVersion = '') {
     $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
     $env:PATH = (Split-Path $vswhere) + ';' + $env:PATH
     $devCmd = Join-Path $InstallationPath 'Common7\Tools\VsDevCmd.bat'

@@ -9,7 +9,7 @@
 #define NOMINMAX
 #include <windows.h>
 #endif
-namespace lcars {
+namespace isoduo {
 namespace {
 #ifndef NDEBUG
 void outputDiagnostic(const std::string& message) {
@@ -3441,7 +3441,7 @@ const detail::UiState& detail::access(const Ui& ui) { return *ui.state_; }
 
 }
 
-namespace lcars {
+namespace isoduo {
 void detail::UiState::semanticFrame(const Frame& frame) {
     OperationScope operation(this);
     semanticBounds_.clear(); semanticOptions_.clear(); semanticOrder_.clear(); semanticPositions_.clear();

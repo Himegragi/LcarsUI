@@ -5,14 +5,14 @@
 // only used by the few rule-independent cases run with --icu (ctest word_select_icu, skipped without icu.dll).
 #include "check.hpp"
 #include "fake_measure.hpp"
-#include "lcars/core.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/semantics.hpp"
 #include "text_unit_expectations.hpp"
 #include "word_break.hpp"
 #include <cstring>
 #include <iostream>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 
 namespace {
@@ -116,24 +116,24 @@ void doubleClickInAMultiLineFieldStaysInItsParagraph() {
     check(f.doubleClicked(9) == TextSpan{9, 11}, "gh is the last word of its line and takes no line feed");
 }
 
-// LcarsUI 設定管理示範（第 12 版），OK。 with every index worked out:
-// LcarsUI 0..6, space 7, 設8 定9 管10 理11 示12 範13, （14, 第15, space 16, 1 17, 2 18, space 19, 版20, ）21, ，22, O23, K24, 。25
-constexpr const char16_t* mixed = u"LcarsUI 設定管理示範（第 12 版），OK。";
+// Isoduo 設定管理示範（第 12 版），OK。 with every index worked out:
+// Isoduo 0..5, space 6, 設7 定8 管9 理10 示11 範12, （13, 第14, space 15, 1 16, 2 17, space 18, 版19, ）20, ，21, O22, K23, 。24
+constexpr const char16_t* mixed = u"Isoduo 設定管理示範（第 12 版），OK。";
 void theThreeSegmentationsSplitMixedTextDifferentlyAndSwitchAtOnce() {
     Field f(mixed, false, WordSegmentation::perCharacter);
-    check(f.doubleClicked(2) == TextSpan{0, 8}, "Latin letters are one word and take the space");
-    check(f.doubleClicked(8) == TextSpan{8, 9} && f.doubleClicked(12) == TextSpan{12, 13}, "Per character: each Chinese character is a word");
-    check(f.doubleClicked(14) == TextSpan{14, 15} && f.doubleClicked(22) == TextSpan{22, 23}, "Each punctuation mark is a word");
-    check(f.doubleClicked(15) == TextSpan{15, 17} && f.doubleClicked(17) == TextSpan{17, 20}, "第 and 12 each take the space after them");
-    check(f.doubleClicked(23) == TextSpan{23, 25} && f.doubleClicked(7) == TextSpan{7, 8}, "OK is one word; a single space stands alone");
+    check(f.doubleClicked(2) == TextSpan{0, 7}, "Latin letters are one word and take the space");
+    check(f.doubleClicked(7) == TextSpan{7, 8} && f.doubleClicked(11) == TextSpan{11, 12}, "Per character: each Chinese character is a word");
+    check(f.doubleClicked(13) == TextSpan{13, 14} && f.doubleClicked(21) == TextSpan{21, 22}, "Each punctuation mark is a word");
+    check(f.doubleClicked(14) == TextSpan{14, 16} && f.doubleClicked(16) == TextSpan{16, 19}, "第 and 12 each take the space after them");
+    check(f.doubleClicked(22) == TextSpan{22, 24} && f.doubleClicked(6) == TextSpan{6, 7}, "OK is one word; a single space stands alone");
     check(bool(f.handle.setWordSegmentation(WordSegmentation::scriptRun)), "Switch while the field is in use");
-    check(f.doubleClicked(8) == TextSpan{8, 14} && f.doubleClicked(13) == TextSpan{8, 14}, "Script run: the six characters are one word");
-    check(f.doubleClicked(2) == TextSpan{0, 8}, "Latin and digits behave as before");
+    check(f.doubleClicked(7) == TextSpan{7, 13} && f.doubleClicked(12) == TextSpan{7, 13}, "Script run: the six characters are one word");
+    check(f.doubleClicked(2) == TextSpan{0, 7}, "Latin and digits behave as before");
     check(bool(f.handle.setWordSegmentation(WordSegmentation::dictionary)), "Switch to the dictionary");
-    check(f.doubleClicked(8) == TextSpan{8, 10} && f.doubleClicked(12) == TextSpan{12, 14}, "Dictionary (fixed pairs): 設定|管理|示範");
+    check(f.doubleClicked(7) == TextSpan{7, 9} && f.doubleClicked(11) == TextSpan{11, 13}, "Dictionary (fixed pairs): 設定|管理|示範");
     check(*f.handle.wordSegmentation() == WordSegmentation::dictionary && *f.handle.wordSegmentationInUse() == WordSegmentation::dictionary,
           "The mode as set and the mode in use agree while the dictionary works");
-    check(*f.handle.wordAt(9) == TextSpan{8, 10}, "word_at reports what the double click selected");
+    check(*f.handle.wordAt(8) == TextSpan{7, 9}, "word_at reports what the double click selected");
 }
 
 void aFailingDictionaryFallsBackToPerCharacterWithoutInterrupting() {
@@ -403,22 +403,22 @@ void theSemanticLayerReadsSelectsAndQueriesLikeTheTypedHandle() {
           "The node carries the mode as set and the mode in use");
     for (auto verb : {Verb::setWordSegmentation, Verb::selectWord, Verb::selectParagraph, Verb::doubleClick, Verb::tripleClick})
         check(has(*node, verb), "A text field offers every word verb");
-    check(bool(tree.perform({"t"}, Verb::selectWord, 12)) && f.selection().anchor == 12 && f.selection().caret == 14, "select_word selects 示範 (fixed pairs)");
-    check(f.handle.selectWord(12) && f.selection().anchor == 12 && f.selection().caret == 14, "The typed select_word does the same");
+    check(bool(tree.perform({"t"}, Verb::selectWord, 11)) && f.selection().anchor == 11 && f.selection().caret == 13, "select_word selects 示範 (fixed pairs)");
+    check(f.handle.selectWord(11) && f.selection().anchor == 11 && f.selection().caret == 13, "The typed select_word does the same");
     check(bool(tree.perform({"t"}, Verb::setWordSegmentation, WordSegmentation::scriptRun)) && *f.handle.wordSegmentation() == WordSegmentation::scriptRun,
           "set_word_segmentation changes the field the handle sees");
     check(tree.get({"t"})->wordSegmentation == WordSegmentation::scriptRun, "and the node");
-    check(bool(tree.perform({"t"}, Verb::selectWord, 12)) && f.selection().anchor == 8 && f.selection().caret == 14, "Now the whole run");
-    check(*tree.textUnit("t", TextUnitKind::word, 12) == *f.handle.wordAt(12) && *tree.textUnit("t", TextUnitKind::paragraph, 3) == *f.handle.paragraphAt(3) &&
-          *tree.textUnit("t", TextUnitKind::paragraph, 3) == TextSpan{0, 26}, "text_unit equals word_at and paragraph_at");
-    check(*tree.wordStop("t", 0, true) == *f.handle.nextWordStop(0) && *tree.wordStop("t", 14, false) == *f.handle.previousWordStop(14), "word_stop equals the stop queries");
-    check(bool(tree.perform({"t"}, Verb::doubleClick, 17)) && f.selection().anchor == 17 && f.selection().caret == 20, "double_click selects the word (12 and its space)");
-    check(bool(tree.perform({"t"}, Verb::tripleClick, 17)) && f.selection().anchor == 0 && f.selection().caret == 26, "triple_click selects the paragraph");
-    check(tree.perform({"t"}, Verb::selectWord, 27).status == Status::invalidValue && f.handle.selectWord(27).status == Status::invalidValue, "An offset past the end is invalid in both");
+    check(bool(tree.perform({"t"}, Verb::selectWord, 11)) && f.selection().anchor == 7 && f.selection().caret == 13, "Now the whole run");
+    check(*tree.textUnit("t", TextUnitKind::word, 11) == *f.handle.wordAt(11) && *tree.textUnit("t", TextUnitKind::paragraph, 3) == *f.handle.paragraphAt(3) &&
+          *tree.textUnit("t", TextUnitKind::paragraph, 3) == TextSpan{0, 25}, "text_unit equals word_at and paragraph_at");
+    check(*tree.wordStop("t", 0, true) == *f.handle.nextWordStop(0) && *tree.wordStop("t", 13, false) == *f.handle.previousWordStop(13), "word_stop equals the stop queries");
+    check(bool(tree.perform({"t"}, Verb::doubleClick, 16)) && f.selection().anchor == 16 && f.selection().caret == 19, "double_click selects the word (12 and its space)");
+    check(bool(tree.perform({"t"}, Verb::tripleClick, 16)) && f.selection().anchor == 0 && f.selection().caret == 25, "triple_click selects the paragraph");
+    check(tree.perform({"t"}, Verb::selectWord, 26).status == Status::invalidValue && f.handle.selectWord(26).status == Status::invalidValue, "An offset past the end is invalid in both");
     check(tree.perform({"t"}, Verb::selectWord, -1).status == Status::invalidValue && tree.perform({"t"}, Verb::selectWord, std::u16string(u"x")).status == Status::invalidValue,
           "A wrong argument is invalid_value");
     check(tree.perform({"t"}, Verb::setWordSegmentation, 3).status == Status::invalidValue, "So is a mode that is not a WordSegmentation");
-    check(tree.textUnit("t", TextUnitKind::word, 27).status == Status::invalidValue && tree.wordStop("t", 27, true).status == Status::invalidValue, "Queries agree on a bad offset");
+    check(tree.textUnit("t", TextUnitKind::word, 26).status == Status::invalidValue && tree.wordStop("t", 26, true).status == Status::invalidValue, "Queries agree on a bad offset");
 }
 
 void theSemanticLayerReportsADictionaryFallbackAndTheSameAdmission() {

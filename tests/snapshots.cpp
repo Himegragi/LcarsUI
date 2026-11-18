@@ -1,12 +1,12 @@
-#include "lcars/core.hpp"
-#include "lcars/semantics.hpp"
-#include "lcars/layout.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/semantics.hpp"
+#include "isoduo/layout.hpp"
 #include "check.hpp"
 #include "fake_measure.hpp"
 #include "constant_source.hpp"
 #include <tuple>
 #include <type_traits>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 using test::constantSource;
 

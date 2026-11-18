@@ -1,11 +1,11 @@
 #include <cstdio>
 #include "utf.hpp"
 #include "uia_provider.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/semantics.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "rich_text.hpp"
-#include "lcars/layout.hpp"
+#include "isoduo/layout.hpp"
 #include <objbase.h>
 #include <UIAutomation.h>
 #include <atomic>
@@ -20,7 +20,7 @@
 #include <tuple>
 #include <thread>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 namespace {
 HRESULT statusHr(Status s) {
     switch (s) {
@@ -30,7 +30,7 @@ HRESULT statusHr(Status s) {
     case Status::invalidValue: return E_INVALIDARG;
     case Status::notSupported: return UIA_E_NOTSUPPORTED;
     case Status::failed: return E_FAIL;
-    case Status::wrongThread: OutputDebugStringW(L"LcarsUI UIA: unexpected wrong thread\n"); return E_FAIL;
+    case Status::wrongThread: OutputDebugStringW(L"Isoduo UIA: unexpected wrong thread\n"); return E_FAIL;
     default: return UIA_E_INVALIDOPERATION;
     }
 }
@@ -203,7 +203,7 @@ public:
         auto hr = ctx->call([this, id, result] { auto h = check(); if (FAILED(h)) return h; if (root()) return S_OK;
             auto n = ctx->ui->semantics().get(ref); auto& v = *result;
             if (id == UIA_AutomationIdPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstrId(ref.item ? ref.item->id : ref.id); }
-            else if (id == UIA_NamePropertyId || id == UIA_HelpTextPropertyId || id == UIA_FrameworkIdPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(id == UIA_NamePropertyId ? n->name : id == UIA_HelpTextPropertyId ? n->description : u"LcarsUI"); }
+            else if (id == UIA_NamePropertyId || id == UIA_HelpTextPropertyId || id == UIA_FrameworkIdPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(id == UIA_NamePropertyId ? n->name : id == UIA_HelpTextPropertyId ? n->description : u"Isoduo"); }
             else if (id == UIA_AcceleratorKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->acceleratorKey); }
             else if (id == UIA_AccessKeyPropertyId) { v.vt=VT_BSTR; v.bstrVal=bstr(n->accessKey); }
             else if (id == UIA_ControlTypePropertyId) { v.vt=VT_I4; v.lVal=controlType(n->role); }

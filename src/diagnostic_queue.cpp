@@ -4,7 +4,7 @@
 #include <algorithm>
 #include <utility>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 DiagnosticQueue::DiagnosticQueue(Callback callback, const void* environment)
     : callback_(std::move(callback)), environment_(environment) {}
 void DiagnosticQueue::push(RenderDiagnostic event) {

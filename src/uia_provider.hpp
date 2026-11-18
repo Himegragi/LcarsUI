@@ -2,8 +2,8 @@
 #include <windows.h>
 #include <memory>
 #include <functional>
-namespace lcars { class Ui; struct Frame; }
-namespace lcars::detail {
+namespace isoduo { class Ui; struct Frame; }
+namespace isoduo::detail {
 class UiaBridge {
 public:
     struct Impl;

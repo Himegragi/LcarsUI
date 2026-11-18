@@ -1,13 +1,13 @@
 #pragma once
 #include "component_type.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/appearance.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/appearance.hpp"
 #include <cstdint>
 #include <vector>
 #include <memory>
 #include <functional>
 #include <string>
-namespace lcars::detail {
+namespace isoduo::detail {
 struct Rgba { unsigned char r,g,b,a; };
 struct AtlasPage { int width = 0, height = 0; std::vector<unsigned char> pixels; };
 // Borrowed atlas pages are valid only until the next glyph request can evict them.

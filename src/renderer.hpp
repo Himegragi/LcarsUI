@@ -1,11 +1,11 @@
 #pragma once
 #include <windows.h>
 #include "render.hpp"
-#include "lcars/desktop.hpp"
+#include "isoduo/desktop.hpp"
 #include <filesystem>
 #include <chrono>
 #include <memory>
-namespace lcars::detail {
+namespace isoduo::detail {
 struct RendererTestHooks {
     bool failContext33 = false, failRebuildOnce = false, hideRobustness = false, hideKhrDebug = false, misuseOnce = false;
     std::string fragmentShaderOverride;

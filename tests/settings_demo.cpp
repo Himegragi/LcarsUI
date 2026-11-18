@@ -1,8 +1,8 @@
 #include "settings_demo.hpp"
 #include "failure_flow.hpp"
 #include "failure_diagnostic.hpp"
-#include "lcars/semantics.hpp"
-#include "lcars/version.hpp"
+#include "isoduo/semantics.hpp"
+#include "isoduo/version.hpp"
 #include <algorithm>
 #include <cmath>
 #include <thread>
@@ -12,7 +12,7 @@
 #include "component_type.hpp"
 #include "vertical.hpp"
 #include "vertical_expectations.hpp"
-using namespace lcars;
+using namespace isoduo;
 struct RoleProbe : detail::ComponentPaint {
     using ComponentPaint::ComponentPaint;
     detail::PaintRole current = detail::PaintRole::content;
@@ -694,7 +694,7 @@ void hs01NonHistoryMatrix() {
         settingsDemo::Demo d; d.notices.toggle(); c.action(d);
         test::check(historySteps(d)==1, (std::string("HS01 no step: ")+c.name).c_str());
     }
-    settingsDemo::AboutInfo info; info.licenses={{{"lcars"},u"License",std::u16string(3000,u'A')}};
+    settingsDemo::AboutInfo info; info.licenses={{{"isoduo"},u"License",std::u16string(3000,u'A')}};
     for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
         settingsDemo::Demo d(info); d.notices.toggle(); d.nav.select({"about"});
         test::FakeMeasure measure; ScrollState scroll;
@@ -914,7 +914,7 @@ void aboutPageContent() {
     info.diagnostics = true;
     settingsDemo::Demo withDiagnostics(info);
     test::check(withDiagnostics.ui.semantics().get({"about.diagnostics"})->value == u"診斷：基本診斷（只存記憶體）", "diagnostics present when selected");
-    test::check(tree.get({"about.framework"})->value.find(lcars::frameworkVersion) != std::u16string::npos, "framework version is shown");
+    test::check(tree.get({"about.framework"})->value.find(isoduo::frameworkVersion) != std::u16string::npos, "framework version is shown");
 }
 void aboutVerticalLabel() {
     settingsDemo::AboutInfo info;
@@ -941,20 +941,20 @@ void aboutVerticalLabel() {
     }
 }
 void td01FailureDiagnostic() {
-    auto reset = settingsDemo::failureDiagnostic({lcars::RendererFailureKind::deviceReset, 0x8253, u"Graphics reset"});
-    test::check(reset.kind == lcars::DiagnosticKind::deviceReset && reset.severity == lcars::DiagnosticSeverity::error &&
+    auto reset = settingsDemo::failureDiagnostic({isoduo::RendererFailureKind::deviceReset, 0x8253, u"Graphics reset"});
+    test::check(reset.kind == isoduo::DiagnosticKind::deviceReset && reset.severity == isoduo::DiagnosticSeverity::error &&
                 reset.code == "renderer_failed.device_reset" && reset.nativeCode == 0x8253 && reset.nativeMessage == "Graphics reset" &&
                 reset.backend == u"OpenGL", "TD01 a device reset becomes a device_reset diagnostic");
-    auto present = settingsDemo::failureDiagnostic({lcars::RendererFailureKind::presentFailed, 5, u"SwapBuffers 失敗 \U0001F600"});
-    test::check(present.kind == lcars::DiagnosticKind::other && present.code == "renderer_failed.present_failed" &&
+    auto present = settingsDemo::failureDiagnostic({isoduo::RendererFailureKind::presentFailed, 5, u"SwapBuffers 失敗 \U0001F600"});
+    test::check(present.kind == isoduo::DiagnosticKind::other && present.code == "renderer_failed.present_failed" &&
                 present.nativeMessage == "SwapBuffers \xE5\xA4\xB1\xE6\x95\x97 \xF0\x9F\x98\x80", "TD01 other failures keep kind and UTF-8 message");
-    test::check(settingsDemo::failureDiagnostic({lcars::RendererFailureKind::frameError, 0, u""}).code == "renderer_failed.frame_error" &&
-                settingsDemo::failureDiagnostic({lcars::RendererFailureKind::resourceFailed, 0, u""}).code == "renderer_failed.resource_failed",
+    test::check(settingsDemo::failureDiagnostic({isoduo::RendererFailureKind::frameError, 0, u""}).code == "renderer_failed.frame_error" &&
+                settingsDemo::failureDiagnostic({isoduo::RendererFailureKind::resourceFailed, 0, u""}).code == "renderer_failed.resource_failed",
                 "TD01 every failure kind is named");
 }
 void aboutLicenses() {
     settingsDemo::AboutInfo info;
-    info.licenses = {{{"lcars"}, u"framework", u"framework license"}, {{"freetype"}, u"freetype", u"freetype license"}, {{"harfbuzz"}, u"harfbuzz", u"harfbuzz license"}, {{"khronos"}, u"khronos", u"khronos license"}, {{"json"}, u"json", u"json license"}};
+    info.licenses = {{{"isoduo"}, u"framework", u"framework license"}, {{"freetype"}, u"freetype", u"freetype license"}, {{"harfbuzz"}, u"harfbuzz", u"harfbuzz license"}, {{"khronos"}, u"khronos", u"khronos license"}, {{"json"}, u"json", u"json license"}};
     settingsDemo::Demo demo(info);
     test::check(bool(demo.nav.select({"about"})), "open About");
     for (const auto& license : info.licenses) {
@@ -965,7 +965,7 @@ void aboutLicenses() {
 }
 void aboutKeyboardScroll() {
     settingsDemo::AboutInfo info;
-    info.licenses = {{{"lcars"}, u"framework", std::u16string(5000, u'x')}};
+    info.licenses = {{{"isoduo"}, u"framework", std::u16string(5000, u'x')}};
     for (const auto* appearance : {&webAppearance(), &materialAppearance()}) {
         settingsDemo::Demo demo(info); test::FakeMeasure measure;
         demo.nav.select({"about"});
@@ -993,7 +993,7 @@ void aboutKeyboardScroll() {
         state.keyDown({.key=Key::home});
         test::check(demo.licenseScroll.offset == 0, "Home reveals first line");
         settingsDemo::AboutInfo shortInfo;
-        shortInfo.licenses = {{{"lcars"}, u"framework", u"short text"}};
+        shortInfo.licenses = {{{"isoduo"}, u"framework", u"short text"}};
         settingsDemo::Demo shortDemo(shortInfo);
         shortDemo.nav.select({"about"});
         arrange(shortDemo.page(), shortDemo.ui, *appearance, measure, 960, 720, 1.f, shortDemo.scroll);
@@ -1005,7 +1005,7 @@ void aboutKeyboardScroll() {
 // the settings pages offer no controls for either (ADR 0014: code switches and demo switches stay apart).
 void demoTextFlow() {
     settingsDemo::AboutInfo info;
-    info.licenses = {{{"lcars"}, u"framework", u"alpha\nbeta"}};
+    info.licenses = {{{"isoduo"}, u"framework", u"alpha\nbeta"}};
     settingsDemo::Demo demo(info);
     auto& tree = demo.ui.semantics();
     test::check(tree.get({"about.license_text"})->lineSpacing == 1.4 && tree.get({"about.license_text"})->paragraphSpacing == 8, "licence text: 1.4 spacing, 8 DIP paragraphs");
@@ -1308,7 +1308,7 @@ struct SliderProbe : detail::ComponentPaint {
     int thumbCenter() const { return thumbs.empty() ? -1 : thumbs.back().x + thumbs.back().w / 2; }
     bool titled(std::u16string_view title) const { return std::find(texts.begin(), texts.end(), std::u16string(title)) != texts.end(); }
 };
-SliderProbe paintSlider(settingsDemo::Demo& demo, const Appearance& appearance, const lcars::SliderHandle& slider, Rect& track) {
+SliderProbe paintSlider(settingsDemo::Demo& demo, const Appearance& appearance, const isoduo::SliderHandle& slider, Rect& track) {
     test::FakeMeasure measure; ScrollState scroll;
     auto frame = arrange(demo.page(), demo.ui, appearance, measure, 960, 720, 1.f, scroll);
     const auto* item = frame.find(slider); test::check(item != nullptr, "slider is arranged");

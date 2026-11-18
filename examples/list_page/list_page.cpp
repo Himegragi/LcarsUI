@@ -3,7 +3,7 @@
 #include <cstdio>
 
 namespace listPage {
-using namespace lcars;
+using namespace isoduo;
 
 Result ImmediateSearchConnection::connect(TextFieldHandle field, std::function<Result()> refresh) {
     field_ = field;
@@ -122,7 +122,7 @@ Result Page::sample(int count) {
     return refresh();
 }
 layout::Node Page::page() const {
-    using namespace lcars::layout;
+    using namespace isoduo::layout;
     return layout::scroll(column({component(handles.title, 24),
         row({component(handles.zero), component(handles.one), component(handles.twenty), component(handles.hundred)}, 6),
         row({component(handles.sort), component(handles.disableEight), component(handles.reset)}, 6),

@@ -1,6 +1,6 @@
-#include "lcars/appearance.hpp"
+#include "isoduo/appearance.hpp"
 #include <cmath>
-namespace lcars {
+namespace isoduo {
 namespace {
 class Material final : public Appearance {
     std::string_view name() const override { return "Material-inspired"; }

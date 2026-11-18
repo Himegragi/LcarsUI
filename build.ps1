@@ -24,9 +24,9 @@ function Invoke-Native([string]$Program, [string[]]$Arguments, [string]$Failure)
 }
 
 . "$PSScriptRoot/cmake/VisualStudio.ps1"
-$vs = Get-LcarsVisualStudio
+$vs = Get-IsoduoVisualStudio
 $vsRoot = $vs.InstallationPath
-$toolsetVersion = Import-LcarsVisualStudioEnvironment $vsRoot
+$toolsetVersion = Import-IsoduoVisualStudioEnvironment $vsRoot
 Write-Host "Visual Studio: $vsRoot ($($vs.InstallationVersion)); MSVC toolset: $toolsetVersion"
 
 # Git Bash can prepend GNU tar, which misinterprets Windows drive-letter paths.
@@ -39,10 +39,10 @@ $ctest = Join-Path (Split-Path $cmake) 'ctest.exe'
 $suffix = if ($CoreOnly) { '-core' } else { '' }
 $buildDir = Join-Path $PSScriptRoot "build/$Configuration$suffix"
 $desktop = if ($CoreOnly) { 'OFF' } else { 'ON' }
-Invoke-Native $cmake @('-S', $PSScriptRoot, '-B', $buildDir, '-G', 'Ninja', "-DCMAKE_C_COMPILER=$compiler", "-DCMAKE_CXX_COMPILER=$compiler", "-DCMAKE_BUILD_TYPE=$Configuration", "-DLCARS_BUILD_DESKTOP=$desktop") 'Configure failed'
+Invoke-Native $cmake @('-S', $PSScriptRoot, '-B', $buildDir, '-G', 'Ninja', "-DCMAKE_C_COMPILER=$compiler", "-DCMAKE_CXX_COMPILER=$compiler", "-DCMAKE_BUILD_TYPE=$Configuration", "-DISODUO_BUILD_DESKTOP=$desktop") 'Configure failed'
 Invoke-Native $cmake @('--build', $buildDir, '--parallel', '4') 'Build failed'
 [pscustomobject]@{ InstallationPath = $vsRoot; InstallationVersion = $vs.InstallationVersion; Generator = $vs.Generator; ToolsetVersion = $toolsetVersion } |
-    ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $buildDir 'lcars-visual-studio.json')
+    ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $buildDir 'isoduo-visual-studio.json')
 if (-not $SkipTests) {
     $testArgs = @('--test-dir', $buildDir, '--output-on-failure')
     if ($Tests) { $testArgs += @('-R', $Tests) }

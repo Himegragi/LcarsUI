@@ -25,7 +25,7 @@ if ('demo' -in $selected) {
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
-$exe = Join-Path $PSScriptRoot 'build/Release/lcars_host_verify.exe'
+$exe = Join-Path $PSScriptRoot 'build/Release/isoduo_host_verify.exe'
 if (-not $DryRun -and @($selected | Where-Object { $_ -in @('clipboard', 'ime', 'dpi', 'perf', 'presentation') }).Count -and -not (Test-Path -LiteralPath $exe)) { throw "Verifier not found: $exe" }
 $failed = $false
 foreach ($name in @('uia', 'axe', 'uia-ime', 'uia-dpi', 'uia-stress', 'demo-uia')) {

@@ -1,11 +1,11 @@
 #include "desktop_host.hpp"
 #include "edit_form.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/semantics.hpp"
 #include "check.hpp"
 #include <UIAutomation.h>
 
 void configuration() {
-    using namespace lcars;
+    using namespace isoduo;
     test::check(DesktopConfig{}.platformAccessibilityEnabled, "platform accessibility defaults on");
     editForm::Form enabledForm, disabledForm, explicitForm;
     DesktopConfig explicitConfig; explicitConfig.platformAccessibilityEnabled = true;
@@ -17,7 +17,7 @@ void configuration() {
     explicitHost.paint();
     test::check(SendMessageW(explicitHost.window(), WM_GETOBJECT, 0, UiaRootObjectId) != 0, "explicit true exposes provider");
     enabledHost.paint(); disabledHost.paint();
-    test::check(SendMessageW(disabledHost.window(), WM_GETOBJECT, 0, UiaRootObjectId) == 0, "disabled host exposes no LcarsUI provider");
+    test::check(SendMessageW(disabledHost.window(), WM_GETOBJECT, 0, UiaRootObjectId) == 0, "disabled host exposes no Isoduo provider");
     test::check(SendMessageW(enabledHost.window(), WM_GETOBJECT, 0, UiaRootObjectId) != 0, "default host still exposes its provider");
     int events = 0; bool focus = false, property = false, structure = false;
     auto subscription = disabledForm.ui.semantics().subscribe([&](const SemanticEvent& e) { ++events; focus |= e.kind == SemanticEventKind::focusChanged; property |= e.kind == SemanticEventKind::propertyChanged; structure |= e.kind == SemanticEventKind::structureChanged; });
@@ -36,7 +36,7 @@ void configuration() {
     test::check(disabledForm.ui.semantics().get({"form.name"})->value == u"disabled host remains operational", "semantic query works");
 }
 void disabledPointerInput() {
-    using namespace lcars;
+    using namespace isoduo;
     editForm::Form form;
     DesktopConfig config;
     config.platformAccessibilityEnabled = false;

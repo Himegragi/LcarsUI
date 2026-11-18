@@ -1,8 +1,8 @@
-#include "lcars/appearance.hpp"
+#include "isoduo/appearance.hpp"
 #include <algorithm>
 #include <array>
 #include <cmath>
-namespace lcars {
+namespace isoduo {
 namespace {
 struct ColorRole { std::string_view name; Color Palette::* member; };
 // Every named color in Palette. A new Color field must be added here: the static_assert below

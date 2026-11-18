@@ -7,8 +7,8 @@
 #include <filesystem>
 #include <iostream>
 #include <string>
-using namespace lcars;
-using namespace lcars::detail;
+using namespace isoduo;
+using namespace isoduo::detail;
 using test::check;
 
 namespace {
@@ -122,10 +122,10 @@ void sidewaysTextIsTheHorizontalPictureTurnedClockwise() {
     auto text = textWith(weights[0]);
     constexpr int px = 32;
     Canvas flat(260, 90, {255, 255, 255});
-    text->draw(flat, text->shape(u"LcarsUI", px), 10, 60, {0, 0, 0});
+    text->draw(flat, text->shape(u"Isoduo", px), 10, 60, {0, 0, 0});
     auto flatInk = inkOf(flat);
     const Rect word{40, 30, (px * 3 + 1) / 2, 260};
-    auto turned = drawIn(*text, u"LcarsUI", VerticalForm::sideways, word, px);
+    auto turned = drawIn(*text, u"Isoduo", VerticalForm::sideways, word, px);
     auto turnedInk = inkOf(turned);
     check(turnedInk.any() && std::abs(turnedInk.height() - flatInk.width()) <= 2 && std::abs(turnedInk.width() - flatInk.height()) <= 2,
           "The vertical drawing is as tall as the horizontal one is wide");
@@ -167,7 +167,7 @@ void emojiAndHanStayInsideTheCell() {
 void theRecordedDrawListMatchesTheDirectPicture() {
     auto text = textWith(weights[0]);
     struct Piece { const char16_t* value; VerticalForm form; };
-    for (auto piece : {Piece{u"LcarsUI", VerticalForm::sideways}, Piece{u"12", VerticalForm::combined}, Piece{u"（", VerticalForm::bracket},
+    for (auto piece : {Piece{u"Isoduo", VerticalForm::sideways}, Piece{u"12", VerticalForm::combined}, Piece{u"（", VerticalForm::bracket},
                        Piece{u"，", VerticalForm::point}, Piece{u"—", VerticalForm::line}, Piece{u"設", VerticalForm::upright}}) {
         Rect where{36, 36, em, piece.form == VerticalForm::sideways ? 200 : em};
         auto direct = drawIn(*text, piece.value, piece.form, where);

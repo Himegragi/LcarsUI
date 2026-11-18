@@ -17,22 +17,22 @@ jobs:
       - name: Check startup failure without Mesa
         shell: pwsh
         run: |
-          & ./build/Release/lcars_renderer_failure_tests.exe --gdi-version
+          & ./build/Release/isoduo_renderer_failure_tests.exe --gdi-version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Install and verify Release package
         shell: pwsh
         run: |
           ctest --test-dir build/Release --output-on-failure -R "package_install|consumer_example|third_party_notices"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --install build/Release --prefix "$env:RUNNER_TEMP\lcars-full"
+          cmake --install build/Release --prefix "$env:RUNNER_TEMP\isoduo-full"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP\lcars-full" -Configurations Release -Generators Ninja,VS -Toolchain build/Release/lcars-visual-studio.json -Evidence build/evidence/render-package
+          ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP\isoduo-full" -Configurations Release -Generators Ninja,VS -Toolchain build/Release/isoduo-visual-studio.json -Evidence build/evidence/render-package
       - name: Record package prefix on failure
         if: failure()
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build/evidence/render-package | Out-Null
-          $prefix = "$env:RUNNER_TEMP\lcars-full"
+          $prefix = "$env:RUNNER_TEMP\isoduo-full"
           if (Test-Path -LiteralPath $prefix) {
             Get-ChildItem -LiteralPath $prefix -Recurse -File | ForEach-Object { $_.FullName.Substring($prefix.Length).TrimStart('\', '/') } | Sort-Object | Set-Content build/evidence/render-package/prefix-files.txt
           } else {
@@ -47,16 +47,16 @@ jobs:
           if-no-files-found: warn
       - name: Download and verify Mesa
         shell: pwsh
-        run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\lcars-mesa"
+        run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\isoduo-mesa"
       - name: Install application-local OpenGL DLLs
         shell: pwsh
         run: |
-          $source = "$env:RUNNER_TEMP\lcars-mesa\unpacked\x64"
+          $source = "$env:RUNNER_TEMP\isoduo-mesa\unpacked\x64"
           Copy-Item -LiteralPath "$source\opengl32.dll", "$source\libgallium_wgl.dll" -Destination build\Release
       - name: Verify llvmpipe backend
         shell: pwsh
         run: |
-          & ./build/Release/lcars_host_verify.exe --backend-check
+          & ./build/Release/isoduo_host_verify.exe --backend-check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run full CTest suite
         shell: pwsh
@@ -67,14 +67,14 @@ jobs:
         shell: pwsh
         run: |
           . ./cmake/VisualStudio.ps1
-          $vs = Get-LcarsVisualStudio
-          Import-LcarsVisualStudioEnvironment $vs.InstallationPath | Out-Null
+          $vs = Get-IsoduoVisualStudio
+          Import-IsoduoVisualStudioEnvironment $vs.InstallationPath | Out-Null
           $compiler = (Get-Command clang-cl.exe).Source
-          cmake -S . -B build/diagnostics-debug -G Ninja "-DCMAKE_C_COMPILER=$compiler" "-DCMAKE_CXX_COMPILER=$compiler" -DCMAKE_BUILD_TYPE=Debug -DLCARS_BUILD_DESKTOP=ON
+          cmake -S . -B build/diagnostics-debug -G Ninja "-DCMAKE_C_COMPILER=$compiler" "-DCMAKE_CXX_COMPILER=$compiler" -DCMAKE_BUILD_TYPE=Debug -DISODUO_BUILD_DESKTOP=ON
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          cmake --build build/diagnostics-debug --parallel 4 --target lcars_renderer_failure_tests lcars_diagnostic_queue_tests lcars_diagnostics_tests
+          cmake --build build/diagnostics-debug --parallel 4 --target isoduo_renderer_failure_tests isoduo_diagnostic_queue_tests isoduo_diagnostics_tests
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          Copy-Item -LiteralPath "$env:RUNNER_TEMP\lcars-mesa\unpacked\x64\opengl32.dll", "$env:RUNNER_TEMP\lcars-mesa\unpacked\x64\libgallium_wgl.dll" -Destination build/diagnostics-debug
+          Copy-Item -LiteralPath "$env:RUNNER_TEMP\isoduo-mesa\unpacked\x64\opengl32.dll", "$env:RUNNER_TEMP\isoduo-mesa\unpacked\x64\libgallium_wgl.dll" -Destination build/diagnostics-debug
           ctest --test-dir build/diagnostics-debug --output-on-failure --timeout 900 -R "^(renderer_failure|diagnostic_queue|diagnostics)$"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Upload render evidence and CTest logs

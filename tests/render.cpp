@@ -1,7 +1,7 @@
 #include "render.hpp"
 #include "glyph_atlas.hpp"
 #include <stdexcept>
-using namespace lcars::detail;
+using namespace isoduo::detail;
 
 void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
