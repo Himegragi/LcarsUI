@@ -36,7 +36,7 @@ foreach($appearance in @('web','material')) { foreach($method in @('x','alt-f4',
  $dir=Join-Path $OutDir ("$appearance-$method-" + [guid]::NewGuid().ToString('N')); New-Item -ItemType Directory -Force $dir | Out-Null
  $process=$null; $status='FAIL'; $detail=''
  try {
-  $exe=Join-Path $PSScriptRoot "../../build/Release/lcars_settings_demo_$appearance.exe"
+  $exe=Join-Path $PSScriptRoot "../../build/Release/isoduo_settings_demo_$appearance.exe"
   $process=Start-Process -FilePath $exe -ArgumentList @('--settings-dir', ('"' + $dir + '"')) -PassThru
   for($i=0;$i -lt 100 -and $process.MainWindowHandle -eq 0;$i++){ Start-Sleep -Milliseconds 100; $process.Refresh() }
   if($process.MainWindowHandle -eq [IntPtr]::Zero){ throw 'Demo window did not appear' }
@@ -59,7 +59,7 @@ foreach($appearance in @('web','material')) { foreach($method in @('x','alt-f4',
      $buttons=$desktop.FindAll([System.Windows.Automation.TreeScope]::Descendants,(New-Object System.Windows.Automation.PropertyCondition([System.Windows.Automation.AutomationElement]::ControlTypeProperty,[System.Windows.Automation.ControlType]::Button)))
      $button=$null; $windowTitle=$root.Current.Name.TrimStart('*').Trim()
      # Windows 11 names a taskbar button after the application (here the executable, e.g.
-     # "lcars_settings_demo_web.exe - 1 running window"); older shells use the window title.
+     # "isoduo_settings_demo_web.exe - 1 running window"); older shells use the window title.
      # With a taskbar on each monitor there is one button per taskbar: use the one nearest the window.
      $names=@($windowTitle, ($process.ProcessName + '.exe')) | Where-Object { $_ }
      $window=$root.Current.BoundingRectangle; $cx=$window.X+$window.Width/2; $cy=$window.Y+$window.Height/2; $best=[double]::MaxValue

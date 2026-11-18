@@ -1,10 +1,10 @@
-function Invoke-LcarsAxeScan {
+function Invoke-IsoduoAxeScan {
 param($Appearance, $OutDir, $AxeExe, $HostExe, [string[]]$States, $CasePrefix, [scriptblock]$Prepare, [scriptblock]$Verify)
 $ErrorActionPreference = 'Stop'
-if (-not ('LcarsAxeWindow' -as [type])) { Add-Type -TypeDefinition @"
+if (-not ('IsoduoAxeWindow' -as [type])) { Add-Type -TypeDefinition @"
 using System;
 using System.Runtime.InteropServices;
-public static class LcarsAxeWindow {
+public static class IsoduoAxeWindow {
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr w, IntPtr l);
 }
 "@

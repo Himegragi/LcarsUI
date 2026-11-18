@@ -13,7 +13,7 @@
 #include <string_view>
 #include <utility>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 class AnimationClock {
 public:
     using Time = std::uint64_t;  // milliseconds on the time source's own timeline

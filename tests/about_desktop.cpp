@@ -1,8 +1,8 @@
 #include "about_desktop.hpp"
-#include "lcars/desktop.hpp"
-#include "lcars/semantics.hpp"
-#include "lcars/third_party_notices.hpp"
-#include "lcars/version.hpp"
+#include "isoduo/desktop.hpp"
+#include "isoduo/semantics.hpp"
+#include "isoduo/third_party_notices.hpp"
+#include "isoduo/version.hpp"
 #include "check.hpp"
 #include <fstream>
 #include <iterator>
@@ -23,10 +23,10 @@ std::u16string normalized(std::u16string value) {
 }
 
 void verifyAbout() {
-    for (const auto* appearance : {&lcars::webAppearance(), &lcars::materialAppearance()}) {
+    for (const auto* appearance : {&isoduo::webAppearance(), &isoduo::materialAppearance()}) {
         auto info = settingsDemo::desktopAboutInfo(*appearance);
         settingsDemo::Demo demo(info);
-        auto desktop = lcars::Desktop::create(demo.ui, *appearance, [&] { return demo.page(); }, demo.scroll);
+        auto desktop = isoduo::Desktop::create(demo.ui, *appearance, [&] { return demo.page(); }, demo.scroll);
         test::check(bool(desktop.desktop), "desktop created");
         auto caps = desktop.desktop->capabilities();
         demo.setRenderer(caps.version + u" — " + caps.renderer);
@@ -36,12 +36,12 @@ void verifyAbout() {
             auto node = tree.get({id});
             test::check(node && !node->value.empty(), "About label is populated");
         }
-        test::check(tree.get({"about.framework"})->value.find(lcars::frameworkVersion) != std::u16string::npos, "framework version");
+        test::check(tree.get({"about.framework"})->value.find(isoduo::frameworkVersion) != std::u16string::npos, "framework version");
         test::check(tree.get({"about.renderer"})->value == u"繪製：" + caps.version + u" — " + caps.renderer, "renderer capabilities");
-        auto notices = lcars::thirdPartyNotices();
+        auto notices = isoduo::thirdPartyNotices();
         test::check(info.licenses.size() == 6 && notices.size() == 4, "six license entries");
-        test::check(normalized(info.licenses[0].text) == licenseFile(LCARS_SOURCE_DIR "/LICENSE"), "framework license matches source");
-        test::check(normalized(info.licenses[5].text) == licenseFile(LCARS_SOURCE_DIR "/examples/settings_demo/about_licenses/nlohmann-json-3.12.0.LICENSE.MIT"), "JSON license matches source");
+        test::check(normalized(info.licenses[0].text) == licenseFile(ISODUO_SOURCE_DIR "/LICENSE"), "framework license matches source");
+        test::check(normalized(info.licenses[5].text) == licenseFile(ISODUO_SOURCE_DIR "/examples/settings_demo/about_licenses/nlohmann-json-3.12.0.LICENSE.MIT"), "JSON license matches source");
         for (std::size_t i = 0; i < info.licenses.size(); ++i) {
             test::check(bool(demo.licenses.select(info.licenses[i].id)), "select license");
             auto text = tree.get({"about.license_text"});

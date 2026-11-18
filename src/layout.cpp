@@ -1,5 +1,5 @@
 #include <limits>
-#include "lcars/layout.hpp"
+#include "isoduo/layout.hpp"
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include <algorithm>
@@ -8,7 +8,7 @@
 #include <limits>
 #include <stdexcept>
 
-namespace lcars {
+namespace isoduo {
 float TextRun::x(unsigned offset) const {
     float result = 0;
     for (const auto& [stop, position] : stops) {

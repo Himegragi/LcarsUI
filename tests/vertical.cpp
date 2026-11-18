@@ -2,9 +2,9 @@
 #include "vertical.hpp"
 #include "check.hpp"
 #include "fake_measure.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/semantics.hpp"
 // Vertical writing for labels (#82), core seam: classification, flow, properties, layout, scrolling.
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 using detail::segmentVertical;
 
@@ -30,7 +30,7 @@ void hanFullwidthAndEmojiStayUpright() {
     check(is(cuts(u"😀"), {{u"😀", F::upright}}), "An emoji (surrogate pair) is one upright cell");
 }
 void latinWordsAndSentencesRotateAsOneRun() {
-    check(is(cuts(u"LcarsUI"), {{u"LcarsUI", F::sideways}}), "A Latin word is one sideways run");
+    check(is(cuts(u"Isoduo"), {{u"Isoduo", F::sideways}}), "A Latin word is one sideways run");
     check(is(cuts(u"Hello World"), {{u"Hello World", F::sideways}}), "A Latin sentence is one sideways run");
     check(is(cuts(u"版 A 版"), {{u"版", F::upright}, {u" A ", F::sideways}, {u"版", F::upright}}), "A single letter is sideways, never upright");
     check(is(cuts(u"GDP"), {{u"GDP", F::sideways}}), "An abbreviation is sideways");

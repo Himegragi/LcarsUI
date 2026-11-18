@@ -2,11 +2,11 @@
 // Word boundaries for double-click selection, Ctrl+arrow movement and UIA text units (#83).
 // One place decides where words begin and end, so the pointer, the keyboard, the semantic layer and
 // UIA can never disagree. Offsets are UTF-16 and never fall inside a surrogate pair.
-#include "lcars/core.hpp"
+#include "isoduo/core.hpp"
 #include <string_view>
 #include <vector>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 // The replaceable seam behind the dictionary mode. An implementation fills `out` with ascending
 // boundary offsets (it may omit 0 and text.size()) and returns false when it cannot segment this text
 // (for example the system library is missing). Tests swap in a breaker with fixed rules.

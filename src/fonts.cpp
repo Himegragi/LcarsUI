@@ -1,4 +1,4 @@
-#include "lcars/fonts.hpp"
+#include "isoduo/fonts.hpp"
 #include "font_files.hpp"
 #include <windows.h>
 #include <dwrite_3.h>
@@ -11,7 +11,7 @@
 #include <map>
 #include <set>
 
-namespace lcars {
+namespace isoduo {
 using Microsoft::WRL::ComPtr;
 namespace {
 std::u16string nameOf(IDWriteLocalizedStrings* names, const wchar_t* locale, bool fallback) {

@@ -9,7 +9,7 @@
 #include <algorithm>
 #include <cmath>
 #include <thread>
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 
 namespace {

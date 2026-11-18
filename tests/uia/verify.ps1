@@ -15,11 +15,11 @@ function Record($case, $expected, $actual, $status) {
 $revision = (& git -C $root rev-parse HEAD 2>$null)
 $dirty = @(& git -C $root status --porcelain 2>$null).Count -gt 0
 @("commit=$revision", "dirty=$dirty", 'build=Release', "appearance=$Appearance", "environment=$(if ($env:GITHUB_ACTIONS) { 'GitHub' } else { 'author machine' })") | Set-Content -Encoding UTF8 (Join-Path $OutDir 'metadata.txt')
-$client = Join-Path $root 'build/Release/lcars_uia_client.exe'
-$hostExe = Join-Path $root 'build/Release/lcars_uia_host.exe'
+$client = Join-Path $root 'build/Release/isoduo_uia_client.exe'
+$hostExe = Join-Path $root 'build/Release/isoduo_uia_host.exe'
 try {
     if ($Mode -in @('axe', 'demo-uia')) {
-        $axeExe = $env:LCARS_AXE_EXE
+        $axeExe = $env:ISODUO_AXE_EXE
         if (-not $axeExe) {
             $toolDir = Join-Path $OutDir ('tool-' + [guid]::NewGuid().ToString('N'))
             & (Join-Path $root '.github/scripts/install-axe.ps1') -Destination $toolDir
@@ -29,8 +29,8 @@ try {
         $archive = Join-Path (Split-Path -Parent (Split-Path -Parent $axeExe)) 'axe.zip'
         if (-not (Test-Path -LiteralPath $archive) -or (Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash -ne 'AECA43F41C89B3FFB1DB84011539E609ECD7CB3BADD6E78FADA2ADA327D10A64' -or (Get-FileHash -LiteralPath $axeExe -Algorithm SHA256).Hash -ne '46DC0AB9282B89ACCF8E03F7C445877693FA257F7B716321F79AD5AF9D3F997C') { throw 'Axe 2.4.2 archive or executable SHA256 mismatch' }
         if ($Mode -eq 'demo-uia') {
-            $demoHost = Join-Path $root 'build/Release/lcars_uia_demo_host.exe'
-            $demoClient = Join-Path $root 'build/Release/lcars_uia_demo_client.exe'
+            $demoHost = Join-Path $root 'build/Release/isoduo_uia_demo_host.exe'
+            $demoClient = Join-Path $root 'build/Release/isoduo_uia_demo_client.exe'
             $demoOutput = @(& $demoClient $demoHost $Appearance 2>&1 | ForEach-Object { "$_" })
             $demoExit = $LASTEXITCODE
             $demoOutput | Set-Content -Encoding UTF8 (Join-Path $OutDir 'client.log')
@@ -52,7 +52,7 @@ try {
         exit 0
     }
     if ($Mode -eq 'uia-ime') {
-        $verifier = Join-Path $root 'build/Release/lcars_host_verify.exe'
+        $verifier = Join-Path $root 'build/Release/isoduo_host_verify.exe'
         if (-not (Test-Path -LiteralPath $verifier) -or -not (Test-Path -LiteralPath $client)) { throw 'IME verifier or UIA client missing' }
         $previous = $ErrorActionPreference
         try {

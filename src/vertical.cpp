@@ -4,7 +4,7 @@
 #include <cmath>
 #include <iterator>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 namespace {
 struct OrientationRange { char32_t first, last; VerticalOrientation value; };
 constexpr OrientationRange orientationTable[] = {

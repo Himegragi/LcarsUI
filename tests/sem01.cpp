@@ -1,11 +1,11 @@
-#include "lcars/core.hpp"
-#include "lcars/semantics.hpp"
-#include "lcars/layout.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/semantics.hpp"
+#include "isoduo/layout.hpp"
 #include "fake_measure.hpp"
 #include <stdexcept>
 #include <algorithm>
 #include <string>
-using namespace lcars;
+using namespace isoduo;
 static void check(bool ok) { if (!ok) throw std::runtime_error("SEM01 failed"); }
 int main() {
     {

@@ -3,7 +3,7 @@
 // B01-B03 arrangement through the public layout seam with a deterministic fake text backend.
 #include "check.hpp"
 #include "fake_measure.hpp"
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 using test::FakeMeasure;
 

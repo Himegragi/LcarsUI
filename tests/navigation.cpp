@@ -1,8 +1,8 @@
-#include "lcars/core.hpp"
-#include "lcars/semantics.hpp"
+#include "isoduo/core.hpp"
+#include "isoduo/semantics.hpp"
 #include "core_internal.hpp"
 #include "check.hpp"
-using namespace lcars;
+using namespace isoduo;
 using test::check;
 void exercise() {
     Ui ui;

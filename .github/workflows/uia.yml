@@ -17,38 +17,38 @@ jobs:
       - name: Check startup failure without Mesa
         shell: pwsh
         run: |
-          & ./build/Release/lcars_renderer_failure_tests.exe --gdi-version
+          & ./build/Release/isoduo_renderer_failure_tests.exe --gdi-version
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Download and verify Mesa
         shell: pwsh
-        run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\lcars-mesa"
+        run: ./\.github\scripts\install-mesa.ps1 -Url $env:MESA_URL -Sha256 $env:MESA_SHA256 -Destination "$env:RUNNER_TEMP\isoduo-mesa"
       - name: Install application-local OpenGL DLLs
         shell: pwsh
         run: |
-          $source = "$env:RUNNER_TEMP\lcars-mesa\unpacked\x64"
+          $source = "$env:RUNNER_TEMP\isoduo-mesa\unpacked\x64"
           Copy-Item -LiteralPath "$source\opengl32.dll", "$source\libgallium_wgl.dll" -Destination build\Release
       - name: Check software renderer and failure simulation
         shell: pwsh
         run: |
-          & ./build/Release/lcars_host_verify.exe --backend-check
+          & ./build/Release/isoduo_host_verify.exe --backend-check
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           ctest --test-dir build/Release --output-on-failure --timeout 900 -R '^renderer_failure$'
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Download and verify Axe.Windows
         shell: pwsh
-        run: ./\.github\scripts\install-axe.ps1 -Destination "$env:RUNNER_TEMP\lcars-axe"
+        run: ./\.github\scripts\install-axe.ps1 -Destination "$env:RUNNER_TEMP\isoduo-axe"
       - name: Preflight interactive desktop and UIA
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build/evidence/uia | Out-Null
           foreach ($skin in @('web', 'material')) {
-            & ./build/Release/lcars_uia_client.exe "${{ github.workspace }}\build\Release\lcars_uia_host.exe" $skin --preflight 2>&1 | Tee-Object -FilePath "build/evidence/uia/preflight-$skin.log"
+            & ./build/Release/isoduo_uia_client.exe "${{ github.workspace }}\build\Release\isoduo_uia_host.exe" $skin --preflight 2>&1 | Tee-Object -FilePath "build/evidence/uia/preflight-$skin.log"
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           }
       - name: Run UIA and Axe cases
         shell: pwsh
         env:
-          LCARS_AXE_EXE: ${{ runner.temp }}\lcars-axe\unpacked\AxeWindowsCLI.exe
+          ISODUO_AXE_EXE: ${{ runner.temp }}\isoduo-axe\unpacked\AxeWindowsCLI.exe
         run: ./verify-idle.ps1 -Only uia,axe,demo-uia -OutDir build/evidence/uia
       - name: Upload UIA evidence and diagnostics
         if: always()

@@ -1,16 +1,16 @@
-#include <lcars/third_party_notices.hpp>
-#include <lcars/desktop.hpp>
+#include <isoduo/third_party_notices.hpp>
+#include <isoduo/desktop.hpp>
 #include <fstream>
 #include <iostream>
 #include <iterator>
 #include <string>
 
 int main() {
-    auto* volatile desktopEntry = &lcars::runDesktop;
+    auto* volatile desktopEntry = &isoduo::runDesktop;
     if (!desktopEntry) return 5;
-    const auto notices = lcars::thirdPartyNotices();
+    const auto notices = isoduo::thirdPartyNotices();
     if (notices.size() != 4) return 1;
-    std::ifstream input(LCARS_THIRD_PARTY_NOTICES_FILE, std::ios::binary);
+    std::ifstream input(ISODUO_THIRD_PARTY_NOTICES_FILE, std::ios::binary);
     const std::string file((std::istreambuf_iterator<char>(input)), {});
     const std::u16string_view names[] = {u"FreeType", u"HarfBuzz", u"Khronos OpenGL headers", u"Unicode Character Database (Vertical_Orientation)"};
     const std::string separator = "========================================================================\n";

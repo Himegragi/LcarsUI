@@ -1,12 +1,12 @@
 #include "core_internal.hpp"
 #include "renderer_failure_checks.hpp"
-#include "lcars/appearance.hpp"
+#include "isoduo/appearance.hpp"
 #include <chrono>
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
 #include <thread>
-using namespace lcars;
+using namespace isoduo;
 namespace {
 int checks=0;
 void check(bool condition,const char* name){++checks;if(!condition)throw std::runtime_error(name);}

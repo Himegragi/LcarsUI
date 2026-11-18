@@ -5,7 +5,7 @@
 #define UPPER_MACRO(x) void other_generated_name(x);
 // void comment_name();
 /* struct comment_type { int bad_name; }; */
-namespace lcars {
+namespace isoduo {
 using Counter = std::vector<std::pair<int, int>>::size_type;
 class Derived : public std::vector<int> {
     int inherited_;

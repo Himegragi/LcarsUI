@@ -1,7 +1,7 @@
 #include "../startup_report.hpp"
 #include "settings_demo.hpp"
 #include "close_controller.hpp"
-#include "lcars/desktop.hpp"
+#include "isoduo/desktop.hpp"
 #include "about_desktop.hpp"
 #include "settings_store.hpp"
 #include "failure_diagnostic.hpp"
@@ -38,10 +38,10 @@ void CALLBACK showPendingNotice(HWND, UINT, UINT_PTR timer, DWORD) {
 }
 int wmain(int argc, wchar_t** argv) {
     try {
-#ifdef LCARS_APPEARANCE_material
-        const auto& appearance = lcars::materialAppearance();
+#ifdef ISODUO_APPEARANCE_material
+        const auto& appearance = isoduo::materialAppearance();
 #else
-        const auto& appearance = lcars::webAppearance();
+        const auto& appearance = isoduo::webAppearance();
 #endif
         auto name = appearance.name();
         std::filesystem::path directory, diagnosticsOut;
@@ -51,18 +51,18 @@ int wmain(int argc, wchar_t** argv) {
             else if (i + 1 < argc && flag == L"--diagnostics-out" && diagnosticsOut.empty()) diagnosticsOut = argv[i + 1];
             else { std::cerr << "Usage: [--settings-dir <directory>] [--diagnostics-out <file>]\n"; return 1; }
         }
-#ifndef LCARS_DEMO_DIAGNOSTICS
-        if (!diagnosticsOut.empty()) { std::cerr << "--diagnostics-out needs a build with LcarsUI::Diagnostics\n"; return 1; }
+#ifndef ISODUO_DEMO_DIAGNOSTICS
+        if (!diagnosticsOut.empty()) { std::cerr << "--diagnostics-out needs a build with Isoduo::Diagnostics\n"; return 1; }
 #endif
         if (directory.empty()) {
             PWSTR raw=nullptr; if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData,0,nullptr,&raw))) throw std::runtime_error("Cannot locate Roaming AppData");
-            directory=std::filesystem::path(raw)/L"LcarsUI"/L"SettingsDemo"; CoTaskMemFree(raw);
+            directory=std::filesystem::path(raw)/L"Isoduo"/L"SettingsDemo"; CoTaskMemFree(raw);
         }
         settingsDemo::SettingsStore store(directory);
         auto loaded=store.load();
         auto about=settingsDemo::desktopAboutInfo(appearance);
-#ifdef LCARS_DEMO_DIAGNOSTICS
-        lcars::Diagnostics diagnostics;
+#ifdef ISODUO_DEMO_DIAGNOSTICS
+        isoduo::Diagnostics diagnostics;
         about.diagnostics = true;
 #endif
         auto path=store.path().wstring(); about.settingsPath.assign(path.begin(),path.end());
@@ -70,9 +70,9 @@ int wmain(int argc, wchar_t** argv) {
         if (loaded.document) demo.loadDocument(*loaded.document);
         std::u16string pathText(path.begin(),path.end());
         demo.onSave([&store](const auto& document) { return store.save(document); },pathText);
-        lcars::DesktopConfig options;
-#ifdef LCARS_DEMO_DIAGNOSTICS
-        options.onDiagnostic = [&](const lcars::RenderDiagnostic& event) { diagnostics.record(event); };
+        isoduo::DesktopConfig options;
+#ifdef ISODUO_DEMO_DIAGNOSTICS
+        options.onDiagnostic = [&](const isoduo::RenderDiagnostic& event) { diagnostics.record(event); };
         // Evidence runs (TD01) save the in-memory record; normal runs never write it.
         auto exportDiagnostics = [&] {
             if (diagnosticsOut.empty()) return;
@@ -82,19 +82,19 @@ int wmain(int argc, wchar_t** argv) {
 #endif
         options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
         settingsDemo::CloseController closeController(demo);
-        options.onCloseRequested = [&](lcars::Desktop& desktop) {
+        options.onCloseRequested = [&](isoduo::Desktop& desktop) {
             WindowsPrompt prompt(desktop.nativeWindow());
             return closeController.request(desktop, prompt);
         };
-        options.onRendererFailed = [&](lcars::Desktop& desktop, const lcars::RendererFailure& failure) {
-#ifdef LCARS_DEMO_DIAGNOSTICS
+        options.onRendererFailed = [&](isoduo::Desktop& desktop, const isoduo::RendererFailure& failure) {
+#ifdef ISODUO_DEMO_DIAGNOSTICS
             diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure));
             exportDiagnostics();
 #endif
             WindowsPrompt prompt(desktop.nativeWindow());
             closeController.failure(desktop, failure, prompt);
         };
-        auto creation = lcars::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
+        auto creation = isoduo::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
         if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
         demo.onClose([&] { creation.desktop->close(); });
         demo.onDirtyChanged([&](bool dirty) { creation.desktop->setTitle((dirty ? u"*" : u"") + options.title); });
@@ -111,9 +111,9 @@ int wmain(int argc, wchar_t** argv) {
         auto result=creation.desktop->run();
         if (noticeTimer) KillTimer(nullptr, noticeTimer);
         pendingDemo=nullptr;
-#ifdef LCARS_DEMO_DIAGNOSTICS
+#ifdef ISODUO_DEMO_DIAGNOSTICS
         exportDiagnostics();
 #endif
-        return result.status == lcars::Status::ok ? 0 : 1;
+        return result.status == isoduo::Status::ok ? 0 : 1;
     } catch (const std::exception& e) { std::cerr << e.what() << '\n'; return 1; }
 }

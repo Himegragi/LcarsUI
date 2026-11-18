@@ -1,6 +1,6 @@
 # Compiler and linker paths identify the actual MSVC tools, including the
 # STL used by clang-cl. Prefer them over the ambient developer environment.
-function(lcars_detect_msvc_toolset result)
+function(isoduo_detect_msvc_toolset result)
   set(_version "")
   foreach(_path IN ITEMS "${CMAKE_CXX_COMPILER}" "${CMAKE_LINKER_LINK}" "$ENV{VCToolsInstallDir}")
     file(TO_CMAKE_PATH "${_path}" _path)

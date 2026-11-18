@@ -1,6 +1,6 @@
 #pragma once
-#include "lcars/desktop.hpp"
-#include "lcars/diagnostics.hpp"
+#include "isoduo/desktop.hpp"
+#include "isoduo/diagnostics.hpp"
 #include <string>
 #include <string_view>
 namespace settingsDemo {
@@ -21,16 +21,16 @@ inline std::string failureUtf8(std::u16string_view text) {
     }
     return out;
 }
-inline lcars::RenderDiagnostic failureDiagnostic(const lcars::RendererFailure& failure) {
-    lcars::RenderDiagnostic d;
+inline isoduo::RenderDiagnostic failureDiagnostic(const isoduo::RendererFailure& failure) {
+    isoduo::RenderDiagnostic d;
     d.backend = u"OpenGL";
-    d.severity = lcars::DiagnosticSeverity::error;
-    d.kind = failure.kind == lcars::RendererFailureKind::deviceReset ? lcars::DiagnosticKind::deviceReset : lcars::DiagnosticKind::other;
+    d.severity = isoduo::DiagnosticSeverity::error;
+    d.kind = failure.kind == isoduo::RendererFailureKind::deviceReset ? isoduo::DiagnosticKind::deviceReset : isoduo::DiagnosticKind::other;
     switch (failure.kind) {
-    case lcars::RendererFailureKind::frameError: d.code = "renderer_failed.frame_error"; break;
-    case lcars::RendererFailureKind::deviceReset: d.code = "renderer_failed.device_reset"; break;
-    case lcars::RendererFailureKind::presentFailed: d.code = "renderer_failed.present_failed"; break;
-    case lcars::RendererFailureKind::resourceFailed: d.code = "renderer_failed.resource_failed"; break;
+    case isoduo::RendererFailureKind::frameError: d.code = "renderer_failed.frame_error"; break;
+    case isoduo::RendererFailureKind::deviceReset: d.code = "renderer_failed.device_reset"; break;
+    case isoduo::RendererFailureKind::presentFailed: d.code = "renderer_failed.present_failed"; break;
+    case isoduo::RendererFailureKind::resourceFailed: d.code = "renderer_failed.resource_failed"; break;
     }
     d.nativeCode = failure.nativeCode;
     d.nativeMessage = failureUtf8(failure.message);

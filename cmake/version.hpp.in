@@ -1,11 +1,11 @@
 #pragma once
 #include <string_view>
-#define LCARS_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
-#define LCARS_VERSION_MINOR @PROJECT_VERSION_MINOR@
-#define LCARS_VERSION_PATCH @PROJECT_VERSION_PATCH@
-namespace lcars {
+#define ISODUO_VERSION_MAJOR @PROJECT_VERSION_MAJOR@
+#define ISODUO_VERSION_MINOR @PROJECT_VERSION_MINOR@
+#define ISODUO_VERSION_PATCH @PROJECT_VERSION_PATCH@
+namespace isoduo {
 inline constexpr std::u16string_view frameworkVersion = u"@PROJECT_VERSION@";
-inline constexpr int frameworkVersionMajor = LCARS_VERSION_MAJOR;
-inline constexpr int frameworkVersionMinor = LCARS_VERSION_MINOR;
-inline constexpr int frameworkVersionPatch = LCARS_VERSION_PATCH;
+inline constexpr int frameworkVersionMajor = ISODUO_VERSION_MAJOR;
+inline constexpr int frameworkVersionMinor = ISODUO_VERSION_MINOR;
+inline constexpr int frameworkVersionPatch = ISODUO_VERSION_PATCH;
 }

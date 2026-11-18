@@ -1,11 +1,11 @@
 #pragma once
-#include "lcars/layout.hpp"
+#include "isoduo/layout.hpp"
 namespace test {
 // Deterministic text backend: ASCII is half an em wide, everything else one em, surrogate
 // pairs advance once. Lets layout run without fonts. A bold run is a quarter wider.
-struct FakeMeasure final : lcars::TextMeasure {
-    lcars::TextRun measure(std::u16string_view text, int pixels) override {
-        lcars::TextRun run;
+struct FakeMeasure final : isoduo::TextMeasure {
+    isoduo::TextRun measure(std::u16string_view text, int pixels) override {
+        isoduo::TextRun run;
         run.stops.push_back({0, 0.f});
         float x = 0;
         for (unsigned i = 0; i < text.size();) {
@@ -17,7 +17,7 @@ struct FakeMeasure final : lcars::TextMeasure {
         run.width = x;
         return run;
     }
-    lcars::TextRun measure(std::u16string_view text, int pixels, lcars::FontStyle style) override {
+    isoduo::TextRun measure(std::u16string_view text, int pixels, isoduo::FontStyle style) override {
         auto run = measure(text, pixels);
         if (!style.bold) return run;
         for (auto& stop : run.stops) stop.second *= 1.25f;

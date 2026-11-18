@@ -1,7 +1,7 @@
 #include "desktop_host.hpp"
 #include "core_internal.hpp"
 #include "edit_form.hpp"
-#include "lcars/fonts.hpp"
+#include "isoduo/fonts.hpp"
 #include "renderer_failure_checks.hpp"
 #include <iostream>
 #include <algorithm>
@@ -10,8 +10,8 @@
 #include <cstdlib>
 #include <optional>
 #include <thread>
-using namespace lcars;
-using namespace lcars::detail;
+using namespace isoduo;
+using namespace isoduo::detail;
 static void check(bool value, const char* what) { if (!value) throw std::runtime_error(what); }
 static void diagnostics(const Appearance& appearance) {
     editForm::Form form;
@@ -250,7 +250,7 @@ static void presentationDuringFailure(const Appearance& appearance) {
     settings.textSize = 28; settings.variant = ThemeVariant::dark(); settings.density = Density::compact;
     const auto& families = systemFontCatalog().families();
     auto font = std::find_if(families.begin(), families.end(), [](const FontFamily& family) { return family.key != u"Segoe UI"; });
-    settings.fontFamily = font == families.end() ? u"LcarsUI missing PS10 font" : font->key;
+    settings.fontFamily = font == families.end() ? u"Isoduo missing PS10 font" : font->key;
     check(bool(form.ui.setPresentation(settings)) && form.ui.presentation() == settings, "PS10 settings accepted while failed");
     auto invalid = settings; invalid.textSize = 29;
     check(form.ui.setPresentation(invalid).status == Status::invalidValue && form.ui.presentation() == settings, "PS10 invalid settings remain atomic");

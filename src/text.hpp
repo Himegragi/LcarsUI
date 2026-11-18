@@ -1,8 +1,8 @@
 #pragma once
-#include "lcars/appearance.hpp"
+#include "isoduo/appearance.hpp"
 #include "render.hpp"
-#include "lcars/layout.hpp"
-#include "lcars/diagnostics.hpp"
+#include "isoduo/layout.hpp"
+#include "isoduo/diagnostics.hpp"
 #include <map>
 #include <cstdint>
 #include <memory>
@@ -11,7 +11,7 @@
 #include <functional>
 #include <optional>
 #include "font_files.hpp"
-namespace lcars::detail {
+namespace isoduo::detail {
 // A glyph drawn rotated 90 degrees clockwise and/or scaled (vertical writing). The outline is transformed
 // before rasterizing, so the atlas stores the transformed bitmap and both render paths stay identical.
 struct GlyphTransform {

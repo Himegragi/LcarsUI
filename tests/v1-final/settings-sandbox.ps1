@@ -1,5 +1,5 @@
 ﻿function Use-SettingsSandbox([string]$Directory, [scriptblock]$Action) {
-    $backup = Join-Path ([IO.Path]::GetTempPath()) ('lcars-settings-backup-' + [guid]::NewGuid().ToString('N'))
+    $backup = Join-Path ([IO.Path]::GetTempPath()) ('isoduo-settings-backup-' + [guid]::NewGuid().ToString('N'))
     $existed = Test-Path -LiteralPath $Directory
     if ($existed) { Copy-Item -LiteralPath $Directory -Destination $backup -Recurse -Force }
     try {

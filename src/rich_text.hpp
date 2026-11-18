@@ -1,12 +1,12 @@
 #pragma once
 // Internal helpers for rich text: the span arithmetic the field editing, layout and semantic layer share.
 // Span lists passed in are canonical (sorted, non-overlapping, no plain or empty spans); results are too.
-#include "lcars/core.hpp"
+#include "isoduo/core.hpp"
 #include <optional>
 #include <string>
 #include <string_view>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 // Sorted, non-overlapping input: drops empty and plain spans and merges adjacent spans of equal style.
 std::vector<StyleSpan> canonicalSpans(std::vector<StyleSpan> spans);
 // The style of the UTF-16 unit at pos (plain past the end).
@@ -29,7 +29,7 @@ TextStyle changed(TextStyle style, const StyleChange& change);
 std::vector<StyleSpan> compositionSpans(const std::vector<StyleSpan>& spans, unsigned begin, unsigned end, unsigned preeditSize, const TextStyle& style);
 }
 
-namespace lcars::detail {
+namespace isoduo::detail {
 // The framework-private clipboard payload of a copied range: the text, its spans and a version tag, as bytes.
 // A host stores the bytes under one private format next to the plain text and returns them unchanged.
 std::string serializeRichPayload(const RichText& value);

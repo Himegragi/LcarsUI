@@ -7,19 +7,19 @@ jobs:
       - uses: actions/checkout@v4
       - name: Build, test and install Release core
         shell: pwsh
-        run: ./build.ps1 -Configuration Release -CoreOnly -Install "$env:RUNNER_TEMP/lcars-prefix"
+        run: ./build.ps1 -Configuration Release -CoreOnly -Install "$env:RUNNER_TEMP/isoduo-prefix"
       - name: Build, test and install Debug core
         shell: pwsh
-        run: ./build.ps1 -Configuration Debug -CoreOnly -Install "$env:RUNNER_TEMP/lcars-prefix"
+        run: ./build.ps1 -Configuration Debug -CoreOnly -Install "$env:RUNNER_TEMP/isoduo-prefix"
       - name: Verify installed package
         shell: pwsh
-        run: ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP/lcars-prefix" -Configurations Debug,Release -Generators Ninja,VS -Toolchain build/Release-core/lcars-visual-studio.json -Evidence build/evidence/package
+        run: ./tests/package/verify-package.ps1 -Prefix "$env:RUNNER_TEMP/isoduo-prefix" -Configurations Debug,Release -Generators Ninja,VS -Toolchain build/Release-core/isoduo-visual-studio.json -Evidence build/evidence/package
       - name: Record package prefix on failure
         if: failure()
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force build/evidence/package | Out-Null
-          $prefix = "$env:RUNNER_TEMP/lcars-prefix"
+          $prefix = "$env:RUNNER_TEMP/isoduo-prefix"
           if (Test-Path -LiteralPath $prefix) {
             Get-ChildItem -LiteralPath $prefix -Recurse -File | ForEach-Object { $_.FullName.Substring($prefix.Length).TrimStart('\', '/') } | Sort-Object | Set-Content build/evidence/package/prefix-files.txt
           } else {

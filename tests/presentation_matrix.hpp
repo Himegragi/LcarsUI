@@ -8,12 +8,12 @@
 // The same dimension and component drivers run against fake and native text measurement.
 namespace presentationMatrix {
 struct Driver {
-    std::function<lcars::Frame(int, int, float, std::string_view)> arrange;
+    std::function<isoduo::Frame(int, int, float, std::string_view)> arrange;
     std::function<bool(int, int, float)> compare;
 };
 template<class Layout, class Check>
-void run(const editForm::Ids& ids, const lcars::Appearance&, Layout layout, Check check) {
-    using namespace lcars;
+void run(const editForm::Ids& ids, const isoduo::Appearance&, Layout layout, Check check) {
+    using namespace isoduo;
     for (auto variant : {ThemeVariant::light(), ThemeVariant::dark()})
     for (auto density : {Density::standard, Density::compact})
     for (int size : {12, 16, 28})

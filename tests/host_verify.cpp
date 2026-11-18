@@ -26,9 +26,9 @@
 #include <sstream>
 #include <thread>
 
-using namespace lcars;
-using lcars::detail::DesktopHost;
-using lcars::detail::Image;
+using namespace isoduo;
+using isoduo::detail::DesktopHost;
+using isoduo::detail::Image;
 
 namespace {
 editForm::Ids alternateIds() {
@@ -132,7 +132,7 @@ struct Fixture {
             throw std::runtime_error("X04 client size mismatch: expected " + std::to_string(expectedWidth) + "x" +
                 std::to_string(expectedHeight) + ", got " + std::to_string(actual.right) + "x" + std::to_string(actual.bottom));
     }
-    static DesktopConfig options() { DesktopConfig o; o.title = u"LcarsUI host verification"; return o; }
+    static DesktopConfig options() { DesktopConfig o; o.title = u"Isoduo host verification"; return o; }
     void settle() { host.pump(); host.paint(); }
     void post(UINT msg, WPARAM w, LPARAM l) { PostMessageW(host.window(), msg, w, l); }
     void key(WPARAM vk, bool repeat = false) { post(WM_KEYDOWN, vk, keyLparam(vk, repeat, false)); host.pump(); }
@@ -377,7 +377,7 @@ int demoCompare(const std::filesystem::path& evidence) {
     for (const auto* appearance : {&webAppearance(), &materialAppearance()})
     for (bool dark : {false,true}) for (float scale : {1.f,1.5f}) for (int scenario=0; scenario<9; ++scenario) {
         settingsDemo::AboutInfo info;
-        info.licenses.push_back({{"lcars"},u"LcarsUI",u"License text"});
+        info.licenses.push_back({{"isoduo"},u"Isoduo",u"License text"});
         for(int i=0;i<40;++i) { auto n=std::to_string(i); std::u16string name=u"Font "; name.append(n.begin(),n.end()); info.fonts.push_back({name,name}); }
         settingsDemo::Demo demo(std::move(info));
         DesktopConfig options; options.title=u"Demo comparison";
@@ -395,7 +395,7 @@ int demoCompare(const std::filesystem::path& evidence) {
             if(scenario==3) setup &= bool(demo.itemsEdit.invoke()) && demo.itemDialog.isOpen().value.value_or(false);
         }
         if(scenario==4) { setup &= bool(demo.nav.select({"appearance"})) && bool(demo.font.focus()) && bool(demo.font.open()); for(int i=0;i<30;++i) tap(VK_DOWN); auto font=demo.font.describe(); setup &= font && font->expanded && font->candidate && font->candidate->id!="default"; }
-        if(scenario==5) setup &= bool(demo.nav.select({"about"})) && bool(demo.licenses.select({"lcars"}));
+        if(scenario==5) setup &= bool(demo.nav.select({"about"})) && bool(demo.licenses.select({"isoduo"}));
         if(scenario==6) { setup &= bool(demo.notices.toggle()); setup &= !demo.requestClose() && demo.closeDialog.isOpen().value.value_or(false); }
         if(scenario==7) {
             setup &= bool(demo.nav.select({"about"})) && bool(demo.nav.focus());
@@ -736,7 +736,7 @@ void fontDiagnosticReachesApplication(const Appearance& appearance, Report& repo
     auto label=ui.addLabel({.id="missing-font-glyph",.value=u"\U0010ffff"});
     std::vector<RenderDiagnostic> events;
     DesktopHost* active=nullptr; int depth=0, maximumDepth=0;
-    auto initial=ui.presentation(); initial.fontFamily=u"LcarsUI definitely absent";
+    auto initial=ui.presentation(); initial.fontFamily=u"Isoduo definitely absent";
     ui.setPresentation(initial);
     DesktopConfig options;
     options.onDiagnostic=[&](const RenderDiagnostic& event) {
@@ -757,13 +757,13 @@ void fontDiagnosticReachesApplication(const Appearance& appearance, Report& repo
             event.color.r==darkText.r && event.color.g==darkText.g && event.color.b==darkText.b;
     });
     report.check("dark-missing-glyph",darkAccepted && darkMissing,"Missing glyph receives the dark text color");
-    auto changed=ui.presentation(); changed.fontFamily=u"LcarsUI another absent family";
+    auto changed=ui.presentation(); changed.fontFamily=u"Isoduo another absent family";
     bool accepted=bool(ui.setPresentation(changed)); host.pump();
     auto count=std::count_if(events.begin(),events.end(),[&](const auto& e) {
         return e.code=="text.glyph_missing" && e.nativeCode==0x10ffff && e.uiEnvironment==&ui && e.severity==DiagnosticSeverity::info;
     });
-    bool family=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.nativeMessage.find("LcarsUI definitely absent")!=std::string::npos;})==1;
-    bool changedFamily=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.nativeMessage.find("LcarsUI another absent family")!=std::string::npos;})==1;
+    bool family=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.nativeMessage.find("Isoduo definitely absent")!=std::string::npos;})==1;
+    bool changedFamily=std::count_if(events.begin(),events.end(),[](const auto& e) {return e.code=="font.family_unavailable" && e.nativeMessage.find("Isoduo another absent family")!=std::string::npos;})==1;
     report.check("font-diagnostic",count==1 && family && accepted && changedFamily && maximumDepth==1,"font diagnostics reach the application once without recursive callbacks");
 }
 
@@ -1207,7 +1207,7 @@ void verticalLabelNative(const Appearance& appearance, Report& report, const std
     Ui ui; ScrollState scroll;
     auto note = ui.addLabel({.id = "note", .value = std::u16string(300, u'字'),
                               .writingMode = WritingMode::vertical}).value.value();
-    DesktopConfig options; options.title = u"LcarsUI vertical label verification";
+    DesktopConfig options; options.title = u"Isoduo vertical label verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::verticalText(note, 200)}, 0, 8); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.forceScale(1.f);
@@ -1281,7 +1281,7 @@ void multilineNative(const Appearance& appearance, Report& report, const std::fi
     auto note = ui.addTextField({.id = "note", .label = u"Note", .multiline = true, .visibleLines = 3}).value.value();
     note.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
-    DesktopConfig options; options.title = u"LcarsUI multi-line verification";
+    DesktopConfig options; options.title = u"Isoduo multi-line verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.forceScale(1.f);
@@ -1379,7 +1379,7 @@ void richtextNative(const Appearance& appearance, Report& report, const std::fil
     auto note = make("note", u"Alpha 重要 Beta");
     auto other = make("other", u"");
     note.setColors({{"red", {200, 0, 0}, {255, 140, 140}}});
-    DesktopConfig options; options.title = u"LcarsUI rich text verification";
+    DesktopConfig options; options.title = u"Isoduo rich text verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(note), layout::component(other)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.forceScale(1.f);
@@ -1469,7 +1469,7 @@ void wordSelectNative(const Appearance& appearance, Report& report) {
     note.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
     fieldHandle.setWordSegmentation(WordSegmentation::perCharacter);
     note.setWordSegmentation(WordSegmentation::perCharacter);
-    DesktopConfig options; options.title = u"LcarsUI word selection verification";
+    DesktopConfig options; options.title = u"Isoduo word selection verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(fieldHandle), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.forceScale(1.f);
@@ -1545,7 +1545,7 @@ void wordSelectNative(const Appearance& appearance, Report& report) {
 // machine (see the author-run list).
 void justifyNative(const Appearance& appearance, Report& report, const std::filesystem::path& folder = {}) {
     const std::u16string text =
-        u"LcarsUI 是面向一般桌面應用的 UI 框架，並以讓 AI 操作應用程式作為未來整合方向。這一段中英數混排的文字，用來比較靠左、置中、靠右、"
+        u"Isoduo 是面向一般桌面應用的 UI 框架，並以讓 AI 操作應用程式作為未來整合方向。這一段中英數混排的文字，用來比較靠左、置中、靠右、"
         u"左右對齊與分散對齊：Windows 11 的 2026 年版本、Direct2D 與 OpenGL 渲染，以及 12345 這類數字。";
     Ui ui; ScrollState scroll;
     auto model = std::make_shared<std::u16string>(text);
@@ -1553,7 +1553,7 @@ void justifyNative(const Appearance& appearance, Report& report, const std::file
     auto note = ui.addTextField({.id = "note", .label = u"Note", .value = text, .multiline = true, .visibleLines = 6, .textAlign = TextAlign::justify}).value.value();
     note.connectSource({[model] { return *model; }, [](std::function<void()>) { return [] {}; }});
     note.connectConfirmed([](const Change<TextFieldHandle>&) { return Result{}; });
-    DesktopConfig options; options.title = u"LcarsUI justified text verification";
+    DesktopConfig options; options.title = u"Isoduo justified text verification";
     DesktopHost host(ui, appearance, [&] { return layout::column({layout::component(sample), layout::component(note)}, 12, 12); }, scroll, options, true, true);
     ShowWindow(host.window(), SW_SHOWNOACTIVATE);
     host.forceScale(1.f);
@@ -3394,7 +3394,7 @@ struct Live {
         SetWindowPos(host.window(), HWND_TOP, 40, 40, 0, 0, SWP_NOSIZE);
         ShowWindow(host.window(), SW_SHOW);
         foreground(host.window());
-        helper = CreateWindowExW(0, L"STATIC", L"LcarsUI IME helper", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 900, 60, 300, 200,
+        helper = CreateWindowExW(0, L"STATIC", L"Isoduo IME helper", WS_OVERLAPPEDWINDOW | WS_VISIBLE, 900, 60, 300, 200,
                                  nullptr, nullptr, GetModuleHandleW(nullptr), nullptr);
         foreground(host.window());
     }
@@ -3514,7 +3514,7 @@ int runUiaIme(const std::filesystem::path& folder, const std::wstring& appearanc
         if (!edit || !edit->composing || edit->preedit.empty()) throw Blocked("Bopomofo composition did not start");
         const auto committed = edit->text; const auto preedit = edit->preedit;
         wchar_t module[MAX_PATH]{}; GetModuleFileNameW(nullptr, module, MAX_PATH);
-        auto client = std::filesystem::path(module).parent_path() / L"lcars_uia_client.exe";
+        auto client = std::filesystem::path(module).parent_path() / L"isoduo_uia_client.exe";
         std::wstring command = L"\"" + client.wstring() + L"\" --ime-probe " + std::to_wstring(reinterpret_cast<std::uintptr_t>(live.host.window()));
         STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
         if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) throw Blocked("UIA client could not start");
@@ -4511,7 +4511,7 @@ int wmain(int argc, wchar_t** argv) {
             else if (arg == L"--x04-disabled-only") x04DisabledOnly = true;
             else if (arg == L"--x04-selection-only") x04SelectionOnly = true;
             else if (arg == L"--repeat" && i + 1 < argc) repeat = std::stoi(argv[++i]);
-            else throw std::runtime_error("Usage: lcars_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
+            else throw std::runtime_error("Usage: isoduo_host_verify [--ime | --dpi | --x02-only | --x04-only | --x04-clipped-only | --x04-executing-only | --x04-disabled-only | --x04-selection-only | --clipboard-only [--repeat N]] [--evidence DIR]");
         }
         if (demoComparison) return demoCompare(evidence);
         if (uiaIme) return runUiaIme(evidence, perfAppearance);

@@ -2,7 +2,7 @@
 #include <algorithm>
 #include <string>
 
-namespace lcars::detail {
+namespace isoduo::detail {
 namespace {
 char32_t codePointAt(std::u16string_view text, std::size_t i) {
     const char16_t first = text[i];

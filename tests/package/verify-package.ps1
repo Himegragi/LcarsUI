@@ -10,23 +10,23 @@ $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).Path
 $prefixPath = (Resolve-Path -LiteralPath $Prefix).Path
 New-Item -ItemType Directory -Force -Path $Evidence | Out-Null
 $evidencePath = (Resolve-Path -LiteralPath $Evidence).Path
-$work = Join-Path ([IO.Path]::GetTempPath()) ('lcars-package-' + [guid]::NewGuid().ToString('N'))
+$work = Join-Path ([IO.Path]::GetTempPath()) ('isoduo-package-' + [guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Path $work | Out-Null
 . (Join-Path $root 'cmake/VisualStudio.ps1')
 if (-not $Toolchain) {
-    $suffix = if (Test-Path (Join-Path $prefixPath 'lib/cmake/LcarsUI/LcarsUIDesktopTargets.cmake')) { '' } else { '-core' }
+    $suffix = if (Test-Path (Join-Path $prefixPath 'lib/cmake/Isoduo/IsoduoDesktopTargets.cmake')) { '' } else { '-core' }
     $configuration = if ($Configurations -contains 'Release') { 'Release' } else { $Configurations[0] }
-    $Toolchain = Join-Path $root "build/$configuration$suffix/lcars-visual-studio.json"
+    $Toolchain = Join-Path $root "build/$configuration$suffix/isoduo-visual-studio.json"
 }
 if (-not (Test-Path -LiteralPath $Toolchain)) { throw "Build toolchain record not found: $Toolchain; pass -Toolchain from the build that produced this prefix" }
 $record = Get-Content -Raw -LiteralPath $Toolchain | ConvertFrom-Json
 $vs = $record.InstallationPath
-$generatorName = Get-LcarsVisualStudioGenerator $record.InstallationVersion
+$generatorName = Get-IsoduoVisualStudioGenerator $record.InstallationVersion
 if ($record.Generator -ne $generatorName -or -not $record.ToolsetVersion) { throw 'Invalid Visual Studio build toolchain record' }
-$toolsetVersion = Import-LcarsVisualStudioEnvironment $vs $record.ToolsetVersion
-$configFile = Join-Path $prefixPath 'lib/cmake/LcarsUI/LcarsUIConfig.cmake'
+$toolsetVersion = Import-IsoduoVisualStudioEnvironment $vs $record.ToolsetVersion
+$configFile = Join-Path $prefixPath 'lib/cmake/Isoduo/IsoduoConfig.cmake'
 $packageConfig = Get-Content -Raw -LiteralPath $configFile
-if ($packageConfig -notmatch 'set\(LcarsUI_MSVC_TOOLSET_VERSION "([^"]+)"\)' -or $matches[1] -ne $toolsetVersion) {
+if ($packageConfig -notmatch 'set\(Isoduo_MSVC_TOOLSET_VERSION "([^"]+)"\)' -or $matches[1] -ne $toolsetVersion) {
     throw "Installed package toolset does not match build record $toolsetVersion"
 }
 Write-Host "Visual Studio: $vs ($($record.InstallationVersion)); MSVC toolset: $toolsetVersion; generator: $generatorName"
@@ -75,11 +75,11 @@ function Run-Case($name, $generator, $config, $source, $mode = 'build', $extra =
             if ($result.Code -ne 0 -or $result.Output -notmatch 'profile_alias' -or ($script:hasDesktop -and $result.Output -notmatch 'notices_smoke') -or (-not $script:hasDesktop -and $result.Output -match 'notices_smoke')) { $ok = $false; $message = 'consumer tests or Desktop selection failed; see log' }
             if ($ok -and $generator -eq 'Ninja') {
                 $commands = Invoke-Logged 'ninja.exe' @('-C', $dir, '-t', 'commands') $log
-                $lib = if ($config -eq 'Debug') { 'lcars_cored\.lib' } else { 'lcars_core\.lib' }
+                $lib = if ($config -eq 'Debug') { 'isoduo_cored\.lib' } else { 'isoduo_core\.lib' }
                 if ($commands.Code -ne 0 -or $commands.Output -notmatch $lib) { $ok = $false; $message = 'wrong Core library selected; see log' }
             }
             if ($ok -and $generator -ne 'Ninja') {
-                $lib = if ($config -eq 'Debug') { 'lcars_cored\.lib' } else { 'lcars_core\.lib' }
+                $lib = if ($config -eq 'Debug') { 'isoduo_cored\.lib' } else { 'isoduo_core\.lib' }
                 if ($buildOutput -notmatch $lib) { $ok = $false; $message = 'wrong Core library selected; see log' }
             }
         }
@@ -99,8 +99,8 @@ function Source($name, $body, $code = 'int main() { return 0; }') {
     return $path
 }
 try {
-    $targetDir = Join-Path $prefixPath 'lib/cmake/LcarsUI'
-    $components = @(Get-ChildItem $targetDir -Filter 'LcarsUI*Targets.cmake' | ForEach-Object { $_.Name -replace '^LcarsUI(.*)Targets\.cmake$', '$1' })
+    $targetDir = Join-Path $prefixPath 'lib/cmake/Isoduo'
+    $components = @(Get-ChildItem $targetDir -Filter 'Isoduo*Targets.cmake' | ForEach-Object { $_.Name -replace '^Isoduo(.*)Targets\.cmake$', '$1' })
     if ($components -notcontains 'Core') { throw 'Prefix does not contain the Core package' }
     $hasDesktop = $components -contains 'Desktop'
     $consumer = Join-Path $root 'examples/consumer'
@@ -112,29 +112,29 @@ try {
     $primary = if ($Generators -contains 'Ninja') { 'Ninja' } else { $Generators[0] }
     $cfg = if ($Configurations -contains 'Release') { 'Release' } else { $Configurations[0] }
     foreach ($component in $components) {
-        $body = "find_package(LcarsUI REQUIRED COMPONENTS $component)`n"
+        $body = "find_package(Isoduo REQUIRED COMPONENTS $component)`n"
         foreach ($other in $components) {
             $present = $other -eq 'Core' -or $other -eq $component
             $condition = if ($present) { 'NOT TARGET' } else { 'TARGET' }
-            $body += "if($condition LcarsUI::$other)`n message(FATAL_ERROR `"unexpected target state: $other`")`nendif()`n"
+            $body += "if($condition Isoduo::$other)`n message(FATAL_ERROR `"unexpected target state: $other`")`nendif()`n"
         }
-        $body += "add_executable(probe main.cpp)`ntarget_link_libraries(probe PRIVATE LcarsUI::$component)`n"
+        $body += "add_executable(probe main.cpp)`ntarget_link_libraries(probe PRIVATE Isoduo::$component)`n"
         $header = if ($component -eq 'Desktop') { 'desktop.hpp' } elseif ($component -eq 'Diagnostics') { 'diagnostics.hpp' } elseif ($component -like 'Appearance*') { 'appearance.hpp' } else { 'core.hpp' }
         $call = switch ($component) {
-            'Core' { 'lcars::Ui ui;' }
-            'AppearanceWeb' { '(void)lcars::webAppearance();' }
-            'AppearanceMaterial' { '(void)lcars::materialAppearance();' }
-            'Desktop' { '(void)lcars::thirdPartyNotices();' }
-            'Diagnostics' { 'lcars::Diagnostics diagnostics; (void)diagnostics.recent();' }
+            'Core' { 'isoduo::Ui ui;' }
+            'AppearanceWeb' { '(void)isoduo::webAppearance();' }
+            'AppearanceMaterial' { '(void)isoduo::materialAppearance();' }
+            'Desktop' { '(void)isoduo::thirdPartyNotices();' }
+            'Diagnostics' { 'isoduo::Diagnostics diagnostics; (void)diagnostics.recent();' }
             default { '' }
         }
         if ($component -eq 'Desktop') { $header = 'third_party_notices.hpp' }
-        $src = Source "component-$component" $body "#include <lcars/$header>`nint main() { $call return 0; }"
+        $src = Source "component-$component" $body "#include <isoduo/$header>`nint main() { $call return 0; }"
         Run-Case "component/$component" $primary $cfg $src
     }
-    $baseBody = 'find_package(LcarsUI REQUIRED COMPONENTS Core)' + "`nadd_executable(probe main.cpp)`ntarget_link_libraries(probe PRIVATE LcarsUI::Core)`n"
-    foreach ($header in Get-ChildItem (Join-Path $prefixPath 'include/lcars') -Filter '*.hpp') {
-        $src = Source "header-$($header.BaseName)" $baseBody "#include <lcars/$($header.Name)>`nint main() { return 0; }"
+    $baseBody = 'find_package(Isoduo REQUIRED COMPONENTS Core)' + "`nadd_executable(probe main.cpp)`ntarget_link_libraries(probe PRIVATE Isoduo::Core)`n"
+    foreach ($header in Get-ChildItem (Join-Path $prefixPath 'include/isoduo') -Filter '*.hpp') {
+        $src = Source "header-$($header.BaseName)" $baseBody "#include <isoduo/$($header.Name)>`nint main() { return 0; }"
         Run-Case "header/$($header.Name)" $primary $cfg $src
     }
     foreach ($std in 17,23) {
@@ -142,35 +142,35 @@ try {
         $src = Source "std-$std" $baseBody "#if _MSVC_LANG < $minimum`n#error incorrect language standard`n#endif`nint main() { return 0; }"
         Run-Case "std/$std" $primary $cfg $src 'build' @("-DCMAKE_CXX_STANDARD=$std")
     }
-    $req = Source 'required' 'find_package(LcarsUI REQUIRED COMPONENTS Core)'
+    $req = Source 'required' 'find_package(Isoduo REQUIRED COMPONENTS Core)'
     # A copy with an intentionally newer recorded toolset exercises the real
     # installed-package warning without requiring an obsolete compiler locally.
     $warningPrefix = Join-Path $work 'newer-toolset-prefix'
     Copy-Item -Recurse -LiteralPath $prefixPath -Destination $warningPrefix
-    $warningConfig = Join-Path $warningPrefix 'lib/cmake/LcarsUI/LcarsUIConfig.cmake'
+    $warningConfig = Join-Path $warningPrefix 'lib/cmake/Isoduo/IsoduoConfig.cmake'
     $contents = Get-Content -Raw -LiteralPath $warningConfig
-    if ($contents -notmatch 'set\(LcarsUI_MSVC_TOOLSET_VERSION "[^"]+"\)') { throw 'Package did not record its MSVC toolset version' }
-    $contents = $contents -replace 'set\(LcarsUI_MSVC_TOOLSET_VERSION "[^"]*"\)', 'set(LcarsUI_MSVC_TOOLSET_VERSION "99.99.99999")'
+    if ($contents -notmatch 'set\(Isoduo_MSVC_TOOLSET_VERSION "[^"]+"\)') { throw 'Package did not record its MSVC toolset version' }
+    $contents = $contents -replace 'set\(Isoduo_MSVC_TOOLSET_VERSION "[^"]*"\)', 'set(Isoduo_MSVC_TOOLSET_VERSION "99.99.99999")'
     Set-Content -LiteralPath $warningConfig -Value $contents -Encoding UTF8
     $saved = $prefixPath; $prefixPath = $warningPrefix
     $toolsetPattern = [regex]::Escape($toolsetVersion)
     Run-Case 'warning/older-toolset' $primary $cfg $req 'warning' @() "(?s)consumer MSVC toolset $toolsetPattern.*older than.*99\.99\.99999"
     $prefixPath = $saved
-    $unknown = Source 'unknown' 'find_package(LcarsUI REQUIRED COMPONENTS Widgets)'
+    $unknown = Source 'unknown' 'find_package(Isoduo REQUIRED COMPONENTS Widgets)'
     Run-Case 'reject/unknown-component' $primary $cfg $unknown 'reject' @() '(?s)Widgets.*available'
-    $optional = Source 'optional' "find_package(LcarsUI REQUIRED OPTIONAL_COMPONENTS Widgets)`nif(LcarsUI_Widgets_FOUND)`n message(FATAL_ERROR `"unexpected component`" )`nendif()"
+    $optional = Source 'optional' "find_package(Isoduo REQUIRED OPTIONAL_COMPONENTS Widgets)`nif(Isoduo_Widgets_FOUND)`n message(FATAL_ERROR `"unexpected component`" )`nendif()"
     Run-Case 'optional/unknown-component' $primary $cfg $optional 'configure'
     if (-not $hasDesktop) {
-        $missing = Source 'missing' 'find_package(LcarsUI REQUIRED COMPONENTS Desktop)'
-        Run-Case 'reject/missing-desktop' $primary $cfg $missing 'reject' @() 'LCARS_BUILD_DESKTOP=OFF'
+        $missing = Source 'missing' 'find_package(Isoduo REQUIRED COMPONENTS Desktop)'
+        Run-Case 'reject/missing-desktop' $primary $cfg $missing 'reject' @() 'ISODUO_BUILD_DESKTOP=OFF'
     } else { $rows.Add([pscustomobject]@{Scenario='reject/missing-desktop';Generator=$primary;Configuration=$cfg;Compiler='';Result='N/A';Message='Desktop installed'}) }
-    Run-Case 'reject/runtime' $primary $cfg $req 'reject' @('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded') '(?s)runtime mismatch.*consumer MultiThreaded.*LcarsUI\s+MultiThreaded.*DLL'
+    Run-Case 'reject/runtime' $primary $cfg $req 'reject' @('-DCMAKE_MSVC_RUNTIME_LIBRARY=MultiThreaded') '(?s)runtime mismatch.*consumer MultiThreaded.*Isoduo\s+MultiThreaded.*DLL'
     if ($Generators -contains 'Ninja') { Run-Case 'reject/empty-build-type' 'Ninja' '' $req 'reject' @('-DCMAKE_BUILD_TYPE=') 'specify -DCMAKE_BUILD_TYPE' }
     foreach ($v in '0.1','1.0','0.2','0.3','0.4') {
-        $src = Source "version-$v" "find_package(LcarsUI $v REQUIRED)"
+        $src = Source "version-$v" "find_package(Isoduo $v REQUIRED)"
         if ($v -eq '0.4') { Run-Case "version/$v" $primary $cfg $src 'configure' } else { Run-Case "reject/version/$v" $primary $cfg $src 'reject' @() 'version' }
     }
-    Run-Case 'reject/no-prefix' $primary $cfg $req 'reject' @('-DCMAKE_PREFIX_PATH=', '-DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH=OFF') 'LcarsUI'
+    Run-Case 'reject/no-prefix' $primary $cfg $req 'reject' @('-DCMAKE_PREFIX_PATH=', '-DCMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH=OFF') 'Isoduo'
     # Exercise relocation on an owned copy: the caller's prefix is never removed.
     $first = Join-Path $work 'original-prefix'; $moved = Join-Path $work 'moved-prefix'
     Copy-Item -Recurse -LiteralPath $prefixPath -Destination $first
