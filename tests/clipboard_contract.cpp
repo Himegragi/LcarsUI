@@ -68,7 +68,15 @@ int main(int argc, char** argv) {
     // local logon session. These placeholder network credentials are unused.
     wchar_t executable[MAX_PATH]{};
     const auto length = GetModuleFileNameW(nullptr, executable, MAX_PATH);
-    if (!length || length == MAX_PATH) return 1;
+    if (!length) {
+        const auto error = GetLastError();
+        std::cerr << "Cannot locate clipboard worker executable: " << error << '\n';
+        return 1;
+    }
+    if (length == MAX_PATH) {
+        std::cerr << "Clipboard worker executable path was truncated\n";
+        return 1;
+    }
     std::wstring command = L"\"" + std::wstring(executable) + L"\" --isolated";
     STARTUPINFOW startup{};
     startup.cb = sizeof(startup);
