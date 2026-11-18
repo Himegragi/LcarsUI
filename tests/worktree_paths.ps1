@@ -4,6 +4,11 @@ param([Parameter(Mandatory=$true)][string]$FixtureRoot,
       [string]$WindowsGitExecutable)
 $ErrorActionPreference = 'Stop'
 function Assert($condition, $message) { if (-not $condition) { throw $message } }
+function ExpectFailure([scriptblock]$operation, $pattern) {
+    $message = ''
+    try { & $operation | Out-Null } catch { $message = $_.Exception.Message }
+    Assert ($message -match $pattern) "Expected failure matching '$pattern', got '$message'"
+}
 function LinuxPath($path) { (& wsl.exe -e wslpath -a $path).Trim() }
 function Git($arguments) {
     & wsl.exe -e git @arguments
@@ -31,7 +36,8 @@ foreach ($case in 'cross-volume', 'same-volume') {
     $reverseFile = Join-Path $admin 'gitdir'
     # Reproduce the Windows absolute-path metadata produced by the host.
     [IO.File]::WriteAllText($dotGit, "gitdir: $admin`n")
-    [IO.File]::WriteAllText($reverseFile, "$dotGit`n")
+    # Exercise byte-for-byte restoration of BOM and CRLF in one original pointer.
+    [IO.File]::WriteAllText($reverseFile, "$dotGit`r`n", [Text.UTF8Encoding]::new($true))
     $before = [IO.File]::ReadAllBytes($dotGit) -join ','
     $reverseBefore = [IO.File]::ReadAllBytes($reverseFile) -join ','
     $previous = $ErrorActionPreference
@@ -82,15 +88,85 @@ foreach ($case in 'cross-volume', 'same-volume') {
     [IO.File]::WriteAllText((Join-Path $wt 'fixture.txt'), 'fixture')
     Git @('-C', (LinuxPath $wt), 'add', 'fixture.txt')
     Git @('-C', (LinuxPath $wt), '-c', 'user.name=Fixture', '-c', 'user.email=fixture@example.invalid', 'commit', '-m', 'write through repaired discovery')
+    $repair = @{ Worktree=$wt; Bridge=$bridge; Backup=$backup }
     $repaired = [IO.File]::ReadAllBytes($dotGit)
-    WriteExistingBytes $dotGit ($repaired + [Text.Encoding]::UTF8.GetBytes('# concurrent edit'))
-    $refused = $false
-    try { & $tool -Worktree $wt -Bridge $bridge -Backup $backup -Mode Restore } catch { $refused = $_.Exception.Message -match 'Metadata changed' }
-    Assert $refused 'Restore must refuse concurrent edits'
-    WriteExistingBytes $dotGit $repaired
-    & $tool -Worktree $wt -Bridge $bridge -Backup $backup -Mode Restore
+    $repairedReverse = [IO.File]::ReadAllBytes($reverseFile)
+    $original = [IO.File]::ReadAllBytes((Join-Path $backup 'dotgit.bin'))
+    $backBridge = Join-Path $admin 'interop-worktree'
+    foreach ($changed in @(
+        ,([Text.Encoding]::UTF8.GetBytes([IO.File]::ReadAllText($dotGit).ToUpperInvariant()))
+        ,([byte[]](@(239,187,191) + $repaired))
+        ,([byte[]]($repaired + [Text.Encoding]::UTF8.GetBytes('# unrelated edit')))
+    )) {
+        WriteExistingBytes $dotGit $changed
+        ExpectFailure { & $tool @repair -Mode Restore } 'Metadata changed'
+        ExpectFailure { & $tool @repair -Mode Apply } 'Metadata changed'
+        Assert (([IO.File]::ReadAllBytes($dotGit) -join ',') -eq ($changed -join ',')) 'Reject edited pointer without altering it'
+        Assert (([IO.File]::ReadAllBytes($reverseFile) -join ',') -eq ($repairedReverse -join ',')) 'Reject edit before changing the other pointer'
+        WriteExistingBytes $dotGit $repaired
+    }
+
+    # Fail on the second metadata file before writing either pointer.
+    $locked = [IO.File]::Open($reverseFile, 'Open', 'Read', 'Read')
+    try {
+        ExpectFailure { & $tool @repair -Mode Restore } 'gitdir'
+        Assert (([IO.File]::ReadAllBytes($dotGit) -join ',') -eq ($repaired -join ',')) 'Locked reverse file leaves repaired forward unchanged'
+    } finally { $locked.Dispose() }
+
+    # A missing backup must fail before any metadata changes.
+    $savedReverse = Join-Path $backup 'gitdir.saved'
+    [IO.File]::Move((Join-Path $backup 'gitdir.bin'), $savedReverse)
+    try {
+        ExpectFailure { & $tool @repair -Mode Restore } 'gitdir.bin'
+        Assert (([IO.File]::ReadAllBytes($dotGit) -join ',') -eq ($repaired -join ',')) 'Restore checks both backups before writing'
+    } finally { [IO.File]::Move($savedReverse, (Join-Path $backup 'gitdir.bin')) }
+
+    # Reproduce both mixed states left by an interrupted run.
+    WriteExistingBytes $dotGit $original
+    & $tool @repair -Mode Restore
+    & $tool @repair -Mode Restore
     Assert (([IO.File]::ReadAllBytes($dotGit) -join ',') -eq $before) 'Restore forward bytes'
     Assert (([IO.File]::ReadAllBytes($reverseFile) -join ',') -eq $reverseBefore) 'Restore reverse bytes'
+
+    $locked = [IO.File]::Open($reverseFile, 'Open', 'Read', 'Read')
+    try {
+        ExpectFailure { & $tool @repair -Mode Apply } 'gitdir'
+        Assert (([IO.File]::ReadAllBytes($dotGit) -join ',') -eq $before) 'Locked reverse file leaves original forward unchanged'
+    } finally { $locked.Dispose() }
+    WriteExistingBytes $dotGit $repaired
+    & $tool @repair -Mode Apply
+    Assert (([IO.File]::ReadAllBytes($reverseFile) -join ',') -eq ($repairedReverse -join ',')) 'Apply completes the mixed state'
+    & $tool @repair -Mode Restore
+
+    foreach ($junction in $bridge, $backBridge) {
+        $target = @((Get-Item -LiteralPath $junction -Force).Target)[0]
+        [IO.Directory]::Delete($junction)
+        New-Item -ItemType Junction -Path $junction -Target $base | Out-Null
+        try {
+            ExpectFailure { & $tool @repair -Mode Apply } 'Expected junction'
+            Assert (([IO.File]::ReadAllBytes($dotGit) -join ',') -eq $before) 'Wrong junction leaves original forward unchanged'
+            Assert (([IO.File]::ReadAllBytes($reverseFile) -join ',') -eq $reverseBefore) 'Wrong junction leaves original reverse unchanged'
+        } finally {
+            [IO.Directory]::Delete($junction)
+            New-Item -ItemType Junction -Path $junction -Target $target | Out-Null
+        }
+    }
+
+    & $tool @repair -Mode Apply
+    & $tool @repair -Mode Apply
+    & $tool @repair -Mode Restore
+    Assert (([IO.File]::ReadAllBytes((Join-Path $backup 'dotgit.bin')) -join ',') -eq $before) 'Reapply retains original forward backup'
+    Assert (([IO.File]::ReadAllBytes((Join-Path $backup 'gitdir.bin')) -join ',') -eq $reverseBefore) 'Reapply retains original reverse backup'
+    # Before the manifest is complete, neither pointer has been changed.
+    $incomplete = Join-Path $base ($case + '-incomplete-backup')
+    New-Item -ItemType Directory -Path $incomplete | Out-Null
+    [IO.File]::WriteAllBytes((Join-Path $incomplete 'dotgit.bin'), $original)
+    ExpectFailure { & $tool -Worktree $wt -Bridge $bridge -Backup $incomplete -Mode Apply } 'Incomplete backup'
+    $fresh = @{ Worktree=$wt; Bridge=$bridge; Backup=(Join-Path $base ($case + '-fresh-backup')) }
+    & $tool @fresh -Mode Apply
+    & $tool @fresh -Mode Restore
+    Assert (([IO.File]::ReadAllBytes($dotGit) -join ',') -eq $before) 'Fresh backup restores original forward'
+    Assert (([IO.File]::ReadAllBytes($reverseFile) -join ',') -eq $reverseBefore) 'Fresh backup restores original reverse'
     foreach ($metadata in $dotGit, $reverseFile) {
         Assert ((Get-Item -LiteralPath $metadata -Force).Attributes -band [IO.FileAttributes]::Hidden) 'Restore must preserve Hidden attributes'
     }

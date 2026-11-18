@@ -1,11 +1,11 @@
-﻿param([string]$AppDataRoot = $env:APPDATA)
+param([string]$AppDataRoot = $env:APPDATA)
 $ErrorActionPreference = 'Stop'
 if (-not $AppDataRoot) { throw 'AppDataRoot is required' }
 $root = [IO.Path]::GetFullPath($AppDataRoot)
 $source = Join-Path $root 'LcarsUI/SettingsDemo'
 $destination = Join-Path $root 'Isoduo/SettingsDemo'
 if (Test-Path -LiteralPath $destination) { throw "Destination already exists; nothing changed: $destination" }
-if (-not (Test-Path -LiteralPath (Join-Path $source 'settings.json') -PathType Leaf)) { throw "No previous settings.json found: $source" }
+if (-not (Test-Path -LiteralPath $source -PathType Container)) { throw "No previous settings directory found: $source" }
 # Refuse links so the copy never follows a junction outside the selected profile.
 foreach ($entry in @((Get-Item -LiteralPath $root -Force), (Get-Item -LiteralPath (Split-Path $source) -Force), (Get-Item -LiteralPath $source -Force)) + @(Get-ChildItem -LiteralPath $source -Recurse -Force)) {
     if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) { throw "Linked paths cannot be migrated: $($entry.FullName)" }
