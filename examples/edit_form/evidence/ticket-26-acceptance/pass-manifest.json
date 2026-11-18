@@ -1,0 +1,785 @@
+﻿{
+    "Debug":  {
+                  "passes":  {
+                                 "host_native":  {
+                                                     "seconds":  491.82,
+                                                     "log":  "debug-before-interruption.log"
+                                                 },
+                                 "focus_ring":  {
+                                                    "seconds":  20.35,
+                                                    "log":  "debug-after-interruption.log"
+                                                },
+                                 "renderer_failure":  {
+                                                          "seconds":  20.72,
+                                                          "log":  "debug-before-interruption.log"
+                                                      },
+                                 "settings_close_host":  {
+                                                             "seconds":  7.38,
+                                                             "log":  "debug-before-interruption.log"
+                                                         },
+                                 "list_page":  {
+                                                   "seconds":  0.04,
+                                                   "log":  "debug-before-interruption.log"
+                                               },
+                                 "justify":  {
+                                                 "seconds":  0.13,
+                                                 "log":  "debug-before-interruption.log"
+                                             },
+                                 "about_executable_diagnostics":  {
+                                                                      "seconds":  3.5,
+                                                                      "log":  "debug-before-interruption.log"
+                                                                  },
+                                 "text_flow":  {
+                                                   "seconds":  0.08,
+                                                   "log":  "debug-before-interruption.log"
+                                               },
+                                 "package_install":  {
+                                                         "seconds":  0.41,
+                                                         "log":  "debug-before-interruption.log"
+                                                     },
+                                 "uia_global_web":  {
+                                                        "seconds":  0,
+                                                        "log":  "core-fix-uia-partial.log"
+                                                    },
+                                 "presentation_matrix_native":  {
+                                                                    "seconds":  397.96,
+                                                                    "log":  "debug-after-interruption.log"
+                                                                },
+                                 "presentation_recovery":  {
+                                                               "seconds":  2.16,
+                                                               "log":  "debug-before-interruption.log"
+                                                           },
+                                 "render_compare":  {
+                                                        "seconds":  44.14,
+                                                        "log":  "debug-after-interruption.log"
+                                                    },
+                                 "third_party_notices":  {
+                                                             "seconds":  0.62,
+                                                             "log":  "debug-before-interruption.log"
+                                                         },
+                                 "components":  {
+                                                    "seconds":  0.12,
+                                                    "log":  "debug-before-interruption.log"
+                                                },
+                                 "richtext":  {
+                                                  "seconds":  0.07,
+                                                  "log":  "debug-before-interruption.log"
+                                              },
+                                 "uia_ime_simulation_material":  {
+                                                                     "seconds":  9.37,
+                                                                     "log":  "debug-before-interruption.log"
+                                                                 },
+                                 "perf_report_only_setup":  {
+                                                                "seconds":  0.11,
+                                                                "log":  "debug-before-interruption.log"
+                                                            },
+                                 "error_lines":  {
+                                                     "seconds":  0.25,
+                                                     "log":  "debug-before-interruption.log"
+                                                 },
+                                 "core_regressions":  {
+                                                          "seconds":  0.03,
+                                                          "log":  "core-fix-debug.log"
+                                                      },
+                                 "option_nodes":  {
+                                                      "seconds":  0.28,
+                                                      "log":  "core-fix-debug.log"
+                                                  },
+                                 "vertical":  {
+                                                  "seconds":  0.3,
+                                                  "log":  "debug-before-interruption.log"
+                                              },
+                                 "settings_demo":  {
+                                                       "seconds":  2.55,
+                                                       "log":  "debug-after-interruption.log"
+                                                   },
+                                 "consumer_example":  {
+                                                          "seconds":  3.99,
+                                                          "log":  "debug-before-interruption.log"
+                                                      },
+                                 "demo_keyboard":  {
+                                                       "seconds":  4.82,
+                                                       "log":  "debug-before-interruption.log"
+                                                   },
+                                 "real_close_list":  {
+                                                         "seconds":  0.22,
+                                                         "log":  "debug-after-interruption.log"
+                                                     },
+                                 "source_text":  {
+                                                     "seconds":  2.28,
+                                                     "log":  "debug-after-interruption.log"
+                                                 },
+                                 "public_names":  {
+                                                      "seconds":  1.34,
+                                                      "log":  "debug-before-interruption.log"
+                                                  },
+                                 "render_cpu":  {
+                                                    "seconds":  0.03,
+                                                    "log":  "debug-before-interruption.log"
+                                                },
+                                 "context_menu":  {
+                                                      "seconds":  0.1,
+                                                      "log":  "debug-before-interruption.log"
+                                                  },
+                                 "visual_studio_selection":  {
+                                                                 "seconds":  0.27,
+                                                                 "log":  "debug-before-interruption.log"
+                                                             },
+                                 "uia_readiness_web":  {
+                                                           "seconds":  2.78,
+                                                           "log":  "core-fix-debug.log"
+                                                       },
+                                 "demo_perf_list":  {
+                                                        "seconds":  0.19,
+                                                        "log":  "debug-after-interruption.log"
+                                                    },
+                                 "layout":  {
+                                                "seconds":  1.35,
+                                                "log":  "core-fix-debug.log"
+                                            },
+                                 "settings_persistence":  {
+                                                              "seconds":  0.98,
+                                                              "log":  "debug-after-interruption.log"
+                                                          },
+                                 "sem01":  {
+                                               "seconds":  0.04,
+                                               "log":  "core-fix-debug.log"
+                                           },
+                                 "about_executable_nodiag":  {
+                                                                 "seconds":  3.55,
+                                                                 "log":  "debug-before-interruption.log"
+                                                             },
+                                 "demo_dry_run":  {
+                                                      "seconds":  0.42,
+                                                      "log":  "debug-after-interruption.log"
+                                                  },
+                                 "snapshots":  {
+                                                   "seconds":  0.16,
+                                                   "log":  "core-fix-debug.log"
+                                               },
+                                 "word_select_icu":  {
+                                                         "seconds":  0.02,
+                                                         "log":  "debug-before-interruption.log"
+                                                     },
+                                 "component_registry":  {
+                                                            "seconds":  0.11,
+                                                            "log":  "debug-after-interruption.log"
+                                                        },
+                                 "render_boundary":  {
+                                                         "seconds":  0.09,
+                                                         "log":  "debug-before-interruption.log"
+                                                     },
+                                 "navigation":  {
+                                                    "seconds":  0.04,
+                                                    "log":  "debug-after-interruption.log"
+                                                },
+                                 "about_package_no_json":  {
+                                                               "seconds":  0.06,
+                                                               "log":  "debug-before-interruption.log"
+                                                           },
+                                 "uia_demo_web":  {
+                                                      "seconds":  289.12,
+                                                      "log":  "debug-before-interruption.log"
+                                                  },
+                                 "word_select":  {
+                                                     "seconds":  0.05,
+                                                     "log":  "debug-before-interruption.log"
+                                                 },
+                                 "perf_script":  {
+                                                     "seconds":  1.23,
+                                                     "log":  "debug-before-interruption.log"
+                                                 },
+                                 "uia_unobserved_guard":  {
+                                                              "seconds":  0.52,
+                                                              "log":  "core-fix-debug.log"
+                                                          },
+                                 "handles":  {
+                                                 "seconds":  0.23,
+                                                 "log":  "core-fix-debug.log"
+                                             },
+                                 "uia_ime_simulation_web":  {
+                                                                "seconds":  0,
+                                                                "log":  "core-fix-uia-partial.log"
+                                                            },
+                                 "diagnostic_queue":  {
+                                                          "seconds":  0.03,
+                                                          "log":  "debug-before-interruption.log"
+                                                      },
+                                 "multiline":  {
+                                                   "seconds":  0.08,
+                                                   "log":  "debug-before-interruption.log"
+                                               },
+                                 "uia_global_material":  {
+                                                             "seconds":  2.97,
+                                                             "log":  "debug-before-interruption.log"
+                                                         },
+                                 "demo_render_compare":  {
+                                                             "seconds":  69.77,
+                                                             "log":  "debug-after-interruption.log"
+                                                         },
+                                 "perf_instrumentation":  {
+                                                              "seconds":  0.03,
+                                                              "log":  "debug-before-interruption.log"
+                                                          },
+                                 "demo_settings_smoke":  {
+                                                             "seconds":  16.45,
+                                                             "log":  "authorized-demo-settings-smoke.log"
+                                                         },
+                                 "hover":  {
+                                               "seconds":  1.44,
+                                               "log":  "debug-after-interruption.log"
+                                           },
+                                 "about_desktop":  {
+                                                       "seconds":  0.57,
+                                                       "log":  "debug-before-interruption.log"
+                                                   },
+                                 "uia_readiness_material":  {
+                                                                "seconds":  2.71,
+                                                                "log":  "core-fix-debug.log"
+                                                            },
+                                 "vertical_text":  {
+                                                       "seconds":  0.41,
+                                                       "log":  "debug-before-interruption.log"
+                                                   },
+                                 "removals":  {
+                                                  "seconds":  0.97,
+                                                  "log":  "core-fix-debug.log"
+                                              },
+                                 "outline":  {
+                                                 "seconds":  0.11,
+                                                 "log":  "debug-after-interruption.log"
+                                             },
+                                 "palette_override":  {
+                                                          "seconds":  0.06,
+                                                          "log":  "debug-after-interruption.log"
+                                                      },
+                                 "uia_web":  {
+                                                 "seconds":  1258.64,
+                                                 "log":  "debug-uia-completion.log"
+                                             },
+                                 "edit_form":  {
+                                                   "seconds":  330.99,
+                                                   "log":  "debug-before-interruption.log"
+                                               },
+                                 "diagnostics":  {
+                                                     "seconds":  0.04,
+                                                     "log":  "debug-before-interruption.log"
+                                                 },
+                                 "demo_backup_restore":  {
+                                                             "seconds":  0.3,
+                                                             "log":  "debug-after-interruption.log"
+                                                         },
+                                 "text":  {
+                                              "seconds":  0.39,
+                                              "log":  "debug-before-interruption.log"
+                                          },
+                                 "animation":  {
+                                                   "seconds":  0.05,
+                                                   "log":  "debug-before-interruption.log"
+                                               },
+                                 "uia_material":  {
+                                                      "seconds":  1228.86,
+                                                      "log":  "debug-uia-completion.log"
+                                                  },
+                                 "package_contract":  {
+                                                          "seconds":  14.64,
+                                                          "log":  "debug-before-interruption.log"
+                                                      },
+                                 "uia_demo_material":  {
+                                                           "seconds":  303.95,
+                                                           "log":  "debug-before-interruption.log"
+                                                       },
+                                 "v1_final_plan":  {
+                                                       "seconds":  0.42,
+                                                       "log":  "debug-after-interruption.log"
+                                                   }
+                             },
+                  "missing":  [
+
+                              ],
+                  "expectedCount":  73,
+                  "passCount":  73
+              },
+    "Release":  {
+                    "passes":  {
+                                   "host_native":  {
+                                                       "seconds":  264.56,
+                                                       "log":  "release-remaining.log"
+                                                   },
+                                   "focus_ring":  {
+                                                      "seconds":  0.53,
+                                                      "log":  "release-remaining.log"
+                                                  },
+                                   "renderer_failure":  {
+                                                            "seconds":  12.45,
+                                                            "log":  "release-remaining.log"
+                                                        },
+                                   "settings_close_host":  {
+                                                               "seconds":  7.04,
+                                                               "log":  "release-remaining.log"
+                                                           },
+                                   "list_page":  {
+                                                     "seconds":  0.03,
+                                                     "log":  "release-remaining.log"
+                                                 },
+                                   "justify":  {
+                                                   "seconds":  0.04,
+                                                   "log":  "release-remaining.log"
+                                               },
+                                   "about_executable_diagnostics":  {
+                                                                        "seconds":  1.1,
+                                                                        "log":  "release-remaining.log"
+                                                                    },
+                                   "text_flow":  {
+                                                     "seconds":  0.04,
+                                                     "log":  "release-remaining.log"
+                                                 },
+                                   "package_install":  {
+                                                           "seconds":  0.2,
+                                                           "log":  "release-remaining.log"
+                                                       },
+                                   "uia_global_web":  {
+                                                          "seconds":  1.28,
+                                                          "log":  "release-remaining.log"
+                                                      },
+                                   "presentation_matrix_native":  {
+                                                                      "seconds":  16.15,
+                                                                      "log":  "release-remaining.log"
+                                                                  },
+                                   "presentation_recovery":  {
+                                                                 "seconds":  0.76,
+                                                                 "log":  "release-remaining.log"
+                                                             },
+                                   "render_compare":  {
+                                                          "seconds":  5.32,
+                                                          "log":  "release-remaining.log"
+                                                      },
+                                   "third_party_notices":  {
+                                                               "seconds":  0.64,
+                                                               "log":  "release-remaining.log"
+                                                           },
+                                   "components":  {
+                                                      "seconds":  0.05,
+                                                      "log":  "release-remaining.log"
+                                                  },
+                                   "richtext":  {
+                                                    "seconds":  0.04,
+                                                    "log":  "release-remaining.log"
+                                                },
+                                   "uia_ime_simulation_material":  {
+                                                                       "seconds":  1.09,
+                                                                       "log":  "release-remaining.log"
+                                                                   },
+                                   "perf_report_only_setup":  {
+                                                                  "seconds":  0.11,
+                                                                  "log":  "release-remaining.log"
+                                                              },
+                                   "error_lines":  {
+                                                       "seconds":  0.04,
+                                                       "log":  "release-remaining.log"
+                                                   },
+                                   "core_regressions":  {
+                                                            "seconds":  0.03,
+                                                            "log":  "core-fix-release.log"
+                                                        },
+                                   "option_nodes":  {
+                                                        "seconds":  0.04,
+                                                        "log":  "core-fix-release.log"
+                                                    },
+                                   "vertical":  {
+                                                    "seconds":  0.04,
+                                                    "log":  "release-remaining.log"
+                                                },
+                                   "settings_demo":  {
+                                                         "seconds":  0.13,
+                                                         "log":  "release-remaining.log"
+                                                     },
+                                   "consumer_example":  {
+                                                            "seconds":  4.14,
+                                                            "log":  "release-remaining.log"
+                                                        },
+                                   "demo_keyboard":  {
+                                                         "seconds":  3.78,
+                                                         "log":  "release-remaining.log"
+                                                     },
+                                   "real_close_list":  {
+                                                           "seconds":  0.21,
+                                                           "log":  "release-remaining.log"
+                                                       },
+                                   "source_text":  {
+                                                       "seconds":  0.91,
+                                                       "log":  "release-remaining.log"
+                                                   },
+                                   "public_names":  {
+                                                        "seconds":  1.39,
+                                                        "log":  "release-remaining.log"
+                                                    },
+                                   "render_cpu":  {
+                                                      "seconds":  0.03,
+                                                      "log":  "release-remaining.log"
+                                                  },
+                                   "context_menu":  {
+                                                        "seconds":  0.04,
+                                                        "log":  "core-fix-release.log"
+                                                    },
+                                   "visual_studio_selection":  {
+                                                                   "seconds":  0.25,
+                                                                   "log":  "release-remaining.log"
+                                                               },
+                                   "uia_readiness_web":  {
+                                                             "seconds":  0.9,
+                                                             "log":  "core-fix-release.log"
+                                                         },
+                                   "demo_perf_list":  {
+                                                          "seconds":  0.2,
+                                                          "log":  "release-remaining.log"
+                                                      },
+                                   "layout":  {
+                                                  "seconds":  0.05,
+                                                  "log":  "core-fix-release.log"
+                                              },
+                                   "settings_persistence":  {
+                                                                "seconds":  0.79,
+                                                                "log":  "release-remaining.log"
+                                                            },
+                                   "sem01":  {
+                                                 "seconds":  0.03,
+                                                 "log":  "core-fix-release.log"
+                                             },
+                                   "about_executable_nodiag":  {
+                                                                   "seconds":  1.01,
+                                                                   "log":  "release-remaining.log"
+                                                               },
+                                   "demo_dry_run":  {
+                                                        "seconds":  0.38,
+                                                        "log":  "release-remaining.log"
+                                                    },
+                                   "snapshots":  {
+                                                     "seconds":  0.04,
+                                                     "log":  "core-fix-release.log"
+                                                 },
+                                   "word_select_icu":  {
+                                                           "seconds":  0.02,
+                                                           "log":  "release-remaining.log"
+                                                       },
+                                   "component_registry":  {
+                                                              "seconds":  0.04,
+                                                              "log":  "release-remaining.log"
+                                                          },
+                                   "render_boundary":  {
+                                                           "seconds":  0.1,
+                                                           "log":  "release-remaining.log"
+                                                       },
+                                   "navigation":  {
+                                                      "seconds":  0.03,
+                                                      "log":  "release-remaining.log"
+                                                  },
+                                   "about_package_no_json":  {
+                                                                 "seconds":  0.05,
+                                                                 "log":  "release-remaining.log"
+                                                             },
+                                   "uia_demo_web":  {
+                                                        "seconds":  12.7,
+                                                        "log":  "release-remaining.log"
+                                                    },
+                                   "outline":  {
+                                                   "seconds":  0.04,
+                                                   "log":  "release-remaining.log"
+                                               },
+                                   "word_select":  {
+                                                       "seconds":  0.03,
+                                                       "log":  "release-remaining.log"
+                                                   },
+                                   "perf_script":  {
+                                                       "seconds":  1.19,
+                                                       "log":  "release-remaining.log"
+                                                   },
+                                   "uia_unobserved_guard":  {
+                                                                "seconds":  0.51,
+                                                                "log":  "core-fix-release.log"
+                                                            },
+                                   "handles":  {
+                                                   "seconds":  0.04,
+                                                   "log":  "core-fix-release.log"
+                                               },
+                                   "uia_ime_simulation_web":  {
+                                                                  "seconds":  1.09,
+                                                                  "log":  "release-remaining.log"
+                                                              },
+                                   "diagnostic_queue":  {
+                                                            "seconds":  0.03,
+                                                            "log":  "release-remaining.log"
+                                                        },
+                                   "multiline":  {
+                                                     "seconds":  0.05,
+                                                     "log":  "release-remaining.log"
+                                                 },
+                                   "uia_global_material":  {
+                                                               "seconds":  1.34,
+                                                               "log":  "release-remaining.log"
+                                                           },
+                                   "perf_instrumentation":  {
+                                                                "seconds":  0.03,
+                                                                "log":  "release-remaining.log"
+                                                            },
+                                   "demo_settings_smoke":  {
+                                                               "seconds":  4.66,
+                                                               "log":  "release-remaining.log"
+                                                           },
+                                   "hover":  {
+                                                 "seconds":  0.09,
+                                                 "log":  "release-remaining.log"
+                                             },
+                                   "about_desktop":  {
+                                                         "seconds":  0.56,
+                                                         "log":  "release-remaining.log"
+                                                     },
+                                   "uia_readiness_material":  {
+                                                                  "seconds":  0.85,
+                                                                  "log":  "core-fix-release.log"
+                                                              },
+                                   "vertical_text":  {
+                                                         "seconds":  0.31,
+                                                         "log":  "release-remaining.log"
+                                                     },
+                                   "removals":  {
+                                                    "seconds":  0.04,
+                                                    "log":  "core-fix-release.log"
+                                                },
+                                   "demo_render_compare":  {
+                                                               "seconds":  11.78,
+                                                               "log":  "release-remaining.log"
+                                                           },
+                                   "palette_override":  {
+                                                            "seconds":  0.03,
+                                                            "log":  "release-remaining.log"
+                                                        },
+                                   "uia_web":  {
+                                                   "seconds":  63.13,
+                                                   "log":  "release-remaining.log"
+                                               },
+                                   "edit_form":  {
+                                                     "seconds":  14.4,
+                                                     "log":  "release-remaining.log"
+                                                 },
+                                   "diagnostics":  {
+                                                       "seconds":  0.03,
+                                                       "log":  "release-remaining.log"
+                                                   },
+                                   "demo_backup_restore":  {
+                                                               "seconds":  0.28,
+                                                               "log":  "release-remaining.log"
+                                                           },
+                                   "text":  {
+                                                "seconds":  0.34,
+                                                "log":  "release-remaining.log"
+                                            },
+                                   "animation":  {
+                                                     "seconds":  0.03,
+                                                     "log":  "release-remaining.log"
+                                                 },
+                                   "uia_material":  {
+                                                        "seconds":  63.35,
+                                                        "log":  "release-remaining.log"
+                                                    },
+                                   "package_contract":  {
+                                                            "seconds":  15.37,
+                                                            "log":  "release-remaining.log"
+                                                        },
+                                   "uia_demo_material":  {
+                                                             "seconds":  12.62,
+                                                             "log":  "release-remaining.log"
+                                                         },
+                                   "v1_final_plan":  {
+                                                         "seconds":  0.4,
+                                                         "log":  "release-remaining.log"
+                                                     }
+                               },
+                    "missing":  [
+
+                                ],
+                    "expectedCount":  73,
+                    "passCount":  73
+                },
+    "ReleaseCore":  {
+                        "passes":  {
+                                       "visual_studio_selection":  {
+                                                                       "seconds":  0.27,
+                                                                       "log":  "release-core.log"
+                                                                   },
+                                       "consumer_example":  {
+                                                                "seconds":  3.28,
+                                                                "log":  "release-core.log"
+                                                            },
+                                       "layout":  {
+                                                      "seconds":  0.05,
+                                                      "log":  "release-core.log"
+                                                  },
+                                       "justify":  {
+                                                       "seconds":  0.05,
+                                                       "log":  "release-core.log"
+                                                   },
+                                       "demo_perf_list":  {
+                                                              "seconds":  0.21,
+                                                              "log":  "release-core.log"
+                                                          },
+                                       "palette_override":  {
+                                                                "seconds":  0.03,
+                                                                "log":  "release-core.log"
+                                                            },
+                                       "core_regressions":  {
+                                                                "seconds":  0.03,
+                                                                "log":  "release-core.log"
+                                                            },
+                                       "package_install":  {
+                                                               "seconds":  0.14,
+                                                               "log":  "release-core.log"
+                                                           },
+                                       "text_flow":  {
+                                                         "seconds":  0.04,
+                                                         "log":  "release-core.log"
+                                                     },
+                                       "settings_persistence":  {
+                                                                    "seconds":  0.78,
+                                                                    "log":  "release-core.log"
+                                                                },
+                                       "render_boundary":  {
+                                                               "seconds":  0.09,
+                                                               "log":  "release-core.log"
+                                                           },
+                                       "word_select_icu":  {
+                                                               "seconds":  0.02,
+                                                               "log":  "release-core.log"
+                                                           },
+                                       "render_cpu":  {
+                                                          "seconds":  0.03,
+                                                          "log":  "release-core.log"
+                                                      },
+                                       "component_registry":  {
+                                                                  "seconds":  0.04,
+                                                                  "log":  "release-core.log"
+                                                              },
+                                       "list_page":  {
+                                                         "seconds":  0.03,
+                                                         "log":  "release-core.log"
+                                                     },
+                                       "perf_script":  {
+                                                           "seconds":  1.28,
+                                                           "log":  "release-core.log"
+                                                       },
+                                       "handles":  {
+                                                       "seconds":  0.04,
+                                                       "log":  "release-core.log"
+                                                   },
+                                       "option_nodes":  {
+                                                            "seconds":  0.04,
+                                                            "log":  "release-core.log"
+                                                        },
+                                       "settings_demo":  {
+                                                             "seconds":  0.13,
+                                                             "log":  "release-core.log"
+                                                         },
+                                       "removals":  {
+                                                        "seconds":  0.05,
+                                                        "log":  "release-core.log"
+                                                    },
+                                       "outline":  {
+                                                       "seconds":  0.03,
+                                                       "log":  "release-core.log"
+                                                   },
+                                       "real_close_list":  {
+                                                               "seconds":  0.23,
+                                                               "log":  "release-core.log"
+                                                           },
+                                       "richtext":  {
+                                                        "seconds":  0.03,
+                                                        "log":  "release-core.log"
+                                                    },
+                                       "components":  {
+                                                          "seconds":  0.04,
+                                                          "log":  "release-core.log"
+                                                      },
+                                       "focus_ring":  {
+                                                          "seconds":  0.56,
+                                                          "log":  "release-core.log"
+                                                      },
+                                       "third_party_notices":  {
+                                                                   "seconds":  0.67,
+                                                                   "log":  "release-core.log"
+                                                               },
+                                       "context_menu":  {
+                                                            "seconds":  0.04,
+                                                            "log":  "release-core.log"
+                                                        },
+                                       "sem01":  {
+                                                     "seconds":  0.04,
+                                                     "log":  "release-core.log"
+                                                 },
+                                       "animation":  {
+                                                         "seconds":  0.03,
+                                                         "log":  "release-core.log"
+                                                     },
+                                       "public_names":  {
+                                                            "seconds":  1.38,
+                                                            "log":  "release-core.log"
+                                                        },
+                                       "v1_final_plan":  {
+                                                             "seconds":  0.43,
+                                                             "log":  "release-core.log"
+                                                         },
+                                       "source_text":  {
+                                                           "seconds":  0.92,
+                                                           "log":  "release-core.log"
+                                                       },
+                                       "about_package_no_json":  {
+                                                                     "seconds":  0.04,
+                                                                     "log":  "release-core.log"
+                                                                 },
+                                       "snapshots":  {
+                                                         "seconds":  0.04,
+                                                         "log":  "release-core.log"
+                                                     },
+                                       "vertical":  {
+                                                        "seconds":  0.04,
+                                                        "log":  "release-core.log"
+                                                    },
+                                       "hover":  {
+                                                     "seconds":  0.08,
+                                                     "log":  "release-core.log"
+                                                 },
+                                       "perf_instrumentation":  {
+                                                                    "seconds":  0.03,
+                                                                    "log":  "release-core.log"
+                                                                },
+                                       "edit_form":  {
+                                                         "seconds":  18.27,
+                                                         "log":  "release-core.log"
+                                                     },
+                                       "error_lines":  {
+                                                           "seconds":  0.04,
+                                                           "log":  "release-core.log"
+                                                       },
+                                       "package_contract":  {
+                                                                "seconds":  15.35,
+                                                                "log":  "release-core.log"
+                                                            },
+                                       "word_select":  {
+                                                           "seconds":  0.03,
+                                                           "log":  "release-core.log"
+                                                       },
+                                       "multiline":  {
+                                                         "seconds":  0.04,
+                                                         "log":  "release-core.log"
+                                                     },
+                                       "navigation":  {
+                                                          "seconds":  0.03,
+                                                          "log":  "release-core.log"
+                                                      }
+                                   },
+                        "missing":  [
+
+                                    ],
+                        "expectedCount":  43,
+                        "passCount":  43
+                    }
+}

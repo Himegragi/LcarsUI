@@ -1,0 +1,12 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+
+[HANDLER_OUTPUT] 
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+
+    Start 73: demo_settings_smoke
+1/1 Test #73: demo_settings_smoke ..............   Passed   16.45 sec
+
+100% tests passed, 0 tests failed out of 1
+
+Total Test time (real) =  16.46 sec

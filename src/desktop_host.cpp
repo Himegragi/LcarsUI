@@ -244,7 +244,7 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
     }
     try {
         if (hooks_ && !hooks_->startupResourceError.empty()) throw std::runtime_error(hooks_->startupResourceError);
-        uia_ = std::make_unique<UiaBridge>(ui_, window_, [this]() -> const Frame& {
+        if (options.platformAccessibilityEnabled) uia_ = std::make_unique<UiaBridge>(ui_, window_, [this]() -> const Frame& {
             RECT client{}; GetClientRect(window_, &client);
             if (client.right > 0 && client.bottom > 0) frame_ = arrange(client.right, client.bottom, scale());
             return frame_;

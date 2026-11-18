@@ -1,0 +1,3 @@
+Debug remaining exit=0
+Release remaining exit=0
+Debug fixture completion exit=0; selection=^(uia_web|uia_material)$

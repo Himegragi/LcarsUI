@@ -32,7 +32,13 @@ public:
 
 class StructureEvents final : public UiaEventHandler<StructureEvents, IUIAutomationStructureChangedEventHandler> {
 public:
-    HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement*, StructureChangeType type, SAFEARRAY*) override {
+    bool isoduoOnly = false;
+    HRESULT STDMETHODCALLTYPE HandleStructureChangedEvent(IUIAutomationElement* sender, StructureChangeType type, SAFEARRAY*) override {
+        if (isoduoOnly) {
+            BSTR id = nullptr;
+            const bool matches = sender && SUCCEEDED(sender->get_CurrentAutomationId(&id)) && (!id || !*id || std::wstring(id).starts_with(L"form."));
+            SysFreeString(id); if (!matches) return S_OK;
+        }
         if (type == StructureChangeType_ChildrenInvalidated) SetEvent(received); return S_OK;
     }
 };
@@ -288,6 +294,105 @@ bool rendererFailureCases(const wchar_t* host, const wchar_t* appearance) {
     std::cout << "UIA18 renderer lifecycle: " << (handled && unhandled ? "PASS" : "FAIL") << " handled=" << handled << " unhandled=" << unhandled << '\n';
     return handled && unhandled;
 }
+// The settings host is nonactivating. UIA focus only changes framework focus; no input is injected.
+// A successful focus must leave its existing ValuePattern immediately available (no settle sleep).
+bool readinessCase(const wchar_t* host, const wchar_t* appearance) {
+    std::wstring command = L"\"" + std::wstring(host) + L"\" " + appearance;
+    STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+    if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) return false;
+    CloseHandle(process.hThread);
+    Search search{process.dwProcessId};
+    for (int i = 0; i < 100 && !search.window; ++i) { EnumWindows(findWindow, reinterpret_cast<LPARAM>(&search)); Sleep(100); }
+    IUIAutomation* automation = nullptr; IUIAutomationElement* root = nullptr; IUIAutomationElement* field = nullptr;
+    bool ok = search.window && SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&automation))) &&
+        SUCCEEDED(automation->ElementFromHandle(search.window, &root)) && (field = findId(automation, root, L"general.name"));
+    for (int i = 0; ok && i < 3; ++i) {
+        auto focusStart = GetTickCount64();
+        auto focus = field->SetFocus();
+        std::cout << "Focus ms=" << GetTickCount64()-focusStart << "\n";
+        const auto start = GetTickCount64();
+        IUIAutomationValuePattern* value = nullptr;
+        const auto pattern = field->GetCurrentPatternAs(UIA_ValuePatternId, IID_PPV_ARGS(&value));
+        std::cout << "Immediate ValuePattern after focus: focus=0x" << std::hex << focus << " pattern=0x" << pattern << std::dec << " ms=" << GetTickCount64() - start << '\n';
+        ok = SUCCEEDED(focus) && SUCCEEDED(pattern) && value;
+        if (value) value->Release();
+    }
+    if (field) field->Release(); if (root) root->Release(); if (automation) automation->Release();
+    if (search.window) PostMessageW(search.window, WM_CLOSE, 0, 0);
+    if (WaitForSingleObject(process.hProcess, 5000) == WAIT_TIMEOUT) { TerminateProcess(process.hProcess, 1); ok = false; }
+    CloseHandle(process.hProcess); return ok;
+}
+bool accessibilityCase(const wchar_t* host, const wchar_t* appearance) {
+    bool pass = true;
+    for (const auto mode : {L"", L"--accessibility-enabled", L"--accessibility-disabled", L"--accessibility-mixed"}) {
+        const bool enabled = std::wstring(mode) != L"--accessibility-disabled";
+        std::wstring command = L"\"" + std::wstring(host) + L"\" " + appearance + L" " + mode;
+        STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
+        if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) return false;
+        CloseHandle(process.hThread);
+        Search search{process.dwProcessId};
+        for (int i=0; i<100 && !search.window; ++i) { EnumWindows(findWindow, reinterpret_cast<LPARAM>(&search)); Sleep(50); }
+        IUIAutomation* uia = nullptr; IUIAutomationElement* root = nullptr;
+        bool ok = search.window && SUCCEEDED(CoCreateInstance(CLSID_CUIAutomation, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&uia))) && SUCCEEDED(uia->ElementFromHandle(search.window, &root));
+        if (ok) {
+            if (std::wstring(mode) == L"--accessibility-mixed" && SendMessageW(search.window, WM_APP+81, 0, 0) == reinterpret_cast<LRESULT>(search.window)) {
+                // EnumWindows can discover the companion first; its owner is the other window in this process.
+                HWND next = GetWindow(search.window, GW_HWNDNEXT);
+                while (next) { DWORD pid=0; GetWindowThreadProcessId(next, &pid); if (pid == process.dwProcessId && IsWindowVisible(next)) break; next=GetWindow(next, GW_HWNDNEXT); }
+                if (next) { root->Release(); root=nullptr; search.window=next; ok &= SUCCEEDED(uia->ElementFromHandle(next, &root)); }
+            }
+            auto field = findId(uia, root, L"form.name");
+            ok = enabled ? field != nullptr : field == nullptr;
+            if (field) field->Release();
+            auto events = new PropertyEvents();
+            events->expected = UIA_ValueValuePropertyId; events->stringValue = true; events->expectedString = L"UIA baseline";
+            PROPERTYID property = UIA_ValueValuePropertyId;
+            if (enabled) ok &= SUCCEEDED(invokeId(uia, root, L"fixture.name_write"));
+            else ok &= FAILED(invokeId(uia, root, L"fixture.name_write"));
+            ok &= SUCCEEDED(uia->AddPropertyChangedEventHandlerNativeArray(root, TreeScope_Subtree, nullptr, events, &property, 1));
+            ok &= SendMessageW(search.window, WM_APP+80, 31, 0) == 0;
+            ok &= WaitForSingleObject(events->received, enabled ? 5000 : 500) == (enabled ? WAIT_OBJECT_0 : WAIT_TIMEOUT);
+            auto focus = new FocusEvents();
+            auto structure = new StructureEvents(); structure->isoduoOnly = true;
+            ok &= SUCCEEDED(uia->AddFocusChangedEventHandler(nullptr, focus));
+            ok &= SUCCEEDED(uia->AddStructureChangedEventHandler(root, TreeScope_Subtree, nullptr, structure));
+            ok &= SendMessageW(search.window, WM_APP+80, 20, 0) == 0;
+            ok &= WaitForSingleObject(focus->applyReceived, enabled ? 5000 : 500) == (enabled ? WAIT_OBJECT_0 : WAIT_TIMEOUT);
+            ok &= SendMessageW(search.window, WM_APP+80, 2, 0) == 0;
+            ok &= WaitForSingleObject(structure->received, enabled ? 5000 : 500) == (enabled ? WAIT_OBJECT_0 : WAIT_TIMEOUT);
+            if (std::wstring(mode) == L"--accessibility-mixed") {
+                HWND other = nullptr;
+                for (int i=0; i<100 && !other; ++i) { other = reinterpret_cast<HWND>(SendMessageW(search.window, WM_APP+81, 0, 0)); if (!other) Sleep(50); }
+                IUIAutomationElement* disabled = nullptr;
+                ok &= other && SUCCEEDED(uia->ElementFromHandle(other, &disabled));
+                if (disabled) {
+                    auto missing = findId(uia, disabled, L"form.name"); ok &= !missing; if (missing) missing->Release();
+                    ok &= FAILED(invokeId(uia, disabled, L"fixture.name_write"));
+                    Sleep(1000);
+                    ResetEvent(events->received); ResetEvent(focus->applyReceived); ResetEvent(structure->received);
+                    ok &= SUCCEEDED(uia->AddPropertyChangedEventHandlerNativeArray(disabled, TreeScope_Subtree, nullptr, events, &property, 1));
+                    ok &= SUCCEEDED(uia->AddStructureChangedEventHandler(disabled, TreeScope_Subtree, nullptr, structure));
+                    ok &= SendMessageW(other, WM_APP+80, 31, 0) == 0;
+                    ok &= SendMessageW(other, WM_APP+82, 0, 0) == 1;
+                    ok &= SendMessageW(other, WM_APP+80, 20, 0) == 0;
+                    ok &= SendMessageW(other, WM_APP+82, 1, 0) == 1;
+                    ok &= SendMessageW(other, WM_APP+80, 2, 0) == 0;
+                    ok &= SendMessageW(other, WM_APP+82, 2, 0) == 1;
+                    ok &= WaitForSingleObject(events->received, 500) == WAIT_TIMEOUT && WaitForSingleObject(focus->applyReceived, 500) == WAIT_TIMEOUT && WaitForSingleObject(structure->received, 500) == WAIT_TIMEOUT;
+                    disabled->Release();
+                }
+                if (other) PostMessageW(other, WM_CLOSE, 0, 0);
+            }
+            uia->RemoveAllEventHandlers(); events->Release(); focus->Release(); structure->Release();
+        }
+        if (root) root->Release(); if (uia) uia->Release();
+        if (search.window) PostMessageW(search.window, WM_CLOSE, 0, 0);
+        if (WaitForSingleObject(process.hProcess, 5000) != WAIT_OBJECT_0) { TerminateProcess(process.hProcess, 1); ok = false; }
+        CloseHandle(process.hProcess);
+        std::wcout << L"Accessibility " << mode << L": " << (ok ? L"PASS" : L"FAIL") << L'\n'; pass &= ok;
+    }
+    return pass;
+}
 int wmain(int argc, wchar_t** argv) {
     std::cout << std::unitbuf;
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
@@ -296,7 +401,7 @@ int wmain(int argc, wchar_t** argv) {
         bool ok = imeProbe(reinterpret_cast<HWND>(static_cast<std::uintptr_t>(std::stoull(argv[2])))); CoUninitialize(); return ok ? 0 : 1;
     }
     if ((argc != 3 && argc != 4) || FAILED(CoInitializeEx(nullptr, COINIT_MULTITHREADED))) return 1;
-    if (argc == 4) { const std::wstring mode(argv[3]); bool ok = mode == L"--uia18" ? rendererFailureCases(argv[1], argv[2]) : mode == L"--uia-dpi" ? dpiCase(argv[1], argv[2]) : mode == L"--preflight" ? preflight(argv[1], argv[2]) : mode == L"--ime-simulation" ? imeSimulation(argv[1], argv[2]) : false; CoUninitialize(); return ok ? 0 : 1; }
+    if (argc == 4) { const std::wstring mode(argv[3]); bool ok = mode == L"--readiness" ? readinessCase(argv[1], argv[2]) : mode == L"--accessibility" ? accessibilityCase(argv[1], argv[2]) : mode == L"--uia18" ? rendererFailureCases(argv[1], argv[2]) : mode == L"--uia-dpi" ? dpiCase(argv[1], argv[2]) : mode == L"--preflight" ? preflight(argv[1], argv[2]) : mode == L"--ime-simulation" ? imeSimulation(argv[1], argv[2]) : false; CoUninitialize(); return ok ? 0 : 1; }
     std::wstring command = L"\"" + std::wstring(argv[1]) + L"\" " + argv[2];
     STARTUPINFOW startup{sizeof(startup)}; PROCESS_INFORMATION process{};
     if (!CreateProcessW(nullptr, command.data(), nullptr, nullptr, FALSE, 0, nullptr, nullptr, &startup, &process)) return 1;

@@ -27,3 +27,15 @@ closed dropdown options are not keyboard focusable. The core `option_nodes` matr
 same contract, using the shared focus predicate in `option_properties.hpp`; `focus_ring` covers disabled radio
 selections and navigation candidates in both appearances. Run `verify-idle.ps1 -Only uia,axe,demo-uia` on an idle
 author machine after rebuilding Release. Do not run WSL during those desktop checks.
+
+## Platform accessibility configuration (#109)
+
+Desktop-host initialization changes require these Windows platform runs on an idle desktop:
+
+```powershell
+./build.ps1 -Configuration Release -Tests '^(desktop_accessibility|uia_accessibility_(web|material)|uia_(web|material))$'
+```
+
+`desktop_accessibility` checks disabled Handle/semantic operations, focus/property/structure events through the host pump, keyboard and pointer input, and per-host provider exposure. Each `uia_accessibility` run exercises default-on, explicit-on, disabled, and simultaneous enabled/disabled hosts through an external UIA client. Enabled cases provide query/action/event controls; disabled cases check known Isoduo components and their property/focus/structure events. Native system window information and events are allowed. The existing `uia_web` and `uia_material` runs guard unrelated UIA behavior and localized expectations.
+
+These runs validate the Windows implementation; they do not establish support for another platform, runtime switching, or absence of the native window from OS accessibility tools. CI trial status and additional manual IME/DPI checks remain as documented above.

@@ -1,0 +1,100 @@
+Start testing: Nov 17 19:19 Taipei Standard Time
+----------------------------------------------------------
+38/73 Testing: uia_readiness_web
+38/73 Test: uia_readiness_web
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_client.exe" "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_demo_host.exe" "web" "--readiness"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+"uia_readiness_web" start time: Nov 17 19:19 Taipei Standard Time
+Output:
+----------------------------------------------------------
+Focus ms=453
+Immediate ValuePattern after focus: focus=0x0 pattern=0x0 ms=141
+Focus ms=453
+Immediate ValuePattern after focus: focus=0x0 pattern=0x0 ms=62
+Focus ms=47
+Immediate ValuePattern after focus: focus=0x0 pattern=0x0 ms=16
+<end of output>
+Test time =   2.68 sec
+----------------------------------------------------------
+Test Passed.
+"uia_readiness_web" end time: Nov 17 19:19 Taipei Standard Time
+"uia_readiness_web" time elapsed: 00:00:02
+----------------------------------------------------------
+
+40/73 Testing: uia_web
+40/73 Test: uia_web
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_client.exe" "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_host.exe" "web"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+"uia_web" start time: Nov 17 19:19 Taipei Standard Time
+Output:
+----------------------------------------------------------
+UIA native frame root_bounds=1 close_bounds=1
+UIA23 option focus: PASS
+UIA14 field focus: PASS
+UIA10 cached edit: PASS
+UIA10 structure event: PASS
+UIA09 option HelpText empty: PASS
+UIA09 disabled row not focusable: PASS
+UIA14 list focus: PASS
+<end of output>
+Test time = 180.03 sec
+----------------------------------------------------------
+Test Failed.
+"uia_web" end time: Nov 17 19:22 Taipei Standard Time
+"uia_web" time elapsed: 00:03:00
+----------------------------------------------------------
+
+41/73 Testing: uia_ime_simulation_web
+41/73 Test: uia_ime_simulation_web
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_client.exe" "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_host.exe" "web" "--ime-simulation"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+"uia_ime_simulation_web" start time: Nov 17 19:22 Taipei Standard Time
+Output:
+----------------------------------------------------------
+UIA21 cross-process value: PASS set=0x80131509
+UIA21 simulated composition: PASS
+<end of output>
+Test time =   9.35 sec
+----------------------------------------------------------
+Test Passed.
+"uia_ime_simulation_web" end time: Nov 17 19:23 Taipei Standard Time
+"uia_ime_simulation_web" time elapsed: 00:00:09
+----------------------------------------------------------
+
+42/73 Testing: uia_global_web
+42/73 Test: uia_global_web
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_global_client.exe" "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_host.exe" "web"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+"uia_global_web" start time: Nov 17 19:23 Taipei Standard Time
+Output:
+----------------------------------------------------------
+Desktop-wide listener before host creation: PASS subscribe=0x0 sent=1 root_requests_before_toggle=2
+<end of output>
+Test time =   2.84 sec
+----------------------------------------------------------
+Test Passed.
+"uia_global_web" end time: Nov 17 19:23 Taipei Standard Time
+"uia_global_web" time elapsed: 00:00:02
+----------------------------------------------------------
+
+43/73 Testing: uia_readiness_material
+43/73 Test: uia_readiness_material
+Command: "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_client.exe" "C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug/lcars_uia_demo_host.exe" "material" "--readiness"
+Directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Debug
+"uia_readiness_material" start time: Nov 17 19:23 Taipei Standard Time
+Output:
+----------------------------------------------------------
+Focus ms=453
+Immediate ValuePattern after focus: focus=0x0 pattern=0x0 ms=156
+Focus ms=438
+Immediate ValuePattern after focus: focus=0x0 pattern=0x0 ms=0
+Focus ms=125
+Immediate ValuePattern after focus: focus=0x0 pattern=0x0 ms=0
+<end of output>
+Test time =   2.70 sec
+----------------------------------------------------------
+Test Passed.
+"uia_readiness_material" end time: Nov 17 19:23 Taipei Standard Time
+"uia_readiness_material" time elapsed: 00:00:02
+----------------------------------------------------------
+

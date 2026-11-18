@@ -27,6 +27,11 @@ struct DesktopConfig {
     DebugContext debugContext = DebugContext::buildDefault;
     std::function<void(Desktop&, const RendererFailure&)> onRendererFailed;
     std::function<CloseDecision(Desktop&)> onCloseRequested;
+    // Fixed per host at creation. Disabling prevents assistive tools from reading or
+    // operating Isoduo components through platform accessibility (Windows UIA).
+    // Semantic queries, operations and events remain available; native window
+    // information supplied by the operating system may still be exposed.
+    bool platformAccessibilityEnabled = true;
 };
 struct CreateResult;
 struct RunResult { Status status = Status::ok; std::optional<RendererFailure> failure; std::optional<StartupFailure> startup; };

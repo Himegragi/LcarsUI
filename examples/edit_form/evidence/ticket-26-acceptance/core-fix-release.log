@@ -1,0 +1,32 @@
+[OUTPUT] 
+Internal ctest changing into directory: C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Release
+
+[HANDLER_OUTPUT] 
+Test project C:/Users/user/.t3/worktrees/LcarsUI/t3-6586e5ee-6be5a2eeeed9b7de/build/Release
+
+      Start  7: sem01
+ 1/11 Test  #7: sem01 ............................   Passed    0.03 sec
+      Start  9: core_regressions
+ 2/11 Test  #9: core_regressions .................   Passed    0.03 sec
+      Start 11: layout
+ 3/11 Test #11: layout ...........................   Passed    0.05 sec
+      Start 18: context_menu
+ 4/11 Test #18: context_menu .....................   Passed    0.04 sec
+      Start 22: handles
+ 5/11 Test #22: handles ..........................   Passed    0.04 sec
+      Start 23: snapshots
+ 6/11 Test #23: snapshots ........................   Passed    0.04 sec
+      Start 24: option_nodes
+ 7/11 Test #24: option_nodes .....................   Passed    0.04 sec
+      Start 25: removals
+ 8/11 Test #25: removals .........................   Passed    0.04 sec
+      Start 37: uia_unobserved_guard
+ 9/11 Test #37: uia_unobserved_guard .............   Passed    0.51 sec
+      Start 38: uia_readiness_web
+10/11 Test #38: uia_readiness_web ................   Passed    0.90 sec
+      Start 43: uia_readiness_material
+11/11 Test #43: uia_readiness_material ...........   Passed    0.85 sec
+
+100% tests passed, 0 tests failed out of 11
+
+Total Test time (real) =   2.60 sec
