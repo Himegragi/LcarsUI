@@ -326,7 +326,7 @@ void pointerPositionsMapToLineAndOffset() {
 void aWideStyledStopAfterAPreferredBreakStillFits() {
     FakeMeasure measure;
     constexpr std::u16string_view text = u" bbbc\n\U0001f600\n";
-    const std::vector<StyleSpan> spans{{.start = 4, .length = 1, .bold = true}};
+    const std::vector<StyleSpan> spans{{.start = 4, .length = 1, .bold = true, .color = {}}};
     const auto lines = wrapLines(measure, text, 16, 32, &spans);
     check(lines.size() == 5, "The preferred space break leaves three narrow letters and a wide letter on separate lines");
     check(lines[0].begin == 0 && lines[0].end == 1 && lines[0].soft && lines[0].run.width == 8 &&

@@ -11,7 +11,7 @@ using namespace isoduo;
 using test::check;
 
 namespace {
-constexpr int width = 580, height = 620;
+constexpr int width = 580, height = 760;
 constexpr auto singleText = u"A\U0001f600B";
 constexpr auto multiText = u"alpha beta\nsecond\nthird row\nIsoduo 台灣 office i\u0301 fi 一二三四五六七八九十\n"
                           u"first long wrapped line has interleaved 漢字 and office ligatures followed by a second "
@@ -54,6 +54,9 @@ struct Fixture {
             check(bool(multi.setWordSegmentation(modes[(current - modes.begin() + 1) % modes.size()])), "Change word mode");
         });
         bind("flow", u"Flow (Ctrl+P)", {.ctrl = true, .letter = u'P'}, [&] { flow((phase + 1) % 7); });
+        bind("rows", u"Visible lines (Ctrl+L)", {.ctrl = true, .letter = u'L'}, [&] {
+            check(bool(multi.setVisibleLines(*multi.visibleLines() == 3 ? 2 : 3)), "Change the viewport size");
+        });
     }
 
     static std::function<void()> subscribe(std::function<void()>) { return [] {}; }
@@ -117,6 +120,8 @@ struct Fixture {
         check(multi.wordAt(1).value == word && multi.wordSegmentationInUse().value == words.wordSegmentationInUse,
               "Typed and semantic word queries agree");
         check(tree.get({"rich"})->styles == rich.richValue()->spans, "Typed and semantic styles agree");
+        check(words.scroll->visibleLines == multi.visibleLines().value && words.scroll->firstLine == multi.scrollLine().value,
+              "Typed and semantic viewports agree");
         std::cout << "Report " << reports << ' ' << shortcuts << ' ' << saves << ' ' << phase << ' '
                   << static_cast<int>(*words.wordSegmentation) << ' ' << static_cast<int>(*words.wordSegmentationInUse)
                   << ' ' << word.begin << ' ' << word.end << ' ' << rich.richValue()->spans.size()
@@ -128,8 +133,10 @@ void compare(Fixture& fixture, Desktop& desktop) {
     check(fixture.rich.focus() && fixture.rich.select(0, 2), "Select two UTF-16 units in the styled run");
     for (unsigned phase = 0; phase < 7; ++phase) {
         fixture.flow(phase);
+        const float scale = phase == 6 ? 1.25f : 1.f;
         Frame frame;
-        const auto result = detail::LinuxDesktopTest::compareFrame(desktop, width, height, 1.f, frame);
+        const auto result = detail::LinuxDesktopTest::compareFrame(
+            desktop, static_cast<int>(width * scale), static_cast<int>(height * scale), scale, frame);
         const auto* placement = frame.find(fixture.rich);
         check(placement && test::caretMatchesHit(frame, fixture.rich, 0, 2), "The styled caret round-trips through hit testing");
         check(result && test::hasPaintRole(result, "rich", detail::PaintRole::caret) &&
@@ -142,9 +149,24 @@ void compare(Fixture& fixture, Desktop& desktop) {
         });
         check(region != result.regions.end() && region->bounds.x == caret.x && region->bounds.y == caret.y,
               "The painted caret starts at the position used for hit testing");
-        std::cout << "PASS flow " << phase << " caret " << caret.x << ' ' << caret.y << " different pixels "
+        std::cout << "PASS flow " << phase << " scale " << scale << " caret " << caret.x << ' ' << caret.y << " different pixels "
                   << result.comparison.differentPixels << std::endl;
     }
+    fixture.flow(0);
+    check(bool(fixture.rich.select(0, 0)), "Start a drag from the first UTF-16 offset");
+    auto frame = detail::LinuxDesktopTest::layoutFrame(desktop, width, height, 1.f);
+    const auto& view = frame.find(fixture.rich)->view;
+    check(view.lines.front().soft, "The first display line ends at a soft wrap");
+    const unsigned wrapPoint = view.lines.front().end;
+    check(frame.selectTo(fixture.ui, fixture.rich, view.text.x + view.text.w - 1, view.text.y + 1),
+          "Extend the selection to the end of the first line");
+    frame = detail::LinuxDesktopTest::layoutFrame(desktop, width, height, 1.f);
+    check(test::caretMatchesHit(frame, fixture.rich, 0, wrapPoint), "The upstream caret stays on the first row");
+    check(fixture.rich.select(wrapPoint, wrapPoint) && fixture.rich.setScrollLine(1), "Scroll the downstream row to the top");
+    frame = detail::LinuxDesktopTest::layoutFrame(desktop, width, height, 1.f);
+    check(frame.find(fixture.rich)->view.first == 1 && test::caretMatchesHit(frame, fixture.rich, 1, wrapPoint),
+          "The downstream caret is hit at the start of the scrolled row");
+    std::cout << "PASS upstream and scrolled downstream wrap boundary at UTF-16 offset " << wrapPoint << std::endl;
 }
 }
 

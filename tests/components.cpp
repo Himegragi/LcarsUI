@@ -430,7 +430,7 @@ void publicValidationAndPasteNormalizationAgree() {
     const std::u16string invalid{static_cast<char16_t>(0xdc00)};
     check(!validSingleLine(pasteAsSingleLine(invalid)) && !validMultiLine(pasteAsMultiLine(invalid)),
           "Line-break normalization does not make malformed text valid");
-    check(normalizeRichText({multiline, {{.start = 3, .length = 1, .bold = true}}}).status == Status::invalidValue,
+    check(normalizeRichText({multiline, {{.start = 3, .length = 1, .bold = true, .color = {}}}}).status == Status::invalidValue,
           "A rich span cannot start between the halves of the surrogate pair");
 }
 
