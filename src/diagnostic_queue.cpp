@@ -48,13 +48,15 @@ void DiagnosticQueue::drain() {
 void enqueueFontDiagnostics(DiagnosticQueue& queue,long catalogError,const FontResolution& resolution) {
 #ifdef _WIN32
     constexpr auto backend = u"DirectWrite";
+    constexpr auto catalogMessage = "DirectWrite system font catalog unavailable";
 #else
     constexpr auto backend = u"Fontconfig";
+    constexpr auto catalogMessage = "Fontconfig system font catalog unavailable";
 #endif
     if(catalogError<0) {
         RenderDiagnostic event; event.backend=backend; event.code="font.catalog_unavailable";
         event.severity=DiagnosticSeverity::error; event.kind=DiagnosticKind::resource;
-        event.nativeCode=catalogError; event.nativeMessage="System font catalog unavailable";
+        event.nativeCode=catalogError; event.nativeMessage=catalogMessage;
         queue.push(std::move(event));
     }
     if(!resolution.requestedAvailable) {

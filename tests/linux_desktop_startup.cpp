@@ -26,6 +26,7 @@ void noDisplay() {
     unsetenv("WAYLAND_DISPLAY");
     unsetenv("WAYLAND_SOCKET");
     unsetenv("XDG_SESSION_TYPE");
+    unsetenv("XDG_RUNTIME_DIR");
     expectWindowFailure(DesktopBackend::automatic, DesktopBackend::automatic);
     expectWindowFailure(DesktopBackend::wayland, DesktopBackend::wayland);
     expectWindowFailure(DesktopBackend::x11, DesktopBackend::x11);
