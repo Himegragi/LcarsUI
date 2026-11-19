@@ -688,6 +688,7 @@ void v04CompactCheckboxAppliesDensity() {
     form.handles.tabs.activate({"v04"});
     check(bool(form.handles.compact.toggle()), "Compact checkbox toggles");
     check(form.ui.presentation().density == Density::compact, "Checkbox applies compact density");
+    check(!form.handles.compact.describe()->sourceConflict, "The checkbox's own write does not show an external conflict");
     check(bool(form.handles.compact.toggle()), "Compact checkbox toggles back");
     check(form.ui.presentation().density == Density::standard, "Checkbox restores standard density");
 }
@@ -883,6 +884,8 @@ void ps07ListAnchorSurvivesSizeChange() {
     check(list && test::inside(list->options[49], list->clip) && page.selection() == OptionValue{"T050"}, "PS07 focused item remains visible");
     settings.textSize = 12; form.ui.setPresentation(settings); frame = draw();
     h.list.enable(false); h.list.enable(true);
+    check(bool(h.hundred.focus()), "PS07 another component has focus while scrolling the list");
+    frame = draw();
     list = frame.find(h.list); auto region = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const ScrollRegion& r) { return r.state == &page.listScroll; });
     page.listScroll.offset += list->options[29].y - region->viewport.y;
     frame = draw(); list = frame.find(h.list);

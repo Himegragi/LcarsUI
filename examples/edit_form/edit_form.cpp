@@ -261,6 +261,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         bindAction(handles.resetV04, [this] {
             auto result = ui.setPresentation({}); if (!result) return result;
             if (fontChanged_) fontChanged_(); if (textSizeChanged_) textSizeChanged_(); if (darkChanged_) darkChanged_();
+            if (compactChanged_) compactChanged_();
             handles.font.useLatest(); handles.textSize.useLatest(); handles.dark.useLatest(); handles.compact.useLatest(); return Result{};
         });
         handles.textSize = ui.addSlider({.id = prefix + "v04.text_size", .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
@@ -271,10 +272,13 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             auto result = ui.setPresentation(settings); if (result && darkChanged_) darkChanged_(); return result;
         });
         handles.compact = ui.addCheckbox({.id = prefix + "v04.compact", .label = u"\u7dfb\u6e4a"}).value.value();
-        handles.compact.connectSource({[this] { return ui.presentation().density == Density::compact; }, [](std::function<void()>) { return [] {}; }});
+        handles.compact.connectSource({[this] { return ui.presentation().density == Density::compact; },
+            [this](std::function<void()> changed) { compactChanged_ = std::move(changed); return [this] { compactChanged_ = {}; }; }});
         handles.compact.connectImmediate([this](const Change<CheckboxHandle>& change) {
             auto settings = ui.presentation(); settings.density = change.value ? Density::compact : Density::standard;
-            return ui.setPresentation(settings);
+            auto result = ui.setPresentation(settings);
+            if (result && compactChanged_) compactChanged_();
+            return result;
         });
         handles.preview = ui.addTextField({.id = prefix + "v04.preview", .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connectSource({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
