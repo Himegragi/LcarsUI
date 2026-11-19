@@ -1,5 +1,6 @@
 #include "linux_window.hpp"
 #include "linux_wayland_clipboard.hpp"
+#include "linux_wayland_ime.hpp"
 #include "renderer_opengl_egl.hpp"
 #include "renderer.hpp"
 #include "utf.hpp"
@@ -27,6 +28,7 @@ public:
         if (!display_) throw StartupError{{StartupFailureKind::window, {}, {}, u"Unable to connect to the Wayland display"}};
         try {
             clipboard_ = std::make_unique<WaylandClipboard>(display_, [this](auto result) { clipboardDelivered(std::move(result)); });
+            ime_ = std::make_unique<WaylandIme>([this](auto edit) { imeEdited(std::move(edit)); });
             width_ = pendingWidth_ = config.width;
             height_ = pendingHeight_ = config.height;
             registry_ = wl_display_get_registry(display_);
@@ -43,6 +45,7 @@ public:
                 throw StartupError{{StartupFailureKind::window, {}, {}, u"Wayland compositor or xdg-shell unavailable"}};
             surface_ = wl_compositor_create_surface(compositor_);
             if (!surface_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate the Wayland surface"}};
+            ime_->surface(surface_);
             wl_surface_add_listener(surface_, &surfaceListener_, this);
             shellSurface_ = xdg_wm_base_get_xdg_surface(shell_, surface_);
             if (!shellSurface_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate xdg_surface"}};
@@ -70,6 +73,9 @@ public:
     EglWindow& renderWindow() override { return *egl_; }
     AsyncClipboard& clipboard() override { return *clipboard_; }
     void clipboardSerial(std::uint32_t serial) override { clipboard_->serial(serial); }
+    void updateIme(const std::optional<LinuxImeState>& state, bool externalChange) override {
+        ime_->update(state, scale_, externalChange);
+    }
     void title(std::string_view value) override { xdg_toplevel_set_title(toplevel_, std::string(value).c_str()); }
     bool prepareFrame() override { return !frameCallback_; }
     void requestFrame() override {
@@ -115,6 +121,7 @@ private:
     static WaylandWindow& self(void* data) { return *static_cast<WaylandWindow*>(data); }
 
     void release() {
+        ime_.reset();
         clipboard_.reset();
         egl_.reset();
         if (eglWindow_) wl_egl_window_destroy(eglWindow_);
@@ -241,6 +248,7 @@ private:
     wl_egl_window* eglWindow_ = nullptr;
     std::unique_ptr<EglWindow> egl_;
     std::unique_ptr<WaylandClipboard> clipboard_;
+    std::unique_ptr<WaylandIme> ime_;
     NativeWindow reference_{};
     int pendingWidth_ = 0, pendingHeight_ = 0, preferredScale_ = 0, x_ = 0, y_ = 0;
     bool configured_ = false;
@@ -256,10 +264,13 @@ const wl_registry_listener WaylandWindow::registryListener_{
                 xdg_wm_base_add_listener(w.shell_, &shellListener_, &w);
             } else if (!std::strcmp(interface, wl_data_device_manager_interface.name)) {
                 w.clipboard_->bind(registry, id, version);
+            } else if (!std::strcmp(interface, "zwp_text_input_manager_v3")) {
+                w.ime_->bind(registry, id);
             } else if (!std::strcmp(interface, wl_seat_interface.name) && version >= 5 && !w.seat_) {
                 w.seat_ = static_cast<wl_seat*>(wl_registry_bind(registry, id, &wl_seat_interface, 5));
                 wl_seat_add_listener(w.seat_, &seatListener_, &w);
                 w.clipboard_->seat(w.seat_);
+                w.ime_->seat(w.seat_);
             } else if (!std::strcmp(interface, wl_output_interface.name) && version >= 2) {
                 auto* output = static_cast<wl_output*>(wl_registry_bind(registry, id, &wl_output_interface, 2));
                 w.outputs_.emplace(id, Output{output});

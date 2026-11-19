@@ -11,8 +11,16 @@ add_custom_command(OUTPUT "${shell_header}" "${shell_source}"
   COMMAND "${wayland_scanner}" client-header "${shell_xml}" "${shell_header}"
   COMMAND "${wayland_scanner}" private-code "${shell_xml}" "${shell_source}"
   DEPENDS "${shell_xml}" VERBATIM)
+set(text_input_xml "${wayland_protocols_dir}/unstable/text-input/text-input-unstable-v3.xml")
+set(text_input_header "${PROJECT_BINARY_DIR}/generated/text-input-v3-client-protocol.h")
+set(text_input_source "${PROJECT_BINARY_DIR}/generated/text-input-v3-protocol.c")
+add_custom_command(OUTPUT "${text_input_header}" "${text_input_source}"
+  COMMAND "${wayland_scanner}" client-header "${text_input_xml}" "${text_input_header}"
+  COMMAND "${wayland_scanner}" private-code "${text_input_xml}" "${text_input_source}"
+  DEPENDS "${text_input_xml}" VERBATIM)
 target_sources(isoduo_desktop PRIVATE src/desktop_linux.cpp src/linux_x11.cpp src/linux_wayland.cpp
   src/linux_x11_clipboard.cpp src/linux_wayland_clipboard.cpp
+  src/linux_x11_ime.cpp src/linux_wayland_ime.cpp "${text_input_header}" "${text_input_source}"
   src/linux_fonts.cpp src/linux_preferences.cpp src/renderer_opengl_egl.cpp "${shell_source}" "${shell_header}")
 target_include_directories(isoduo_desktop PRIVATE "${PROJECT_BINARY_DIR}/generated")
 target_link_libraries(isoduo_desktop PRIVATE PkgConfig::ISODUO_LINUX_DESKTOP Fontconfig::Fontconfig)

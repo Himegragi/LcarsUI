@@ -206,6 +206,28 @@ void enterDuringCompositionDoesNotBreakTheLine() {
     check(bool(host.keyDown(press(Key::enter))) && valueOf(form.ui, "note") == u"a你\n", "Enter breaks the line again after the composition");
 }
 
+void inputMethodReplacementIsOneUndoEntry() {
+    Form form;
+    auto& host = form.host();
+    auto field = connect(form.ui, multi("replace", u"甲🙂舊文乙"));
+    field.focus();
+    host.select("replace", 3, 5);
+    host.compositionUpdate(u"中", 1);
+    check(field.draft().value == u"甲🙂舊文乙" && host.edit("replace")->visible() == u"甲🙂中乙",
+          "Preedit temporarily replaces the selection only in visible text");
+    check(field.setValue(u"other").status == Status::busy && host.keyDown(press(Key::enter)).status == Status::busy,
+          "Competing edits and Enter leave the composition alone");
+    check(bool(host.compositionCommit(u"中文", 2, 0)) && field.draft().value == u"甲中文乙",
+          "The IME can replace the selection and a supplementary character before it");
+    check(bool(host.undo("replace")) && field.draft().value == u"甲🙂舊文乙" &&
+          host.edit("replace")->selection.anchor == 3 && host.edit("replace")->selection.caret == 5,
+          "One undo restores the original text and selection");
+    host.compositionUpdate(u"取消", 2);
+    host.compositionCancel();
+    check(bool(host.redo("replace")) && field.draft().value == u"甲中文乙",
+          "Cancel preserves the redo entry");
+}
+
 void singleLineEnterStillReachesItsShortcut() {
     Form form; auto& host = form.host();
     host.focus("name");
@@ -638,6 +660,7 @@ int main() {
         {"Ctrl+Enter reaches its shortcut; Tab moves focus", ctrlEnterReachesTheShortcutAndTabMovesFocus},
         {"each Enter is one undo entry", eachEnterIsOneUndoEntry},
         {"Enter during composition does not break the line", enterDuringCompositionDoesNotBreakTheLine},
+        {"input method replacement is one undo entry", inputMethodReplacementIsOneUndoEntry},
         {"single-line Enter still reaches its shortcut", singleLineEnterStillReachesItsShortcut},
         {"read-only multi-line field refuses Enter", readOnlyMultilineFieldRefusesEnter},
         {"a long line wraps and the height stays fixed", aLongLineWrapsAtTheEdgeAndTheHeightStaysFixed},

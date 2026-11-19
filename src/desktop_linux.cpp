@@ -95,6 +95,9 @@ struct Desktop::Impl {
     RendererCapabilities caps;
     std::optional<RendererFailure> failure;
     Frame frame;
+    Id imeField;
+    std::uint64_t imeTarget = 0;
+    bool imeComposing = false;
     std::string reveal;
     std::string textDrag;
     bool focused = false, attached = false, dirty = true, closing = false, running = false;
@@ -127,6 +130,7 @@ struct Desktop::Impl {
         configureFont();
         attached = true;
         state.setAsyncClipboard(&window->clipboard());
+        state.beforeFocus([this] { finishIme(); });
         state.rendererFailed(false);
         state.bindAppearance(&appearance);
         const auto preferences = readLinuxDesktopPreferences();
@@ -147,6 +151,9 @@ struct Desktop::Impl {
     void release() {
         if (attached) {
             auto& state = access(ui);
+            state.beforeFocus({});
+            stopIme();
+            state.compositionCancel();
             state.setAsyncClipboard(nullptr);
             state.onInvalidate({});
             state.onRelayout({});
@@ -184,6 +191,78 @@ struct Desktop::Impl {
         frame = isoduo::arrange(page(), ui, appearance, measure, window->width() * scale, window->height() * scale,
             static_cast<float>(scale), scroll, reveal);
     }
+    void stopIme() {
+        if (imeField.empty()) return;
+        imeField.clear();
+        imeComposing = false;
+        window->updateIme(std::nullopt, false);
+    }
+    void finishIme() {
+        auto& state = access(ui);
+        const auto* session = state.edit(state.focused());
+        if (!session || !session->composing) return;
+        auto text = session->preedit;
+        stopIme();
+        state.compositionCommit(text);
+        dirty = true;
+    }
+    void syncIme(bool externalChange = true) {
+        if (failure || closing || !focused) {
+            stopIme();
+            return;
+        }
+        auto& state = access(ui);
+        const auto& id = state.focused();
+        const auto* field = state.find(id);
+        const auto* session = state.edit(id);
+        const auto* placement = findPlacement(frame, id);
+        if (!field || !field->enabled || field->readOnly || !session || !placement || state.menuOpen()) {
+            if (session && session->composing) {
+                state.compositionCancel();
+                dirty = true;
+            }
+            stopIme();
+            return;
+        }
+        if (imeField != id || (imeComposing && !session->composing)) {
+            stopIme();
+            imeField = id;
+            ++imeTarget;
+        }
+        imeComposing = session->composing;
+        window->updateIme(LinuxImeState{imeTarget, placement->caretRect(session->visibleCaret()),
+            session->text, session->selection.anchor, session->selection.caret, field->multiline}, externalChange);
+    }
+    void editIme(LinuxImeEdit& edit) {
+        auto& state = access(ui);
+        if (imeField.empty() || imeField != state.focused() || edit.target != imeTarget) return;
+        const auto* session = state.edit(imeField);
+        if (!session || (imeComposing && !session->composing)) return;
+        if (!edit.commit.empty() || edit.deleteBefore || edit.deleteAfter) {
+            unsigned before = 0, after = 0;
+            if (edit.deleteBefore || edit.deleteAfter) {
+                const std::u16string_view text = session->text;
+                const auto left = utf8FromUtf16(text.substr(0, session->begin()));
+                const auto right = utf8FromUtf16(text.substr(session->end()));
+                if (edit.deleteBefore > left.size() || edit.deleteAfter > right.size()) return;
+                try {
+                    before = static_cast<unsigned>(utf16FromUtf8(std::string_view(left).substr(left.size() - edit.deleteBefore)).size());
+                    after = static_cast<unsigned>(utf16FromUtf8(std::string_view(right).substr(0, edit.deleteAfter)).size());
+                } catch (const std::range_error&) {
+                    return;
+                }
+            }
+            state.compositionCommit(edit.commit, before, after);
+        }
+        if (edit.replacePreedit && state.focused() == imeField) {
+            if (edit.preedit.empty()) state.compositionCancel();
+            else state.compositionUpdate(std::move(edit.preedit), edit.cursor);
+        }
+        // A native cancel or commit is already reflected by the input method.
+        session = state.edit(imeField);
+        imeComposing = session && session->composing;
+        dirty = true;
+    }
     void paint() {
         dirty = false;
         WorkScope work(painting);
@@ -206,6 +285,8 @@ struct Desktop::Impl {
     }
     void fail(RendererFailure error) {
         failure = std::move(error);
+        stopIme();
+        access(ui).compositionCancel();
         window->discardFrame();
         access(ui).finishAnimations();
         access(ui).rendererFailed(true);
@@ -218,6 +299,7 @@ struct Desktop::Impl {
             state.pointerLeft();
             return;
         }
+        if (event.kind == Kind::press || event.kind == Kind::rightPress) finishIme();
         if (dirty) arrange();
         if (event.kind == Kind::rightPress) {
             state.pointerPressed();
@@ -279,11 +361,16 @@ struct Desktop::Impl {
         case Kind::redraw: dirty = true; return;
         case Kind::destroyed: closing = true; return;
         case Kind::close:
+            finishIme();
             if (!config.onCloseRequested || config.onCloseRequested(desktop) == CloseDecision::close) closing = true;
             return;
         case Kind::focus:
             focused = event.active;
-            if (!focused) { state.cancelInput(); textDrag.clear(); swallowRight = false; }
+            if (!focused) {
+                finishIme();
+                stopIme();
+                state.cancelInput(); textDrag.clear(); swallowRight = false;
+            }
             dirty = true;
             return;
         case Kind::clipboard:
@@ -292,8 +379,19 @@ struct Desktop::Impl {
         default: break;
         }
         if (failure) return;
+        if (event.kind == Kind::imeEdit) {
+            editIme(*event.ime);
+            return;
+        }
         if (event.inputSerial) window->clipboardSerial(*event.inputSerial);
         if (event.kind == Kind::keyDown) {
+            const auto* session = state.edit(state.focused());
+            if (event.key.key == Key::escape && session && session->composing) {
+                stopIme();
+                state.compositionCancel();
+                dirty = true;
+                return;
+            }
             if (dirty) arrange();
             auto previous = state.focused();
             state.keyDown(event.key);
@@ -357,6 +455,7 @@ RunResult Desktop::run() {
         host.diagnostics.drain();
         host.ui.semantics().dispatchEvents();
         if (host.closing) break;
+        host.syncIme();
         if (host.dirty && !host.failure && host.window->prepareFrame()) {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
@@ -364,6 +463,8 @@ RunResult Desktop::run() {
         for (auto& event : events) {
             host.dispatch(event, *this);
             if (host.closing) break;
+            if (host.dirty && !host.failure) host.arrange();
+            host.syncIme(event.kind != NativeEvent::Kind::imeEdit);
         }
         if (!host.failure && !host.closing) {
             auto& state = access(host.ui);
@@ -385,6 +486,7 @@ Result Desktop::setTitle(std::u16string title) {
 }
 Result Desktop::close() {
     if (impl_->owner != std::this_thread::get_id()) return {Status::wrongThread, wrongThread};
+    if (impl_->attached && !impl_->failure) impl_->finishIme();
     impl_->closing = true;
     return {};
 }

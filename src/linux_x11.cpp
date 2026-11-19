@@ -3,6 +3,7 @@
 #include "renderer.hpp"
 #include "utf.hpp"
 #include "linux_x11_clipboard.hpp"
+#include "linux_x11_ime.hpp"
 #include <EGL/eglext.h>
 #include <X11/XKBlib.h>
 #include <X11/Xlib-xcb.h>
@@ -50,6 +51,8 @@ public:
                 XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP, values), u"Unable to create the X11 window");
             window_ = window;
             clipboard_ = std::make_unique<X11Clipboard>(display_, [this](auto result) { clipboardDelivered(std::move(result)); });
+            ime_ = std::make_unique<X11Ime>(display_, window_, eventMask,
+                [this](auto edit) { imeEdited(std::move(edit)); });
             protocols_ = XInternAtom(display_, "WM_PROTOCOLS", False);
             close_ = XInternAtom(display_, "WM_DELETE_WINDOW", False);
             titleProperty_ = XInternAtom(display_, "_NET_WM_NAME", False);
@@ -70,6 +73,7 @@ public:
     const NativeWindow& reference() const override { return reference_; }
     EglWindow& renderWindow() override { return *egl_; }
     AsyncClipboard& clipboard() override { return *clipboard_; }
+    void updateIme(const std::optional<LinuxImeState>& state, bool) override { ime_->update(state); }
     void handoffClipboard() override {
         if (!clipboard_->beginHandoff()) return;
         while (clipboard_->handingOff() && poll(-1)) events.clear();
@@ -102,7 +106,9 @@ public:
         for (int count = 0; count < 256 && XPending(display_); ++count) {
             XEvent event{};
             XNextEvent(display_, &event);
-            if (!clipboard_->dispatch(event) && event.xany.window == window_) translate(event);
+            if (!clipboard_->dispatch(event) && !XFilterEvent(&event, None) && event.xany.window == window_) translate(event);
+            // Apply focus and edits before passing the next native event to XIM.
+            if (!events.empty()) break;
         }
         clipboard_->expire();
         return true;
@@ -116,6 +122,7 @@ private:
             throw StartupError{{StartupFailureKind::window, {}, {}, std::move(message)}};
     }
     void release() {
+        ime_.reset();
         clipboard_.reset();
         egl_.reset();
         if (window_) XDestroyWindow(display_, window_);
@@ -127,6 +134,7 @@ private:
         switch (event.type) {
         case Expose: events.emplace_back(Kind::redraw); break;
         case ConfigureNotify:
+            ime_->moved();
             width_ = event.xconfigure.width;
             height_ = event.xconfigure.height;
             events.emplace_back(Kind::redraw);
@@ -174,6 +182,8 @@ private:
         case KeyPress:
         case KeyRelease: {
             auto& key = event.xkey;
+            std::u16string text;
+            if (event.type == KeyPress && ime_->lookup(key, text)) break;
             KeySym symbol = NoSymbol;
             unsigned consumed = 0;
             XkbLookupKeySym(display_, key.keycode, key.state, &consumed, &symbol);
@@ -185,9 +195,12 @@ private:
                 down_[key.keycode] = pressed;
             }
             if (pressed && !(key.state & (ControlMask | Mod1Mask))) {
-                char utf8[8]{};
-                if (xkb_keysym_to_utf8(static_cast<xkb_keysym_t>(symbol), utf8, sizeof(utf8)) > 1)
-                    input.text = utf16FromUtf8(utf8);
+                if (!text.empty()) input.text = std::move(text);
+                else {
+                    char utf8[8]{};
+                    if (xkb_keysym_to_utf8(static_cast<xkb_keysym_t>(symbol), utf8, sizeof(utf8)) > 1)
+                        input.text = utf16FromUtf8(utf8);
+                }
             }
             break;
         }
@@ -200,6 +213,7 @@ private:
     Atom protocols_ = None, close_ = None, titleProperty_ = None, utf8_ = None;
     std::unique_ptr<EglWindow> egl_;
     std::unique_ptr<X11Clipboard> clipboard_;
+    std::unique_ptr<X11Ime> ime_;
     NativeWindow reference_{};
     std::array<bool, 256> down_{};
     bool mapped_ = false;
