@@ -1,6 +1,10 @@
 ﻿#include "diagnostic_queue.hpp"
 #include "utf.hpp"
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <cstdio>
+#endif
 #include <algorithm>
 #include <utility>
 
@@ -29,21 +33,32 @@ void DiagnosticQueue::drain() {
             text.append(event.code.begin(),event.code.end()); text += L" ";
             auto message = utf16FromUtf8(event.nativeMessage);
             text.append(message.begin(), message.end());
-            text += L"\n"; if(output_) output_(text); else OutputDebugStringW(text.c_str());
+            text += L"\n"; if (output_) output_(text);
+#ifdef _WIN32
+            else OutputDebugStringW(text.c_str());
+#else
+            else std::fputs(utf8FromUtf16(event.backend).append(" [" + std::to_string(event.nativeCode) + "] ")
+                .append(event.code).append(" ").append(event.nativeMessage).append("\n").c_str(), stderr);
+#endif
         }
 #endif
     }
     dispatching_ = false;
 }
 void enqueueFontDiagnostics(DiagnosticQueue& queue,long catalogError,const FontResolution& resolution) {
+#ifdef _WIN32
+    constexpr auto backend = u"DirectWrite";
+#else
+    constexpr auto backend = u"Fontconfig";
+#endif
     if(catalogError<0) {
-        RenderDiagnostic event; event.backend=u"DirectWrite"; event.code="font.catalog_unavailable";
+        RenderDiagnostic event; event.backend=backend; event.code="font.catalog_unavailable";
         event.severity=DiagnosticSeverity::error; event.kind=DiagnosticKind::resource;
-        event.nativeCode=catalogError; event.nativeMessage="DirectWrite system font catalog unavailable";
+        event.nativeCode=catalogError; event.nativeMessage="System font catalog unavailable";
         queue.push(std::move(event));
     }
     if(!resolution.requestedAvailable) {
-        RenderDiagnostic event; event.backend=u"DirectWrite"; event.code="font.family_unavailable";
+        RenderDiagnostic event; event.backend=backend; event.code="font.family_unavailable";
         event.severity=DiagnosticSeverity::warning; event.kind=DiagnosticKind::resource;
         event.nativeMessage="requested="+utf8FromUtf16(resolution.requested)+"; fallback="+utf8FromUtf16(resolution.primary);
         queue.push(std::move(event));

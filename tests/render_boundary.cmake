@@ -1,6 +1,6 @@
 ﻿file(GLOB_RECURSE sources "${SOURCE_DIR}/src/*.cpp" "${SOURCE_DIR}/src/*.hpp")
 foreach(path IN LISTS sources)
-  if(path MATCHES "renderer_opengl\\.(cpp|hpp)$")
+  if(path MATCHES "renderer_opengl(_egl)?\\.(cpp|hpp)$")
     continue()
   endif()
   file(READ "${path}" content)

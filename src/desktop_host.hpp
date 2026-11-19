@@ -2,6 +2,7 @@
 // Internal host type shared by runDesktop and the native verification driver.
 #include "isoduo/desktop.hpp"
 #include "renderer.hpp"
+#include "desktop_paint.hpp"
 #include "text.hpp"
 #include "diagnostic_queue.hpp"
 #include "perf.hpp"
@@ -14,15 +15,6 @@
 
 namespace isoduo::detail {
 class UiaBridge;
-struct PaintObservation {
-    enum class Type { text, fill, rounded } type;
-    std::string owner;
-    std::u16string text;
-    Rect bounds, clip;
-    Color color;
-    bool visible = false, popup = false, tooltip = false;
-    bool bold = false, italic = false;  // text: the face it was drawn in
-};
 class WindowsClipboard final : public Clipboard {
 public:
     explicit WindowsClipboard(HWND window) : window_(window) {}

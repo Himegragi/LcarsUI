@@ -2,7 +2,11 @@
 #include "utf.hpp"
 #include "glyph_atlas.hpp"
 #include "font_files.hpp"
+#ifdef _WIN32
 #include <windows.h>
+#else
+#include <cstdio>
+#endif
 #include <ft2build.h>
 #include FT_FREETYPE_H
 #include FT_MULTIPLE_MASTERS_H
@@ -18,22 +22,30 @@
 #include <atomic>
 namespace isoduo::detail {
 namespace {
-std::string utf8(std::wstring_view value) {
-    return utf8FromUtf16(std::u16string_view(reinterpret_cast<const char16_t*>(value.data()), value.size()));
+std::string pathUtf8(const std::filesystem::path& path) {
+    auto value = path.u8string();
+    return std::string(value.begin(), value.end());
 }
 bool firstUnreadableFile(const std::filesystem::path& path) {
     static std::mutex mutex;
-    static std::set<std::wstring> reported;
-    auto key=path.wstring();
+    static std::set<std::filesystem::path::string_type> reported;
+    auto key=path.native();
+#ifdef _WIN32
     std::transform(key.begin(),key.end(),key.begin(),::towlower);
+#endif
     std::lock_guard lock(mutex);
     return reported.insert(std::move(key)).second;
 }
-void diagnostic(const wchar_t* message) {
+void diagnostic(std::string_view code) {
 #ifndef NDEBUG
-    OutputDebugStringW(message); OutputDebugStringW(L"\n");
+#ifdef _WIN32
+    std::wstring message(code.begin(),code.end());
+    OutputDebugStringW(message.c_str()); OutputDebugStringW(L"\n");
 #else
-    (void)message;
+    std::fprintf(stderr, "%.*s\n", static_cast<int>(code.size()), code.data());
+#endif
+#else
+    (void)code;
 #endif
 }
 struct Box { double left, top, right, bottom; };
@@ -41,8 +53,10 @@ struct Box { double left, top, right, bottom; };
 // the advance by the same amount.
 float syntheticBoldPixels(int pixels) { return std::max(1.f,pixels/16.f); }
 struct Font {
+#ifdef _WIN32
     HANDLE file=INVALID_HANDLE_VALUE, mapping=nullptr;
     void* data=nullptr;
+#endif
     FT_Face face=nullptr;
     hb_font_t* hb=nullptr;
     long error=0;
@@ -50,6 +64,7 @@ struct Font {
     Font(FT_Library library,const FontFile& source) {
         path=source.path;
         if (!library || source.path.empty()) return;
+#ifdef _WIN32
         file=CreateFileW(source.path.c_str(),GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE|FILE_SHARE_DELETE,nullptr,OPEN_EXISTING,0,nullptr);
         LARGE_INTEGER length{};
         if(file==INVALID_HANDLE_VALUE || !GetFileSizeEx(file,&length) || length.QuadPart<=0 || length.QuadPart>LONG_MAX ||
@@ -58,6 +73,10 @@ struct Font {
             if(!error) error=static_cast<long>(GetLastError());
             return;
         }
+#else
+        error=FT_New_Face(library,source.path.c_str(),source.faceIndex,&face);
+        if(error) return;
+#endif
         if(!source.axes.empty() && FT_HAS_MULTIPLE_MASTERS(face)) {
             FT_MM_Var* variations=nullptr;
             if(!FT_Get_MM_Var(face,&variations) && variations) {
@@ -76,7 +95,15 @@ struct Font {
         }
         hb=hb_ft_font_create_referenced(face);
     }
-    ~Font(){if(hb)hb_font_destroy(hb);if(face)FT_Done_Face(face);if(data)UnmapViewOfFile(data);if(mapping)CloseHandle(mapping);if(file!=INVALID_HANDLE_VALUE)CloseHandle(file);}
+    ~Font() {
+        if(hb) hb_font_destroy(hb);
+        if(face) FT_Done_Face(face);
+#ifdef _WIN32
+        if(data) UnmapViewOfFile(data);
+        if(mapping) CloseHandle(mapping);
+        if(file!=INVALID_HANDLE_VALUE) CloseHandle(file);
+#endif
+    }
     bool size(int pixels){if(!face || FT_Set_Pixel_Sizes(face,0,pixels))return false;hb_ft_font_changed(hb);return true;}
     void apply(const GlyphTransform& t) {
         if(t.identity()) { FT_Set_Transform(face,nullptr,nullptr); return; }
@@ -118,7 +145,13 @@ struct Font {
 };
 }
 struct Text::Impl {
+#ifdef _WIN32
     static constexpr std::array<std::u16string_view,10> names={u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"};
+#else
+    static constexpr std::array<std::u16string_view,10> names={u"sans-serif",u"sans-serif:lang=zh-tw",
+        u"sans-serif:lang=zh-cn",u"sans-serif:lang=ja",u"sans-serif:lang=ko",u"DejaVu Sans",
+        u"Noto Sans Symbols",u"Noto Sans Symbols 2",u"Unifont",u"emoji"};
+#endif
     // Font ids: 0..9 index `names` (the built-in fallback families; 9 is the emoji family), primaryFont is the application's
     // own family (setPrimaryFamily), noFont means no family has the character.
     static constexpr unsigned emojiFont=9, primaryFont=10, noFont=11;
@@ -144,8 +177,8 @@ struct Text::Impl {
     Impl(std::function<FontFile(std::u16string_view)> find, std::function<void(const RenderDiagnostic&)> emit)
         : lookup(std::move(find)), receiver(std::move(emit)) {
         if(FT_Init_FreeType(&library)) library=nullptr;
-        if(lookup(u"Segoe UI").path.empty()) report("font.default_missing","Segoe UI");
-        if(lookup(u"Microsoft JhengHei").path.empty()) report("font.default_missing","Microsoft JhengHei");
+        for (auto family : {names[0], names[1]})
+            if (lookup(family).path.empty()) report("font.default_missing", utf8FromUtf16(family));
     }
     ~Impl(){for(auto& slot:fonts)for(auto& font:slot)font.reset();if(library)FT_Done_FreeType(library);}
     TextLayout shapeDirected(std::u16string_view text,int size,hb_direction_t direction,FontStyle style={},bool ligatures=true);
@@ -168,13 +201,13 @@ struct Text::Impl {
             attempted[slot][id]=true;
             const auto family=id==primaryFont?std::u16string_view(primary):names[id];
             auto file=slot==0?lookup(family):styledLookup?styledLookup(family,slot&1,(slot&2)!=0):FontFile{};
-            if(!file.path.empty()) { fonts[slot][id]=std::make_unique<Font>(library,file); if(!fonts[slot][id]->face && firstUnreadableFile(file.path)) report("font.file_unreadable",utf8(file.path.wstring()),fonts[slot][id]->error); }
+            if(!file.path.empty()) { fonts[slot][id]=std::make_unique<Font>(library,file); if(!fonts[slot][id]->face && firstUnreadableFile(file.path)) report("font.file_unreadable",pathUtf8(file.path),fonts[slot][id]->error); }
         }
         if (fonts[slot][id] && fonts[slot][id]->face && !faceIds[slot][id]) faceIds[slot][id] = nextFaceId();
         return fonts[slot][id] && fonts[slot][id]->face ? fonts[slot][id].get():nullptr;
     }
 };
-Text::Text():Text(systemFontFile,[](std::string_view code) { std::wstring wide(code.begin(),code.end()); diagnostic(wide.c_str()); }){ impl_->styledLookup=systemStyledFontFile; }
+Text::Text():Text(systemFontFile,diagnostic){ impl_->styledLookup=systemStyledFontFile; }
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(std::string_view)> report)
     :Text(std::move(lookup),std::function<void(const RenderDiagnostic&)>([report=std::move(report)](const auto& event) { report(event.code); })){}
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(const RenderDiagnostic&)> report)
@@ -314,7 +347,7 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
         if (glyph.faceId && impl_->faceIds[glyph.slot][glyph.font] != glyph.faceId) font = nullptr;
         auto error=font?font->rasterize(glyph.id,layout.size,glyph.transform,glyph.synth):FT_Err_Invalid_Face_Handle;
         if(error) {
-            impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);box();continue;
+            impl_->report("text.glyph_load_failed", "face " + (font?pathUtf8(font->path):std::string{}) + " glyph " + std::to_string(glyph.id),error);box();continue;
         }
         auto& bitmap=font->face->glyph->bitmap;
         unsigned mode=impl_->bitmapMode<0?bitmap.pixel_mode:static_cast<unsigned>(impl_->bitmapMode);
@@ -457,7 +490,7 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
                 if (glyph.faceId && impl_->faceIds[glyph.slot][glyph.font] != glyph.faceId) font = nullptr;
                 auto error=font?font->rasterize(glyph.id,size,glyph.transform,glyph.synth):FT_Err_Invalid_Face_Handle;
                 if(error) {
-                    impl_->report("text.glyph_load_failed", "face " + (font?utf8(font->path.wstring()):std::string{}) + " glyph " + std::to_string(glyph.id),error);
+                    impl_->report("text.glyph_load_failed", "face " + (font?pathUtf8(font->path):std::string{}) + " glyph " + std::to_string(glyph.id),error);
                     return box();
                 }
                 const auto& bitmap=font->face->glyph->bitmap;

@@ -1,5 +1,9 @@
 #include "utf.hpp"
 #include "renderer_opengl.hpp"
+#ifndef _WIN32
+#include "renderer_opengl_egl.hpp"
+#include <EGL/eglext.h>
+#endif
 #include "glcorearb.h"
 #include <stdexcept>
 #include <chrono>
@@ -11,12 +15,20 @@
 namespace isoduo::detail {
 namespace {
 void require(bool ok,const char* message){if(!ok)throw std::runtime_error(message);}
-static PROC symbol(const char* name) {
+auto findSymbol(const char* name) {
+#ifdef _WIN32
     PROC p = wglGetProcAddress(name);
     if (!p || p == reinterpret_cast<PROC>(1) || p == reinterpret_cast<PROC>(2)
            || p == reinterpret_cast<PROC>(3) || p == reinterpret_cast<PROC>(-1)) {
         p = GetProcAddress(GetModuleHandleW(L"opengl32.dll"), name);
     }
+    return p;
+#else
+    return eglGetProcAddress(name);
+#endif
+}
+auto symbol(const char* name) {
+    auto p = findSymbol(name);
     if (!p) throw std::runtime_error(std::string("Missing GL symbol: ") + name);
     return p;
 }
@@ -100,7 +112,7 @@ struct Scene {
     ~Scene() {
         if (fbo) g.DeleteFramebuffers(1,&fbo);
         if (target) g.DeleteTextures(1,&target);
-        g.DeleteTextures(4,textures);
+        if (textures[0]) g.DeleteTextures(4,textures);
         if (vao) g.DeleteVertexArrays(1,&vao);
         if (program) g.DeleteProgram(program);
     }
@@ -145,9 +157,14 @@ void main(){
 }
 
 struct Renderer::Impl {
-    HWND window;
+    Window window;
+#ifdef _WIN32
     HDC dc=nullptr;
     HGLRC context=nullptr,bootstrap=nullptr;
+#else
+    EGLContext context = EGL_NO_CONTEXT;
+    EGLSurface surface = EGL_NO_SURFACE;
+#endif
     GL gl;
     std::unique_ptr<Scene> scene;
     RendererTestHooks* hooks;
@@ -172,8 +189,15 @@ struct Renderer::Impl {
             self.sink(std::move(event));
         } catch (...) {}
     }
-    explicit Impl(HWND handle, RendererTestHooks* test, DebugContext debug, std::function<void(RenderDiagnostic)> callback):window(handle), hooks(test), sink(std::move(callback)) {
+    explicit Impl(Window handle, RendererTestHooks* test, DebugContext debug, std::function<void(RenderDiagnostic)> callback):window(handle), hooks(test), sink(std::move(callback)) {
         try {
+#ifdef NDEBUG
+            const bool debugEnabled=debug==DebugContext::on;
+#else
+            const bool debugEnabled=debug!=DebugContext::off;
+#endif
+            auto to16=[](const std::string& value) { return utf16FromUtf8(value); };
+#ifdef _WIN32
             dc=GetDC(window);require(dc!=nullptr,"GetDC failed");
             PIXELFORMATDESCRIPTOR pfd{};pfd.nSize=sizeof(pfd);pfd.nVersion=1;
             pfd.dwFlags=PFD_DRAW_TO_WINDOW|PFD_SUPPORT_OPENGL|PFD_DOUBLEBUFFER;pfd.iPixelType=PFD_TYPE_RGBA;pfd.cColorBits=32;pfd.cAlphaBits=8;
@@ -184,7 +208,6 @@ struct Renderer::Impl {
             auto version = reinterpret_cast<const char*>(getString(GL_VERSION));
             auto vendor = reinterpret_cast<const char*>(getString(GL_RENDERER));
             std::string actual = std::string(version ? version : "unknown") + " / " + (vendor ? vendor : "unknown");
-            auto to16=[](const std::string& v) { return utf16FromUtf8(v); };
             if (hooks && hooks->failContext33) throw StartupError{{StartupFailureKind::contextVersion,u"OpenGL 3.3 core",u"2.1",u"OpenGL 3.3 core is required"}};
             Create create = nullptr;
             try { create=reinterpret_cast<Create>(symbol("wglCreateContextAttribsARB")); } catch (...) { throw StartupError{{StartupFailureKind::contextVersion,u"OpenGL 3.3 core",to16(actual),u"OpenGL 3.3 core is required"}}; }
@@ -193,11 +216,6 @@ struct Renderer::Impl {
             auto ext=extproc ? reinterpret_cast<Extensions>(extproc)(dc) : nullptr;
             std::string extensions=ext ? ext : "";
             bool robust=!(hooks && hooks->hideRobustness) && extensions.find("WGL_ARB_create_context_robustness")!=std::string::npos;
-#ifdef NDEBUG
-            bool debugEnabled=debug==DebugContext::on;
-#else
-            bool debugEnabled=debug!=DebugContext::off;
-#endif
             int flags=(debugEnabled ? 0x0001 : 0) | (robust ? 0x0004 : 0);
             std::vector<int> attributes={0x2091,3,0x2092,3,0x9126,1,0x2094,flags};
             if (robust) { attributes.push_back(0x8256); attributes.push_back(0x8252); }
@@ -210,17 +228,21 @@ struct Renderer::Impl {
             }
             require(wglMakeCurrent(nullptr,nullptr)!=FALSE,"WGL detach failed");
             require(wglDeleteContext(bootstrap)!=FALSE,"WGL bootstrap cleanup failed");bootstrap=nullptr;
-            require(wglMakeCurrent(dc,context)!=FALSE,"WGL activation failed");gl.load();
-            GLint major=0,minor=0,profile=0;gl.GetIntegerv(GL_MAJOR_VERSION,&major);gl.GetIntegerv(GL_MINOR_VERSION,&minor);gl.GetIntegerv(GL_CONTEXT_PROFILE_MASK,&profile);
-            require((major>3||(major==3&&minor>=3))&&(profile&GL_CONTEXT_CORE_PROFILE_BIT),"Wrong OpenGL context");
+            activate();
             using SwapInterval = BOOL (WINAPI*)(int);
-            auto interval = wglGetProcAddress("wglSwapIntervalEXT");
-            if (interval && interval != reinterpret_cast<PROC>(1) && interval != reinterpret_cast<PROC>(2) &&
-                interval != reinterpret_cast<PROC>(3) && interval != reinterpret_cast<PROC>(-1))
-                reinterpret_cast<SwapInterval>(interval)(1);
+            if (auto interval = findSymbol("wglSwapIntervalEXT")) reinterpret_cast<SwapInterval>(interval)(1);
+#else
+            const bool robust = createEglContext(debugEnabled);
+#endif
+            gl.load();
+            GLint major=0,minor=0,profile=0,flagsActual=0;
+            gl.GetIntegerv(GL_MAJOR_VERSION,&major);gl.GetIntegerv(GL_MINOR_VERSION,&minor);
+            gl.GetIntegerv(GL_CONTEXT_PROFILE_MASK,&profile);gl.GetIntegerv(GL_CONTEXT_FLAGS,&flagsActual);
             auto string16=[&](GLenum key) { auto p=reinterpret_cast<const char*>(gl.GetString(key)); return to16(p ? p : ""); };
             caps.version=string16(GL_VERSION); caps.vendor=string16(GL_VENDOR); caps.renderer=string16(GL_RENDERER);
-            caps.debugContext=debugEnabled;
+            if (major < 3 || (major == 3 && minor < 3) || !(profile & GL_CONTEXT_CORE_PROFILE_BIT))
+                throw StartupError{{StartupFailureKind::contextVersion,u"OpenGL 3.3 core",caps.version,u"OpenGL 3.3 core is required"}};
+            caps.debugContext=(flagsActual & GL_CONTEXT_FLAG_DEBUG_BIT)!=0;
             if (debugEnabled && !(hooks && hooks->hideKhrDebug)) {
                 using GetStringi=PFNGLGETSTRINGIPROC;
                 auto getStringI=reinterpret_cast<GetStringi>(symbol("glGetStringi"));
@@ -238,10 +260,17 @@ struct Renderer::Impl {
                 }
             }
             if (robust) {
-                auto proc=wglGetProcAddress("glGetGraphicsResetStatusARB");
-                if (proc && proc != reinterpret_cast<PROC>(1) && proc != reinterpret_cast<PROC>(2) && proc != reinterpret_cast<PROC>(3) && proc != reinterpret_cast<PROC>(-1)) resetStatus=reinterpret_cast<PFNGLGETGRAPHICSRESETSTATUSPROC>(proc);
+                GLint strategy = 0;
+                gl.GetIntegerv(GL_RESET_NOTIFICATION_STRATEGY, &strategy);
+                if (strategy == GL_LOSE_CONTEXT_ON_RESET) {
+                    const char* status = major > 4 || (major == 4 && minor >= 5)
+                        ? "glGetGraphicsResetStatus" : "glGetGraphicsResetStatusARB";
+                    resetStatus = reinterpret_cast<PFNGLGETGRAPHICSRESETSTATUSPROC>(findSymbol(status));
+                }
             }
             caps.resetDetection=resetStatus!=nullptr;
+            if (hooks && !hooks->startupResourceError.empty())
+                throw StartupError{{StartupFailureKind::resource, {}, {}, to16(hooks->startupResourceError)}};
             scene=std::make_unique<Scene>(gl);
             try { scene->init(hooks ? hooks->fragmentShaderOverride : std::string{}); } catch (const std::exception& e) { throw StartupError{{StartupFailureKind::shader,{}, {},to16(e.what())}}; }
             if (gl.GetError()!=GL_NO_ERROR) throw StartupError{{StartupFailureKind::resource,{}, {},u"OpenGL resource creation failed"}};
@@ -251,10 +280,95 @@ struct Renderer::Impl {
             throw StartupError{{StartupFailureKind::contextCreation,{}, {},utf16FromUtf8(message)}};
         } catch (...) { release(); throw; }
     }
-    void release(){if(context && dc)wglMakeCurrent(dc,context);if(debugCallback)debugCallback(nullptr,nullptr);scene.reset();if(context||bootstrap)wglMakeCurrent(nullptr,nullptr);if(context)wglDeleteContext(context);if(bootstrap)wglDeleteContext(bootstrap);if(dc)ReleaseDC(window,dc);context=bootstrap=nullptr;dc=nullptr;}
+#ifndef _WIN32
+    bool createEglContext(bool debug) {
+        auto display = window.display();
+        if (hooks && hooks->failContext33)
+            throw StartupError{{StartupFailureKind::contextVersion,u"OpenGL 3.3 core",u"2.1",u"OpenGL 3.3 core is required"}};
+        if (!eglBindAPI(EGL_OPENGL_API))
+            throw StartupError{{StartupFailureKind::contextCreation, {}, {}, u"EGL could not bind the OpenGL API"}};
+        surface = window.createSurface();
+        const EGLint attributes[] = {EGL_CONTEXT_MAJOR_VERSION, 3, EGL_CONTEXT_MINOR_VERSION, 3,
+            EGL_CONTEXT_OPENGL_PROFILE_MASK, EGL_CONTEXT_OPENGL_CORE_PROFILE_BIT,
+            EGL_CONTEXT_OPENGL_DEBUG, debug ? EGL_TRUE : EGL_FALSE, EGL_NONE};
+        bool robust = false;
+        if (!(hooks && hooks->hideRobustness)) {
+            std::vector<EGLint> robustAttributes(std::begin(attributes), std::end(attributes) - 1);
+            robustAttributes.insert(robustAttributes.end(), {EGL_CONTEXT_OPENGL_ROBUST_ACCESS, EGL_TRUE,
+                EGL_CONTEXT_OPENGL_RESET_NOTIFICATION_STRATEGY, EGL_LOSE_CONTEXT_ON_RESET, EGL_NONE});
+            context = eglCreateContext(display, window.config(), EGL_NO_CONTEXT, robustAttributes.data());
+            robust = context != EGL_NO_CONTEXT;
+        }
+        if (!robust) context = eglCreateContext(display, window.config(), EGL_NO_CONTEXT, attributes);
+        if (context == EGL_NO_CONTEXT) {
+            auto code = eglGetError();
+            context = eglCreateContext(display, window.config(), EGL_NO_CONTEXT, nullptr);
+            std::u16string actual = u"unavailable";
+            auto kind = StartupFailureKind::contextCreation;
+            if (context != EGL_NO_CONTEXT && makeCurrent()) {
+                auto getString = reinterpret_cast<PFNGLGETSTRINGPROC>(symbol("glGetString"));
+                const auto* version = reinterpret_cast<const char*>(getString(GL_VERSION));
+                int major = 0, minor = 0;
+                if (version) {
+                    actual = utf16FromUtf8(version);
+                    if (std::sscanf(version, "%d.%d", &major, &minor) == 2 && (major < 3 || (major == 3 && minor < 3)))
+                        kind = StartupFailureKind::contextVersion;
+                }
+            }
+            throw StartupError{{kind,u"OpenGL 3.3 core",std::move(actual),
+                u"EGL could not create an OpenGL 3.3 core context (error " + utf16FromUtf8(std::to_string(code)) + u")"}};
+        }
+        activate();
+        eglSwapInterval(display, 1);
+        return robust;
+    }
+#endif
+    bool makeCurrent() {
+#ifdef _WIN32
+        return context && wglMakeCurrent(dc, context);
+#else
+        return context != EGL_NO_CONTEXT && eglMakeCurrent(window.display(), surface, surface, context);
+#endif
+    }
+    void activate() { require(makeCurrent(), "OpenGL context activation failed"); }
+    void present() {
+#ifdef _WIN32
+        if (!SwapBuffers(dc)) throw FrameError{{RendererFailureKind::presentFailed,GetLastError(),u"SwapBuffers failed"},{}};
+#else
+        if (!eglSwapBuffers(window.display(), surface)) {
+            const auto code = eglGetError();
+            const auto kind = code == EGL_CONTEXT_LOST ? RendererFailureKind::deviceReset : RendererFailureKind::presentFailed;
+            throw FrameError{{kind,static_cast<std::uint32_t>(code),u"EGL window presentation failed"},{}};
+        }
+#endif
+    }
+    void release() {
+        if (makeCurrent()) {
+            if (debugCallback) debugCallback(nullptr,nullptr);
+            scene.reset();
+        } else if (scene) {
+            // With a lost context its objects are already inaccessible. Avoid GL calls
+            // against a different host's current context.
+            scene->program = scene->vao = scene->fbo = scene->target = 0;
+            std::fill(std::begin(scene->textures), std::end(scene->textures), 0);
+            scene.reset();
+        }
+#ifdef _WIN32
+        if ((context && wglGetCurrentContext()==context) || (bootstrap && wglGetCurrentContext()==bootstrap))
+            wglMakeCurrent(nullptr,nullptr);
+        if(context)wglDeleteContext(context);
+        if(bootstrap)wglDeleteContext(bootstrap);
+        if(dc)ReleaseDC(window,dc);
+#else
+        auto display = window.display();
+        if (context != EGL_NO_CONTEXT && eglGetCurrentContext()==context)
+            eglMakeCurrent(display,EGL_NO_SURFACE,EGL_NO_SURFACE,EGL_NO_CONTEXT);
+        if (context != EGL_NO_CONTEXT) eglDestroyContext(display,context);
+        if (surface != EGL_NO_SURFACE) eglDestroySurface(display,surface);
+#endif
+    }
     ~Impl(){release();}
     void execute(const DrawList& list,int width,int height,bool offscreen) {
-        require(wglMakeCurrent(dc,context)!=FALSE,"WGL activation failed");
         auto& g=gl; auto& sc=*scene;
         if(offscreen){
             g.BindTexture(GL_TEXTURE_2D,sc.target);
@@ -360,7 +474,7 @@ struct Renderer::Impl {
         if (first!=GL_NO_ERROR) throw FrameError{{RendererFailureKind::frameError,first,u"OpenGL frame failed"},std::move(errors)};
     }
 };
-Renderer::Renderer(HWND window, RendererTestHooks* hooks, DebugContext debug, std::function<void(RenderDiagnostic)> sink):impl_(std::make_unique<Impl>(window,hooks,debug,std::move(sink))){}
+Renderer::Renderer(Window window, RendererTestHooks* hooks, DebugContext debug, std::function<void(RenderDiagnostic)> sink):impl_(std::make_unique<Impl>(window,hooks,debug,std::move(sink))){}
 Renderer::~Renderer()=default;
 RenderDiagnostic frameDiagnostic(unsigned code) {
     RenderDiagnostic diagnostic; diagnostic.backend=u"OpenGL"; diagnostic.severity=DiagnosticSeverity::error;
@@ -368,7 +482,7 @@ RenderDiagnostic frameDiagnostic(unsigned code) {
     return diagnostic;
 }
 void Renderer::restoreAtlas(const std::vector<const AtlasPage*>& pages) {
-    require(wglMakeCurrent(impl_->dc,impl_->context)!=FALSE,"WGL activation failed");
+    impl_->activate();
     auto& gl=impl_->gl;
     for (std::size_t i=0; i<pages.size() && i<4; ++i) {
         const auto& page=*pages[i]; gl.BindTexture(GL_TEXTURE_2D,impl_->scene->textures[i]);
@@ -378,22 +492,23 @@ void Renderer::restoreAtlas(const std::vector<const AtlasPage*>& pages) {
 }
 double Renderer::draw(const DrawList& list,int width,int height,bool measure,bool offscreen,double* submissionMs,std::chrono::steady_clock::time_point* presented){
     auto start=std::chrono::steady_clock::now();
+    impl_->activate();
     auto& gl=impl_->gl; GLuint query=0; GLuint64 ns=0;
     if(measure){gl.GenQueries(1,&query); gl.BeginQuery(GL_TIME_ELAPSED,query);}
     impl_->execute(list,width,height,offscreen);
     if(measure) gl.EndQuery(GL_TIME_ELAPSED);
     if(submissionMs) *submissionMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
-    if(!offscreen && !SwapBuffers(impl_->dc)) throw FrameError{{RendererFailureKind::presentFailed,GetLastError(),u"SwapBuffers failed"}};
+    if(!offscreen) impl_->present();
     if(presented) *presented=std::chrono::steady_clock::now();
     if(measure){gl.GetQueryObjectui64v(query,GL_QUERY_RESULT,&ns); gl.DeleteQueries(1,&query);}
     return double(ns)/1000000.0;
 }
 RendererCapabilities Renderer::capabilities() const { return impl_->caps; }
 std::string Renderer::name() const {
-    return std::string(reinterpret_cast<const char*>(impl_->gl.GetString(GL_RENDERER))) + " / " +
-        reinterpret_cast<const char*>(impl_->gl.GetString(GL_VERSION));
+    return utf8FromUtf16(impl_->caps.renderer) + " / " + utf8FromUtf16(impl_->caps.version);
 }
 Image Renderer::readBack(const DrawList& list,int width,int height){
+    impl_->activate();
     impl_->execute(list,width,height,true);auto& gl=impl_->gl;gl.Finish();
     Image result{width,height,std::vector<unsigned char>(static_cast<std::size_t>(width)*height*4)};
     std::vector<unsigned char> raw(result.pixels.size());gl.ReadPixels(0,0,width,height,GL_RGBA,GL_UNSIGNED_BYTE,raw.data());

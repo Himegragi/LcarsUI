@@ -5,7 +5,11 @@
 #include "isoduo/desktop.hpp"
 #include <iostream>
 
+#ifdef _WIN32
 int wmain() {
+#else
+int main() {
+#endif
     try {
         editForm::Form form(editForm::defaultIds(), true, [](std::u16string_view family) {
             isoduo::PresentationSettings settings; settings.fontFamily = family;

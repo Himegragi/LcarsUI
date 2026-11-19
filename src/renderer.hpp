@@ -1,11 +1,16 @@
 #pragma once
+#ifdef _WIN32
 #include <windows.h>
+#endif
 #include "render.hpp"
 #include "isoduo/desktop.hpp"
 #include <filesystem>
 #include <chrono>
 #include <memory>
 namespace isoduo::detail {
+#ifndef _WIN32
+class EglWindow;
+#endif
 struct RendererTestHooks {
     bool failContext33 = false, failRebuildOnce = false, hideRobustness = false, hideKhrDebug = false, misuseOnce = false;
     std::string fragmentShaderOverride;
@@ -21,7 +26,12 @@ struct FrameError { RendererFailure failure; std::vector<unsigned> codes; };
 RenderDiagnostic frameDiagnostic(unsigned code);
 class Renderer {
 public:
-    explicit Renderer(HWND window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::buildDefault, std::function<void(RenderDiagnostic)> sink = {});
+#ifdef _WIN32
+    using Window = HWND;
+#else
+    using Window = EglWindow&;
+#endif
+    explicit Renderer(Window window, RendererTestHooks* hooks = nullptr, DebugContext debug = DebugContext::buildDefault, std::function<void(RenderDiagnostic)> sink = {});
     ~Renderer();
     double draw(const DrawList& list, int width, int height, bool measure = false, bool offscreen = false, double* submissionMs = nullptr, std::chrono::steady_clock::time_point* presented = nullptr);
     Image readBack(const DrawList& list, int width, int height);

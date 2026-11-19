@@ -1,0 +1,37 @@
+find_package(PkgConfig REQUIRED)
+find_package(Fontconfig REQUIRED)
+pkg_check_modules(ISODUO_LINUX_DESKTOP REQUIRED IMPORTED_TARGET egl>=1.5 x11 x11-xcb xcb wayland-client>=1.22 wayland-egl xkbcommon)
+pkg_check_modules(ISODUO_WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
+pkg_get_variable(wayland_protocols_dir wayland-protocols pkgdatadir)
+find_program(wayland_scanner NAMES wayland-scanner REQUIRED)
+set(shell_xml "${wayland_protocols_dir}/stable/xdg-shell/xdg-shell.xml")
+set(shell_header "${PROJECT_BINARY_DIR}/generated/xdg-shell-client-protocol.h")
+set(shell_source "${PROJECT_BINARY_DIR}/generated/xdg-shell-protocol.c")
+add_custom_command(OUTPUT "${shell_header}" "${shell_source}"
+  COMMAND "${wayland_scanner}" client-header "${shell_xml}" "${shell_header}"
+  COMMAND "${wayland_scanner}" private-code "${shell_xml}" "${shell_source}"
+  DEPENDS "${shell_xml}" VERBATIM)
+target_sources(isoduo_desktop PRIVATE src/desktop_linux.cpp src/linux_x11.cpp src/linux_wayland.cpp
+  src/linux_fonts.cpp src/renderer_opengl_egl.cpp "${shell_source}" "${shell_header}")
+target_include_directories(isoduo_desktop PRIVATE "${PROJECT_BINARY_DIR}/generated")
+target_link_libraries(isoduo_desktop PRIVATE PkgConfig::ISODUO_LINUX_DESKTOP Fontconfig::Fontconfig)
+
+foreach(appearance web material)
+  add_executable(isoduo_edit_form_${appearance} examples/edit_form/main.cpp)
+  isoduo_target(isoduo_edit_form_${appearance})
+  target_compile_definitions(isoduo_edit_form_${appearance} PRIVATE ISODUO_APPEARANCE_${appearance})
+  target_link_libraries(isoduo_edit_form_${appearance} PRIVATE isoduo_edit_form Isoduo::Desktop isoduo_appearance_${appearance})
+endforeach()
+
+if(ISODUO_BUILD_TESTS)
+  add_executable(isoduo_linux_desktop_startup_tests tests/linux_desktop_startup.cpp)
+  isoduo_target(isoduo_linux_desktop_startup_tests)
+  target_link_libraries(isoduo_linux_desktop_startup_tests PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
+  add_test(NAME linux_desktop_startup COMMAND isoduo_linux_desktop_startup_tests)
+
+  # Requires a display. Keep it opt-in and runnable on both desktop sessions.
+  add_executable(isoduo_linux_desktop_native tests/linux_desktop_native.cpp)
+  isoduo_target(isoduo_linux_desktop_native)
+  target_include_directories(isoduo_linux_desktop_native PRIVATE src)
+  target_link_libraries(isoduo_linux_desktop_native PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb Isoduo::AppearanceMaterial)
+endif()

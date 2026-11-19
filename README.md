@@ -38,6 +38,46 @@ unshare --user --map-current-user --net env -u DISPLAY -u WAYLAND_DISPLAY sh too
 
 `word_select` exercises the portable selection behavior. CTest reports `word_select_icu` as skipped on Linux because the system ICU integration currently uses Windows' `icu.dll`.
 
+## Linux native desktop build
+
+Install CMake, Ninja, Clang or GCC with C++20 support, pkg-config, and development
+packages for EGL 1.5, X11, X11-XCB, XCB, Wayland 1.22 or newer, xkbcommon and
+Fontconfig. The build also needs `wayland-scanner` and the stable xdg-shell XML
+from `wayland-protocols`. On Ubuntu these packages are `libegl-dev`,
+`libx11-dev`, `libx11-xcb-dev`, `libxcb1-dev`, `libwayland-dev`,
+`libwayland-bin`, `wayland-protocols`, `libxkbcommon-dev`, and
+`libfontconfig-dev`.
+
+```sh
+cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DISODUO_BUILD_DESKTOP=ON
+cmake --build build-linux
+ctest --test-dir build-linux --output-on-failure
+./build-linux/isoduo_edit_form_web
+```
+
+`DesktopConfig::backend` defaults to `DesktopBackend::automatic`. On Linux this
+uses `XDG_SESSION_TYPE` when it names Wayland or X11, then checks for a configured
+Wayland connection before checking `DISPLAY`. An explicit `wayland` or `x11`
+selects that native connection. If it fails, `StartupFailure::backend` identifies
+the selected backend. Linux `nativeWindow()` returns a borrowed tagged reference:
+a `wl_display*` and `wl_surface*` on Wayland, or a `Display*` and XID on X11.
+It is valid while the native window lives, including across a renderer rebuild.
+
+Run the following probes in a GNOME Wayland session and an Xfce Xorg session,
+using the corresponding `wayland` or `x11` argument as `BACKEND`.
+
+- `isoduo_linux_desktop_native BACKEND close`: record context capabilities and
+  native window identity. Request a close, activate the button in the same
+  window, then request a second close and check the exit status.
+- `isoduo_linux_desktop_native BACKEND program`: follow the same steps to
+  exercise a programmatic close inside the second close callback.
+- `isoduo_linux_desktop_native BACKEND wrapper`: activate the button and close
+  the window created by `runDesktop`.
+- `isoduo_linux_desktop_native BACKEND faults`: exercise structured startup
+  failures, optional context capabilities, wrong-thread close and explicit
+  renderer rebuild. Use a Wayland client trace for the surface commit and
+  `xprop -id XID` for the X11 window.
+
 ## S1 minimal edit form
 
 [The V01 edit form](examples/edit_form/README.md) composes labels, buttons, and a single-line field with typed handles and explicit application data connections. The same form runs with Minimal Web and Material-inspired appearances.
