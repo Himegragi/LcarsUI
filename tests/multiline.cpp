@@ -225,8 +225,14 @@ void inputMethodReplacementIsOneUndoEntry() {
           "One undo restores the original text and selection");
     host.compositionUpdate(u"取消", 2);
     host.compositionCancel();
+    const auto beforeRejectedCommit = field.draft().value;
+    host.compositionUpdate(u"preedit", 7);
+    check(host.compositionCommit(u"x\ty", 2, 0).status == Status::invalidValue, "Reject an invalid IME commit as a whole");
+    check(field.draft().value == beforeRejectedCommit && !host.edit("replace")->composing &&
+          host.edit("replace")->selection.anchor == 3 && host.edit("replace")->selection.caret == 5,
+          "A rejected IME commit ends the composition without editing or moving the selection");
     check(bool(host.redo("replace")) && field.draft().value == u"甲中文乙",
-          "Cancel preserves the redo entry");
+          "Cancel and a rejected commit preserve the redo entry");
 }
 
 void singleLineEnterStillReachesItsShortcut() {

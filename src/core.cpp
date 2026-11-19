@@ -21,12 +21,6 @@ void outputDiagnostic(const std::string& message) {
 #endif
 }
 #endif
-// Committed text from typing or an IME: control characters (Enter, Tab, Ctrl+letter) never insert.
-std::u16string withoutControls(std::u16string_view text) {
-    std::u16string result;
-    for (auto ch : text) if (ch >= 0x20 && ch != 0x7f) result += ch;
-    return result;
-}
 }
 namespace {
 bool validText(std::u16string_view text, std::size_t maxLength, bool allowLineFeed) {
@@ -3011,14 +3005,14 @@ Result detail::UiState::compositionCommit(std::u16string_view text, unsigned bef
     if (auto result = available(target); !result) return result;
     compositionCancel();
     if (!edits_.contains(target)) return {Status::invalidValue, u"沒有接收組字的文字欄位"};
-    auto committed = withoutControls(text);
     Field* field = nullptr;
     if (auto result = writable(target, field); !result) return result;
+    if (!validSingleLine(text, text.size())) return {Status::invalidValue, u"Invalid input method text"};
     const auto& session = field->session;
     if (before > session.begin() || after > session.text.size() - session.end())
         return {Status::invalidValue, u"Input method replacement exceeds the surrounding text"};
-    if (committed.empty() && !before && !after) return {};
-    return replaceRange(target, *field, session.begin() - before, session.end() + after, committed, nullptr);
+    if (text.empty() && !before && !after) return {};
+    return replaceRange(target, *field, session.begin() - before, session.end() + after, text, nullptr);
 }
 Result detail::UiState::compositionCancel() {
     OperationScope operation(this);
