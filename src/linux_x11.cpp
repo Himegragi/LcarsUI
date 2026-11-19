@@ -12,6 +12,7 @@
 #include <cerrno>
 #include <climits>
 #include <array>
+#include <utility>
 #include <cstdlib>
 
 namespace isoduo::detail {
@@ -39,7 +40,7 @@ public:
                 root, visual->visualid), u"Unable to allocate the X11 colormap");
             colormap_ = colormap;
             const uint32_t eventMask = ExposureMask | StructureNotifyMask | FocusChangeMask | VisibilityChangeMask |
-                KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
+                KeyPressMask | KeyReleaseMask | KeymapStateMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
                 EnterWindowMask | LeaveWindowMask;
             width_ = config.width;
             height_ = config.height;
@@ -104,7 +105,7 @@ public:
         for (int count = 0; count < 256 && XPending(display_); ++count) {
             XEvent event{};
             XNextEvent(display_, &event);
-            if (!clipboard_->dispatch(event) && event.xany.window == window_) translate(event);
+            if (!clipboard_->dispatch(event) && (event.type == KeymapNotify || event.xany.window == window_)) translate(event);
         }
         clipboard_->expire();
         return true;
@@ -151,7 +152,17 @@ private:
         case FocusIn:
         case FocusOut:
             events.emplace_back(Kind::focus).active = event.type == FocusIn;
-            if (event.type == FocusOut) down_.fill(false);
+            readFocusKeymap_ = event.type == FocusIn;
+            if (!readFocusKeymap_) down_.fill(false);
+            break;
+        case KeymapNotify:
+            // The server sends the key state at FocusIn, before any later key events.
+            if (std::exchange(readFocusKeymap_, false)) {
+                for (std::size_t code = 8; code < down_.size(); ++code) {
+                    const auto bits = static_cast<unsigned char>(event.xkeymap.key_vector[code / 8]);
+                    down_[code] = (bits & (1u << (code % 8))) != 0;
+                }
+            }
             break;
         case LeaveNotify: events.emplace_back(Kind::leave); break;
         case EnterNotify: {
@@ -227,6 +238,7 @@ private:
     NativeWindow reference_{};
     std::array<bool, 256> down_{};
     bool detectableRepeat_ = false;
+    bool readFocusKeymap_ = false;
     bool mapped_ = false;
 };
 }
