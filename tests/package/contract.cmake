@@ -2,11 +2,14 @@
 set(work "${BUILD_DIR}/package-contract")
 file(REMOVE_RECURSE "${work}")
 file(MAKE_DIRECTORY "${work}/src")
+set(configure_options -G "${GENERATOR}" "-DCMAKE_PREFIX_PATH=${prefix}" "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF"
+  "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}" "-DCMAKE_CXX_COMPILER=${COMPILER}" "-DCMAKE_MAKE_PROGRAM=${MAKE_PROGRAM}")
+if(MULTI_CONFIG)
+  list(APPEND configure_options "-DCMAKE_CONFIGURATION_TYPES=${BUILD_TYPE}")
+endif()
 function(run_case name package expect_success)
   file(WRITE "${work}/src/CMakeLists.txt" "cmake_minimum_required(VERSION 3.25)\nproject(Contract LANGUAGES CXX)\n${package}\n")
-  execute_process(COMMAND "${CMAKE_COMMAND}" -S "${work}/src" -B "${work}/${name}" -G "${GENERATOR}"
-    "-DCMAKE_PREFIX_PATH=${prefix}" "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF" "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}"
-    "-DCMAKE_CXX_COMPILER=${COMPILER}" "-DCMAKE_MAKE_PROGRAM=${MAKE_PROGRAM}"
+  execute_process(COMMAND "${CMAKE_COMMAND}" -S "${work}/src" -B "${work}/${name}" ${configure_options}
     RESULT_VARIABLE result OUTPUT_VARIABLE output ERROR_VARIABLE error)
   if(expect_success AND result)
     message(FATAL_ERROR "${name} failed: ${output} ${error}")
@@ -18,29 +21,58 @@ function(run_case name package expect_success)
   endif()
 endfunction()
 run_case(unknown "find_package(Isoduo REQUIRED COMPONENTS Widgets)" FALSE)
-run_case(optional "find_package(Isoduo REQUIRED OPTIONAL_COMPONENTS Widgets)\nif(Isoduo_Widgets_FOUND)\n message(FATAL_ERROR unexpected)\nendif()" TRUE)
+run_case(optional [=[
+find_package(Isoduo REQUIRED OPTIONAL_COMPONENTS Widgets)
+if(Isoduo_Widgets_FOUND OR NOT Isoduo_Core_FOUND OR NOT TARGET Isoduo::Core)
+  message(FATAL_ERROR "Unknown optional component must leave Core available")
+endif()
+]=] TRUE)
 run_case(old "find_package(Isoduo 0.1 REQUIRED)" FALSE)
 run_case(future "find_package(Isoduo 1.0 REQUIRED)" FALSE)
 run_case(older "find_package(Isoduo 0.2 REQUIRED)" FALSE)
 run_case(previous "find_package(Isoduo 0.3 REQUIRED)" FALSE)
-run_case(current "find_package(Isoduo 0.4 REQUIRED)" TRUE)
-foreach(header IN ITEMS appearance core layout version)
-  file(READ "${prefix}/include/isoduo/${header}.hpp" content HEX)
+run_case(current [=[
+find_package(Isoduo 0.4 REQUIRED)
+if(NOT Isoduo_VERSION VERSION_EQUAL 0.4.0 OR NOT TARGET Isoduo::Core)
+  message(FATAL_ERROR "Expected Isoduo 0.4.0 Core")
+endif()
+foreach(component AppearanceWeb AppearanceMaterial Desktop Diagnostics)
+  if(TARGET Isoduo::${component})
+    message(FATAL_ERROR "Default lookup imported ${component}")
+  endif()
+endforeach()
+]=] TRUE)
+file(GLOB public_headers RELATIVE "${prefix}/include" "${prefix}/include/isoduo/*.hpp")
+set(header_sources)
+foreach(header IN LISTS public_headers)
+  file(READ "${prefix}/include/${header}" content HEX)
   string(REGEX REPLACE "[0-7][0-9a-f]" "" non_ascii "${content}")
   if(non_ascii)
     message(FATAL_ERROR "Non-ASCII header: ${header}")
   endif()
-  file(WRITE "${work}/src/${header}.cpp" "#include <isoduo/${header}.hpp>\n")
+  get_filename_component(name "${header}" NAME_WE)
+  list(APPEND header_sources "${name}.cpp")
+  file(WRITE "${work}/src/${name}.cpp" "#include <${header}>\n")
 endforeach()
-file(WRITE "${work}/src/standard.cpp" "#if _MSVC_LANG < REQUIRED_LANG\n#error standard too old\n#endif\n")
-file(WRITE "${work}/src/CMakeLists.txt" "cmake_minimum_required(VERSION 3.25)\nproject(Headers LANGUAGES CXX)\nfind_package(Isoduo REQUIRED COMPONENTS Core)\nadd_library(headers OBJECT appearance.cpp core.cpp layout.cpp version.cpp standard.cpp)\ntarget_compile_definitions(headers PRIVATE REQUIRED_LANG=\${REQUIRED_LANG})\ntarget_link_libraries(headers PRIVATE Isoduo::Core)\n")
+file(WRITE "${work}/src/standard.cpp" [=[
+#if defined(_MSVC_LANG)
+#  define ACTIVE_LANG _MSVC_LANG
+#else
+#  define ACTIVE_LANG __cplusplus
+#endif
+#if ACTIVE_LANG < REQUIRED_LANG
+#  error standard too old
+#endif
+]=])
+file(WRITE "${work}/src/CMakeLists.txt" "cmake_minimum_required(VERSION 3.25)\nproject(Headers LANGUAGES CXX)\nfind_package(Isoduo REQUIRED COMPONENTS Core)\nadd_library(headers OBJECT ${header_sources} standard.cpp)\ntarget_compile_definitions(headers PRIVATE REQUIRED_LANG=\${REQUIRED_LANG})\ntarget_link_libraries(headers PRIVATE Isoduo::Core)\n")
 foreach(std IN ITEMS 17 23)
   if(std EQUAL 17)
     set(required_lang 202002L)
   else()
     set(required_lang 202003L)
   endif()
-  execute_process(COMMAND "${CMAKE_COMMAND}" -S "${work}/src" -B "${work}/std${std}" -G "${GENERATOR}" "-DCMAKE_PREFIX_PATH=${prefix}" "-DCMAKE_BUILD_TYPE=${BUILD_TYPE}" "-DCMAKE_CXX_COMPILER=${COMPILER}" "-DCMAKE_MAKE_PROGRAM=${MAKE_PROGRAM}" "-DCMAKE_CXX_STANDARD=${std}" "-DREQUIRED_LANG=${required_lang}" RESULT_VARIABLE result)
+  execute_process(COMMAND "${CMAKE_COMMAND}" -S "${work}/src" -B "${work}/std${std}" ${configure_options}
+    "-DCMAKE_CXX_STANDARD=${std}" "-DREQUIRED_LANG=${required_lang}" RESULT_VARIABLE result)
   if(result)
     message(FATAL_ERROR "Configure std ${std} failed")
   endif()

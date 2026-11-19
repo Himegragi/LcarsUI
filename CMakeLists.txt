@@ -140,22 +140,29 @@ if(ISODUO_BUILD_TESTS)
   target_include_directories(isoduo_list_page_tests PRIVATE examples/list_page src)
   target_link_libraries(isoduo_list_page_tests PRIVATE isoduo_list_page)
   add_test(NAME list_page COMMAND isoduo_list_page_tests)
-  if(ISODUO_INSTALL AND WIN32)
-    add_test(NAME package_install COMMAND "${CMAKE_COMMAND}" "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}" "-DCONFIG=$<CONFIG>" "-DDESKTOP=${ISODUO_BUILD_DESKTOP}" -P "${PROJECT_SOURCE_DIR}/tests/package/install.cmake")
+  if(ISODUO_INSTALL AND (WIN32 OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+    get_property(package_multi_config GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
+    if(package_multi_config)
+      set(package_consumer_configs "-DCMAKE_CONFIGURATION_TYPES=$<CONFIG>")
+    endif()
+    add_test(NAME package_install COMMAND "${CMAKE_COMMAND}" "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
+      "-DCONFIG=$<CONFIG>" "-DDESKTOP=${ISODUO_BUILD_DESKTOP}"
+      "-DSTATIC_PREFIX=${CMAKE_STATIC_LIBRARY_PREFIX}" "-DSTATIC_SUFFIX=${CMAKE_STATIC_LIBRARY_SUFFIX}"
+      -P "${PROJECT_SOURCE_DIR}/tests/package/install.cmake")
     set_tests_properties(package_install PROPERTIES FIXTURES_SETUP package)
     add_test(NAME about_package_no_json COMMAND "${CMAKE_COMMAND}" "-DPREFIX=${CMAKE_BINARY_DIR}/package-prefix" -P "${PROJECT_SOURCE_DIR}/tests/package/no-json-notices.cmake")
     set_tests_properties(about_package_no_json PROPERTIES FIXTURES_REQUIRED package)
     add_test(NAME consumer_example COMMAND "${CMAKE_CTEST_COMMAND}"
       --build-and-test "${PROJECT_SOURCE_DIR}/examples/consumer" "${CMAKE_BINARY_DIR}/consumer"
-      --build-generator "${CMAKE_GENERATOR}"
-      --build-options "-DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/package-prefix" "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF" "-DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}"
-        "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}"
-      --test-command "${CMAKE_CTEST_COMMAND}" --output-on-failure)
+      --build-generator "${CMAKE_GENERATOR}" -C "$<CONFIG>"
+      --build-options "-DCMAKE_PREFIX_PATH=${CMAKE_BINARY_DIR}/package-prefix" "-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF" "-DCMAKE_BUILD_TYPE=$<CONFIG>"
+        "-DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}" "-DCMAKE_MAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" ${package_consumer_configs}
+      --test-command "${CMAKE_CTEST_COMMAND}" -C "$<CONFIG>" --output-on-failure --no-tests=error)
     set_tests_properties(consumer_example PROPERTIES FIXTURES_REQUIRED package)
     add_test(NAME package_contract COMMAND "${CMAKE_COMMAND}"
       "-DBUILD_DIR=${CMAKE_BINARY_DIR}" "-DSOURCE_DIR=${PROJECT_SOURCE_DIR}"
       "-DGENERATOR=${CMAKE_GENERATOR}" "-DCOMPILER=${CMAKE_CXX_COMPILER}"
-      "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" "-DBUILD_TYPE=${CMAKE_BUILD_TYPE}"
+      "-DMAKE_PROGRAM=${CMAKE_MAKE_PROGRAM}" "-DBUILD_TYPE=$<CONFIG>" "-DMULTI_CONFIG=${package_multi_config}"
       -P "${PROJECT_SOURCE_DIR}/tests/package/contract.cmake")
     set_tests_properties(package_contract PROPERTIES FIXTURES_REQUIRED package)
   endif()
