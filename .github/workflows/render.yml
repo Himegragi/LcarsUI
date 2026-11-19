@@ -23,6 +23,9 @@ jobs:
       - name: Install and verify Release package
         shell: pwsh
         run: |
+          . ./cmake/VisualStudio.ps1
+          $toolchain = Get-Content build/Release/isoduo-visual-studio.json -Raw | ConvertFrom-Json
+          Import-IsoduoVisualStudioEnvironment $toolchain.InstallationPath $toolchain.ToolsetVersion | Out-Null
           ctest --test-dir build/Release --output-on-failure -R "package_install|consumer_example|third_party_notices"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --install build/Release --prefix "$env:RUNNER_TEMP\isoduo-full"
@@ -62,6 +65,9 @@ jobs:
       - name: Run full CTest suite
         shell: pwsh
         run: |
+          . ./cmake/VisualStudio.ps1
+          $toolchain = Get-Content build/Release/isoduo-visual-studio.json -Raw | ConvertFrom-Json
+          Import-IsoduoVisualStudioEnvironment $toolchain.InstallationPath $toolchain.ToolsetVersion | Out-Null
           ctest --test-dir build/Release --output-on-failure --timeout 900
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run debug diagnostics checks
