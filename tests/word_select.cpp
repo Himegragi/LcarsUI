@@ -476,9 +476,10 @@ void theSystemDictionaryAlwaysBreaksBetweenScriptsAndAroundPunctuation() {
 
 #ifdef __linux__
 void checkChineseWordContract(std::shared_ptr<const detail::WordBreaker> breaker, WordSegmentation effective) {
-    // In zh_TW, 中文 is a word and takes the trailing space. Per-character fallback stops at 文.
-    Field f(u"中文 test", false, WordSegmentation::dictionary, std::move(breaker));
-    const unsigned stop = effective == WordSegmentation::dictionary ? 3 : 1;
+    // zh_TW splits 中文|設定| |test. Script run would keep all four Han characters together.
+    Field f(u"中文設定 test", false, WordSegmentation::dictionary, std::move(breaker));
+    const bool usesDictionary = effective == WordSegmentation::dictionary;
+    const unsigned stop = usesDictionary ? 2 : 1;
     const TextSpan firstWord{0, stop};
     const auto& tree = f.ui.semantics();
     const auto node = tree.get({"t"});
@@ -488,6 +489,10 @@ void checkChineseWordContract(std::shared_ptr<const detail::WordBreaker> breaker
     check(f.doubleClicked(0) == firstWord && f.handle.wordAt(0).value == firstWord &&
           tree.textUnit("t", TextUnitKind::word, 0).value == firstWord,
           "Double click and both word queries agree on the first word");
+    const TextSpan withSpace{usesDictionary ? 2u : 3u, 5};
+    check(f.doubleClicked(3) == withSpace && f.handle.wordAt(3).value == withSpace &&
+          tree.textUnit("t", TextUnitKind::word, 3).value == withSpace,
+          "The second word keeps its trailing space");
     check(f.handle.nextWordStop(0).value == stop && tree.wordStop("t", 0, true).value == stop &&
           f.handle.previousWordStop(stop).value == 0 && tree.wordStop("t", stop, false).value == 0,
           "Both word-stop queries agree in both directions");
@@ -495,9 +500,12 @@ void checkChineseWordContract(std::shared_ptr<const detail::WordBreaker> breaker
     check(f.host().keyDown(press(Key::right, false, true)) && f.selection().caret == stop &&
           f.host().keyDown(press(Key::left, false, true)) && f.selection().caret == 0,
           "Ctrl+Right and Ctrl+Left follow the queried stops");
-    check(f.host().keyDown(press(Key::del, false, true)) &&
-          f.text() == (effective == WordSegmentation::dictionary ? u"test" : u"文 test"),
+    const std::u16string_view afterDeletion = usesDictionary ? u"設定 test" : u"文設定 test";
+    check(f.host().keyDown(press(Key::del, false, true)) && f.text() == afterDeletion,
           "Ctrl+Delete removes exactly through the next word stop");
+    check(f.handle.undo() && f.handle.select(stop, stop), "Undo and place the caret on the next stop");
+    check(f.host().keyDown(press(Key::backspace, false, true)) && f.text() == afterDeletion && f.selection().caret == 0,
+          "Ctrl+Backspace removes the same word from the other side");
 }
 
 void theLinuxDictionaryDrivesSelectionAndKeyboardStops() {
