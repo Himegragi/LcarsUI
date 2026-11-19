@@ -21,7 +21,11 @@ function Import-IsoduoVisualStudioEnvironment([string]$InstallationPath, [string
     $vswhere = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
     $env:PATH = (Split-Path $vswhere) + ';' + $env:PATH
     $devCmd = Join-Path $InstallationPath 'Common7\Tools\VsDevCmd.bat'
-    $toolsetArg = if ($ToolsetVersion) { " -vcvars_ver=$ToolsetVersion" } else { '' }
+    $requestedToolset = if ($ToolsetVersion) { $ToolsetVersion } else { $env:ISODUO_MSVC_TOOLSET }
+    if ($requestedToolset -and $requestedToolset -notmatch '^\d+\.\d+(\.\d+)?$') {
+        throw "Invalid MSVC toolset version $requestedToolset"
+    }
+    $toolsetArg = if ($requestedToolset) { " -vcvars_ver=$requestedToolset" } else { '' }
     $envLines = & cmd.exe /d /c "call `"$devCmd`" -no_logo -arch=x64 -host_arch=x64$toolsetArg >nul && set"
     if ($LASTEXITCODE -ne 0) { throw 'VsDevCmd failed' }
     foreach ($line in $envLines) {
@@ -30,6 +34,9 @@ function Import-IsoduoVisualStudioEnvironment([string]$InstallationPath, [string
     if (-not $env:VCToolsVersion) { throw 'VsDevCmd did not select an MSVC toolset version' }
     $selected = $env:VCToolsVersion.TrimEnd('\', '/')
     if ($ToolsetVersion -and $selected -ne $ToolsetVersion) { throw "Requested MSVC toolset $ToolsetVersion, but VsDevCmd selected $selected" }
+    if (-not $ToolsetVersion -and $requestedToolset -and $selected -ne $requestedToolset -and -not $selected.StartsWith("$requestedToolset.", [StringComparison]::Ordinal)) {
+        throw "Requested MSVC toolset $requestedToolset, but VsDevCmd selected $selected"
+    }
     $expectedTools = [IO.Path]::GetFullPath((Join-Path $InstallationPath 'VC/Tools/MSVC')).TrimEnd('\') + '\'
     if (-not $env:VCToolsInstallDir -or -not [IO.Path]::GetFullPath($env:VCToolsInstallDir).StartsWith($expectedTools, [StringComparison]::OrdinalIgnoreCase)) {
         throw "VsDevCmd did not select MSVC tools from $InstallationPath"

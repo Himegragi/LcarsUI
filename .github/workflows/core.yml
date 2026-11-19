@@ -2,7 +2,9 @@ name: Core
 on: [push, pull_request]
 jobs:
   core:
-    runs-on: windows-2022
+    runs-on: windows-latest
+    env:
+      ISODUO_MSVC_TOOLSET: '14.44'
     steps:
       - uses: actions/checkout@v4
       - name: Build, test and install Release core
