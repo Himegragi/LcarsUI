@@ -38,7 +38,7 @@ private:
     wl_surface* surface_ = nullptr;
     bool entered_ = false;
     std::uint64_t target_ = 0;
-    std::uint32_t serial_ = 0, enabledAt_ = 0;
+    std::uint32_t serial_ = 0, enabledAt_ = 0, surroundingAt_ = 0;
     std::optional<Surrounding> surrounding_;
     std::optional<Rect> caret_;
     LinuxImeEdit pending_;

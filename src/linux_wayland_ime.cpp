@@ -91,13 +91,16 @@ void WaylandIme::update(const std::optional<LinuxImeState>& state, Rect surfaceC
     }
     if (changed || moved || surroundingChanged) commit();
     if (changed) enabledAt_ = serial_;
+    if (surroundingChanged) surroundingAt_ = serial_;
 }
 void WaylandIme::done(std::uint32_t serial) {
     auto edit = std::exchange(pending_, {});
     // Older geometry updates still belong to the same editor. A batch from before
     // enable belongs to a different editor and must never land in the current one.
     if (!entered_ || !target_ || (serial - enabledAt_) >= (std::uint32_t{1} << 31)) return;
-    if ((edit.deleteBefore || edit.deleteAfter) && (serial != serial_ || !surrounding_)) return;
+    // Delete offsets refer to surrounding text, not to the cursor rectangle.
+    if ((edit.deleteBefore || edit.deleteAfter) &&
+        (!surrounding_ || (serial - surroundingAt_) >= (std::uint32_t{1} << 31))) return;
     // Mutter also acknowledges client state with a bare done event.
     if (!edit.replacePreedit && edit.commit.empty() && !edit.deleteBefore && !edit.deleteAfter) return;
     edit.target = target_;
