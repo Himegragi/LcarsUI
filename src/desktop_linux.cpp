@@ -523,25 +523,31 @@ struct Desktop::Impl {
             return;
         }
         if (event.inputSerial) window->clipboardSerial(*event.inputSerial);
-        if (event.kind == Kind::keyDown) {
-            const auto* session = state.edit(state.focused());
-            if (event.key.key == Key::escape && session && session->composing) {
+        if (event.kind != Kind::keyDown && event.kind != Kind::keyUp) {
+            window->pointerToClient(event);
+            pointer(event);
+            return;
+        }
+        if (event.kind == Kind::keyDown && event.key.key == Key::escape) {
+            if (const auto* session = state.edit(state.focused()); session && session->composing) {
                 stopIme();
                 state.compositionCancel();
                 dirty = true;
                 return;
             }
-            if (dirty) arrange();
-            auto previous = state.focused();
+        }
+        if (event.kind == Kind::keyDown && dirty) arrange();
+        const auto previous = state.focused();
+        if (event.kind == Kind::keyDown) {
             const bool menu = state.menuOpen();
             if (event.key.key == Key::space && !event.key.repeat) {
                 const auto* component = state.find(previous);
                 spaceTextTarget = !menu && component && componentType(component->kind).selectsText() ? previous : Id{};
             }
-            // Retained edits such as undo and redo can change the field without
-            // invalidating the host. Repaint the selection and sync the IME spot.
-            if (session) dirty = true;
             state.keyDown(event.key);
+            // Keyboard navigation can change retained viewport offsets or the
+            // selection without an invalidation from the component.
+            dirty = true;
             if (const auto* component = state.find(state.focused()); component && componentType(component->kind).hasRowCursor()) {
                 switch (event.key.key) {
                 case Key::up: case Key::down: case Key::left: case Key::right: case Key::home: case Key::end:
@@ -554,12 +560,13 @@ struct Desktop::Impl {
             const bool typingSpace = event.key.key != Key::space || (!spaceTextTarget.empty() && spaceTextTarget == previous);
             if (!closing && typingSpace && previous == state.focused() && !event.text.empty() && event.text.front() >= u' ' &&
                 event.text.front() != u'\x7f') state.textInput(event.text);
-        } else if (event.kind == Kind::keyUp) {
+        } else {
             if (event.key.key == Key::space) spaceTextTarget.clear();
             state.keyUp(event.key.key);
-        } else {
-            window->pointerToClient(event);
-            pointer(event);
+        }
+        if (previous != state.focused()) {
+            reveal = state.focused();
+            dirty = true;
         }
     }
     int delay() {
