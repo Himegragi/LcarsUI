@@ -102,16 +102,19 @@ bool X11Ime::lookup(XKeyEvent& key, std::u16string& text) {
     // Zero keycode is the synthetic XIM commit event, never a shortcut.
     if (!context_) return key.keycode == 0;
     char buffer[64];
+    KeySym symbol = NoSymbol;
     Status status;
-    int size = Xutf8LookupString(context_, &key, buffer, sizeof(buffer), nullptr, &status);
+    int size = Xutf8LookupString(context_, &key, buffer, sizeof(buffer), &symbol, &status);
     std::vector<char> overflow;
     if (status == XBufferOverflow && size > 0) {
         overflow.resize(size);
-        size = Xutf8LookupString(context_, &key, overflow.data(), size, nullptr, &status);
+        size = Xutf8LookupString(context_, &key, overflow.data(), size, &symbol, &status);
     }
     if (size > 0 && (status == XLookupChars || status == XLookupBoth))
         text = utf16FromUtf8(std::string_view(overflow.empty() ? buffer : overflow.data(), size));
-    if (key.keycode != 0 && status != XLookupChars) return false;
+    // A forwarded Ctrl chord can carry an ASCII control character as well
+    // as its physical keycode. Preserve the ordinary shortcut dispatch.
+    if (key.keycode != 0 && (status != XLookupChars || (key.state & (ControlMask | Mod1Mask)))) return false;
     if (!text.empty()) {
         LinuxImeEdit edit;
         edit.target = target_;
