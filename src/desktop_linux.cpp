@@ -393,6 +393,9 @@ struct Desktop::Impl {
             }
             if (dirty) arrange();
             auto previous = state.focused();
+            // Retained edits such as undo and redo can change the field without
+            // invalidating the host. Repaint the selection and sync the IME spot.
+            if (session) dirty = true;
             state.keyDown(event.key);
             if (!closing && previous == state.focused() && !event.text.empty() && event.text.front() >= u' ' &&
                 event.text.front() != u'\x7f') state.textInput(event.text);
