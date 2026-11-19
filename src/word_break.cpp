@@ -1,10 +1,15 @@
 #include "word_break.hpp"
 #include <algorithm>
 #include <cstdint>
+#include <limits>
+#include <memory>
+#include <string>
 #ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #define NOMINMAX
 #include <windows.h>
+#elif defined(__linux__)
+#include <dlfcn.h>
 #endif
 
 namespace isoduo::detail {
@@ -65,39 +70,91 @@ struct ScriptRun final : WordBreaker {
     bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const override { return ruleBoundaries(text, false, out); }
 };
 
-#ifdef _WIN32
-// The C API of the system icu.dll (Windows 10 1903 and later). Loaded lazily, never linked.
+#if defined(_WIN32) || defined(__linux__)
+// ICU's C BreakIterator ABI. Resolve it lazily so Core can run without ICU or its headers.
 struct Icu {
-    using Open = void*(__cdecl*)(int type, const char* locale, const char16_t* text, std::int32_t length, int* status);
-    using Close = void(__cdecl*)(void*);
-    using Step = std::int32_t(__cdecl*)(void*);
-    Open open = nullptr; Close close = nullptr; Step first = nullptr; Step next = nullptr;
-    Icu() {
-        HMODULE module = LoadLibraryExW(L"icu.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
-        if (!module) return;
-        auto symbol = [&](const char* name) { return reinterpret_cast<void*>(GetProcAddress(module, name)); };
-        open = reinterpret_cast<Open>(symbol("ubrk_open")); close = reinterpret_cast<Close>(symbol("ubrk_close"));
-        first = reinterpret_cast<Step>(symbol("ubrk_first")); next = reinterpret_cast<Step>(symbol("ubrk_next"));
-        if (!open || !close || !first || !next) open = nullptr;
-    }
+    using Open = void*(*)(int type, const char* locale, const char16_t* text, std::int32_t length, int* status);
+    using Close = void(*)(void*);
+    using Step = std::int32_t(*)(void*);
+    Open open = nullptr;
+    Close close = nullptr;
+    Step first = nullptr;
+    Step next = nullptr;
+
+    explicit operator bool() const { return open && close && first && next; }
 };
+
+template <typename Symbol>
+Icu icuFunctions(Symbol symbol) {
+    return {reinterpret_cast<Icu::Open>(symbol("ubrk_open")), reinterpret_cast<Icu::Close>(symbol("ubrk_close")),
+            reinterpret_cast<Icu::Step>(symbol("ubrk_first")), reinterpret_cast<Icu::Step>(symbol("ubrk_next"))};
+}
+
+Icu loadIcu() {
+#ifdef _WIN32
+    // Windows 10 1903 and later supplies unversioned exports in System32.
+    const auto module = LoadLibraryExW(L"icu.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+    if (module) {
+        auto icu = icuFunctions([&](const char* name) { return GetProcAddress(module, name); });
+        if (icu) return icu;
+        FreeLibrary(module);
+    }
+    return {};
+#else
+    auto load = [](const std::string& library, const std::string& suffix) -> Icu {
+        auto* module = dlopen(library.c_str(), RTLD_NOW | RTLD_LOCAL);
+        if (!module) return {};
+        auto symbol = [&](const char* name) { return dlsym(module, (name + suffix).c_str()); };
+        auto icu = icuFunctions(symbol);
+        if (!icu && !suffix.empty()) {
+            icu = icuFunctions([&](const char* name) { return dlsym(module, name); });
+        }
+        if (icu) return icu;  // The resolved functions are used for the process lifetime.
+        dlclose(module);
+        return {};
+    };
+    // Runtime packages ship a versioned soname. ICU's default C symbol suffix matches its major version.
+    for (int major = 99; major >= 60; --major) {
+        const auto version = std::to_string(major);
+        if (auto icu = load("libicuuc.so." + version, "_" + version)) return icu;
+    }
+    return load("libicuuc.so", "");  // A system build can also disable symbol renaming.
+#endif
+}
+
+bool icuBoundaries(std::u16string_view text, std::vector<unsigned>& out) {
+    static const Icu icu = loadIcu();
+    if (!icu || text.size() > std::numeric_limits<std::int32_t>::max()) return false;
+    if (text.empty()) return true;
+    int status = 0;
+    const auto length = static_cast<std::int32_t>(text.size());
+    // ICU borrows the UTF-16 buffer until the iterator is closed.
+    const std::unique_ptr<void, Icu::Close> iterator{
+        icu.open(1 /* UBRK_WORD */, "zh_TW", text.data(), length, &status), icu.close};
+    if (!iterator || status > 0) return false;  // ICU warning codes (negative) still return an iterator.
+    for (auto at = icu.first(iterator.get()); at != -1; at = icu.next(iterator.get()))
+        if (at >= 0 && at < length) out.push_back(static_cast<unsigned>(at));
+    return true;
+}
+
 struct SystemIcu final : WordBreaker {
     bool usable() const override {
-        static const bool works = [this] { std::vector<unsigned> probe; return boundaries(u"a b", probe); }();
+        static const bool works = [] {
+            std::vector<unsigned> probe;
+#ifdef __linux__
+            // An ICU build without CJK break data can still open a word iterator.
+            return icuBoundaries(u"中文", probe) && probe.size() == 1;
+#else
+            return icuBoundaries(u"a b", probe);
+#endif
+        }();
         return works;
     }
     bool boundaries(std::u16string_view text, std::vector<unsigned>& out) const override {
-        static const Icu icu;
-        if (!icu.open) return false;
-        if (text.empty()) return true;
-        int status = 0;
-        // ICU does not copy the text: it must outlive the iterator, and it does (closed before returning).
-        void* iterator = icu.open(1 /* UBRK_WORD */, "zh_TW", text.data(), static_cast<std::int32_t>(text.size()), &status);
-        if (!iterator || status > 0) { if (iterator) icu.close(iterator); return false; }
-        for (std::int32_t at = icu.first(iterator); at != -1; at = icu.next(iterator))
-            if (at >= 0 && at < static_cast<std::int32_t>(text.size())) out.push_back(static_cast<unsigned>(at));
-        icu.close(iterator);
-        return true;
+#ifdef __linux__
+        if (!usable()) return false;
+#endif
+        return icuBoundaries(text, out);
     }
 };
 #else
