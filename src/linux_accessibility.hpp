@@ -8,7 +8,7 @@ namespace isoduo::detail {
 class LinuxWindow;
 class LinuxAccessibility {
 public:
-    LinuxAccessibility(GMainContext*, Ui&, LinuxWindow&, const Frame&, std::u16string_view title);
+    LinuxAccessibility(GMainContext*, Ui&, LinuxWindow&, const Frame&, std::u16string_view title, const bool& closing);
     ~LinuxAccessibility();
     void title(std::u16string_view value);
     void flushLayout();

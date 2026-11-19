@@ -645,7 +645,7 @@ RunResult Desktop::run() {
         ~RunScope() { host.release(); host.running = false; }
     } run{host};
     if (!host.closing && host.config.platformAccessibilityEnabled)
-        host.accessibility.emplace(host.preferences->context(), host.ui, *host.window, host.frame, host.config.title);
+        host.accessibility.emplace(host.preferences->context(), host.ui, *host.window, host.frame, host.config.title, host.closing);
     while (!host.closing) {
         if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
             host.paint();

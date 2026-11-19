@@ -141,6 +141,7 @@ struct LinuxAccessibility::Impl {
     Ui& ui;
     LinuxWindow& native;
     const Frame& frame;
+    const bool& closing;
     Bus bus{nullptr, g_object_unref};
     Schema schema{nullptr, g_dbus_node_info_unref};
     guint subtree = 0, cache = 0;
@@ -163,8 +164,8 @@ struct LinuxAccessibility::Impl {
     std::optional<unsigned> focused;
     bool layoutPending = false, registered = false;
 
-    Impl(GMainContext* context, Ui& ui, LinuxWindow& native, const Frame& frame, std::u16string_view title)
-        : ui(ui), native(native), frame(frame), title(wireText(title)) {
+    Impl(GMainContext* context, Ui& ui, LinuxWindow& native, const Frame& frame, std::u16string_view title, const bool& closing)
+        : ui(ui), native(native), frame(frame), closing(closing), title(wireText(title)) {
         ContextScope current(context);
         bus = connectAccessibilityBus();
         if (!bus) return;
@@ -296,6 +297,12 @@ struct LinuxAccessibility::Impl {
     static void call(GDBusConnection*, const gchar*, const gchar* path, const gchar* iface, const gchar* method,
                      GVariant* args, GDBusMethodInvocation* invocation, gpointer data) {
         auto& self = *static_cast<Impl*>(data);
+        // A prior call in the same GLib dispatch batch may already have closed the host.
+        if (self.closing) {
+            g_dbus_method_invocation_return_error_literal(invocation, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT,
+                "The accessible window is closing");
+            return;
+        }
         try {
             if (std::string_view(path) == atspi::cachePath) {
                 // A live tree: clients obtain objects through Accessible and receive change signals.
@@ -334,6 +341,10 @@ struct LinuxAccessibility::Impl {
     static gboolean setProperty(GDBusConnection*, const gchar* sender, const gchar* path, const gchar*,
         const gchar* property, GVariant* value, GError** error, gpointer data) {
         auto& self = *static_cast<Impl*>(data);
+        if (self.closing) {
+            g_set_error_literal(error, G_DBUS_ERROR, G_DBUS_ERROR_UNKNOWN_OBJECT, "The accessible window is closing");
+            return FALSE;
+        }
         try {
             if (std::string_view(property) == "Id") {
                 self.applicationId = g_variant_get_int32(value);
@@ -847,8 +858,8 @@ void LinuxAccessibility::Impl::flushLayout() {
 
 
 LinuxAccessibility::LinuxAccessibility(GMainContext* context, Ui& ui, LinuxWindow& native,
-                                       const Frame& frame, std::u16string_view title)
-    : impl_(std::make_unique<Impl>(context, ui, native, frame, title)) {}
+                                       const Frame& frame, std::u16string_view title, const bool& closing)
+    : impl_(std::make_unique<Impl>(context, ui, native, frame, title, closing)) {}
 LinuxAccessibility::~LinuxAccessibility() = default;
 void LinuxAccessibility::flushLayout() { impl_->flushLayout(); }
 void LinuxAccessibility::title(std::u16string_view value) {
