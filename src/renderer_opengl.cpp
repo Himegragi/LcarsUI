@@ -516,4 +516,61 @@ Image Renderer::readBack(const DrawList& list,int width,int height){
     for(int y=0;y<height;++y)std::copy_n(raw.data()+static_cast<std::size_t>(height-1-y)*stride,stride,result.pixels.data()+static_cast<std::size_t>(y)*stride);
     return result;
 }
+
+GpuComparison compareDrawList(Renderer& renderer, const DrawList& list, int width, int height, int fault) {
+    auto reference = renderCpu(list, width, height);
+    std::vector<Rect> regions;
+    std::vector<GpuRegion> observed;
+    std::string owner;
+    bool popup = false;
+    unsigned roles = 0;
+    const Rect viewport{0, 0, width, height};
+    Rect clip = viewport;
+    for (std::size_t i = 0; i < list.commands.size(); ++i) {
+        const auto& command = list.commands[i];
+        if (command.type == DrawCommand::Type::clip) {
+            clip = intersect(command.rect, viewport);
+            continue;
+        }
+        if (command.type == DrawCommand::Type::beginGroup) {
+            owner = command.owner;
+            popup = command.popup;
+            continue;
+        }
+        if (command.type == DrawCommand::Type::endGroup) {
+            owner.clear();
+            popup = false;
+            continue;
+        }
+        if (command.role == PaintRole::content) continue;
+        const auto bounds = intersect(command.resolve ? command.resolve().rect : command.rect, clip);
+        if (bounds.w <= 0 || bounds.h <= 0) continue;
+        const auto role = static_cast<unsigned>(command.role);
+        const bool ink = commandInk(list, i, i + 1, clip, width, height);
+        regions.push_back(bounds);
+        observed.push_back({bounds, owner, role, popup, ink, false});
+        if (ink) roles |= role;
+    }
+
+    DrawList altered;
+    if (fault) {
+        altered = list;
+        for (auto& command : altered.commands) {
+            const auto role = static_cast<unsigned>(command.role);
+            if (fault == 1 && (role & static_cast<unsigned>(PaintRole::caret))) ++command.rect.x;
+            if (fault == 2 && (role & static_cast<unsigned>(PaintRole::focusIndicator))) command.color.a = 0;
+        }
+    }
+    auto actual = renderer.readBack(fault ? altered : list, width, height);
+    auto result = compareImages(reference, actual, regions);
+    unsigned failedRoles = 0;
+    for (std::size_t i = 0; i < observed.size(); ++i) {
+        auto& region = observed[i];
+        region.passed = region.ink && i < result.regionPass.size() && result.regionPass[i];
+        if (!region.passed) failedRoles |= region.role;
+    }
+    const bool passed = !failedRoles && result.regionsOk &&
+        result.differentPixels * 200 <= static_cast<std::size_t>(width) * height;
+    return {std::move(reference), std::move(actual), std::move(result), roles, failedRoles, std::move(observed), passed};
+}
 }

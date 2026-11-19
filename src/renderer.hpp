@@ -24,6 +24,20 @@ struct RendererTestHooks {
 struct StartupError { StartupFailure failure; };
 struct FrameError { RendererFailure failure; std::vector<unsigned> codes; };
 RenderDiagnostic frameDiagnostic(unsigned code);
+struct GpuRegion {
+    Rect bounds{};
+    std::string owner;
+    unsigned role = 0;
+    bool popup = false, ink = false, passed = false;
+};
+struct GpuComparison {
+    Image reference, actual;
+    ImageComparison comparison;
+    unsigned roles = 0, failedRoles = 0;
+    std::vector<GpuRegion> regions;
+    bool passed = false;
+    explicit operator bool() const { return passed; }
+};
 class Renderer {
 public:
 #ifdef _WIN32
@@ -42,4 +56,5 @@ private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
 };
+GpuComparison compareDrawList(Renderer&, const DrawList&, int width, int height, int fault = 0);
 }
