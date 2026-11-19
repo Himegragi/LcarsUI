@@ -1213,6 +1213,7 @@ void detail::UiState::refreshTooltips() {
 void detail::UiState::rendererFailed(bool failed) {
     if (rendererFailed_ == failed) return;
     if (failed) {
+        pendingClipboard_.reset();
         closeMenu();
         if (tooltipClock_) tooltipPausedAt_ = tooltipClock_();
         rendererFailed_ = true;
@@ -2621,7 +2622,10 @@ Result detail::UiState::copy(std::string_view id) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalidValue, u"元件不是文字欄位"};
-    const auto& session = it->second.session;
+    return writeSelection(id, it->second, ClipboardAction::copy);
+}
+Result detail::UiState::writeSelection(std::string_view id, Field& field, ClipboardAction action) {
+    const auto& session = field.session;
     if (session.begin() == session.end()) return {};
     auto selected = std::u16string(session.text, session.begin(), session.end() - session.begin());
     if (find(id)->multiline) {  // the clipboard carries CRLF, as other Windows text does
@@ -2629,39 +2633,69 @@ Result detail::UiState::copy(std::string_view id) {
         for (auto ch : selected) { if (ch == u'\n') crlf += u'\r'; crlf += ch; }
         selected = std::move(crlf);
     }
-    // A rich field also hands over the styles of the selection, beside the plain text.
-    const bool written = it->second.rich && clipboard_
-        ? clipboard_->writeRich(selected, detail::serializeRichPayload(RichText{std::u16string(session.text, session.begin(), session.end() - session.begin()),
-                                                                                    detail::sliceSpans(it->second.spans, session.begin(), session.end())}))
-        : clipboard_ && clipboard_->write(selected);
+    ClipboardData data{std::move(selected), {}};
+    if (field.rich) {
+        data.rich = serializeRichPayload({session.text.substr(session.begin(), session.end() - session.begin()),
+                                          sliceSpans(field.spans, session.begin(), session.end())});
+    }
+    if (!clipboard_ && asyncClipboard_) return beginClipboard(id, field, action, std::move(data));
+    const bool written = clipboard_ && (field.rich ? clipboard_->writeRich(data.text, data.rich) : clipboard_->write(data.text));
     if (!written) return {Status::failed, u"無法寫入剪貼簿"};
-    return {};
+    return action == ClipboardAction::cut ? replaceSelection(id, field, u"") : Result{};
 }
-// A paste from the clipboard: a rich field takes the styles of a payload that belongs to the plain text it
-// came with; anything else (another program's text, a payload left from another copy, a plain field) is plain text.
 Result detail::UiState::pasteClipboard(std::string_view id) {
     OperationScope operation(this);
-    if (!clipboard_) return {Status::notSupported, u"剪貼簿不可用"};
+    if (!clipboard_) {
+        if (!asyncClipboard_) return {Status::notSupported, u"剪貼簿不可用"};
+        Field* field = nullptr;
+        if (auto result = writable(id, field); !result) return result;
+        return beginClipboard(id, *field, ClipboardAction::paste);
+    }
     auto content = clipboard_->read();
     if (!content) return {content.status, content.message};
-    if (isRich(id)) {
-        auto payload = clipboard_->readRich();
-        auto rich = payload ? detail::parseRichPayload(*payload) : std::nullopt;
-        if (rich && rich->text == pasteAsMultiLine(*content)) {
+    auto payload = isRich(id) ? clipboard_->readRich() : Query<std::string>{};
+    return applyClipboard(id, *content, payload ? std::string_view(*payload) : std::string_view{});
+}
+// The private payload must describe the same text as its plain representation.
+Result detail::UiState::applyClipboard(std::string_view id, std::u16string_view text, std::string_view payload) {
+    if (!payload.empty() && isRich(id)) {
+        auto rich = parseRichPayload(payload);
+        if (rich && rich->text == pasteAsMultiLine(text)) {
             Field* field = nullptr;
             if (auto result = writable(id, field); !result) return result;
             return replaceRange(id, *field, field->session.begin(), field->session.end(), rich->text, &rich->spans);
         }
     }
-    return paste(id, *content);
+    return paste(id, text);
 }
 Result detail::UiState::cut(std::string_view id) {
     OperationScope operation(this);
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
-    if (field->session.begin() == field->session.end()) return {};
-    if (auto result = copy(id); !result) return result;
-    return replaceSelection(id, *field, u"");
+    return writeSelection(id, *field, ClipboardAction::cut);
+}
+Result detail::UiState::beginClipboard(std::string_view id, Field& field, ClipboardAction action, ClipboardData data) {
+    const auto request = ++nextClipboardRequest_;
+    auto lifetime = componentLifetimes_.find(id)->second;
+    pendingClipboard_ = {request, action, Id(id), lifetime, field.session.revision, field.session.selectionChanges};
+    auto result = action == ClipboardAction::paste ? asyncClipboard_->read(request, field.rich)
+                                                   : asyncClipboard_->write(request, std::move(data));
+    if (!result) pendingClipboard_.reset();
+    return result;
+}
+Result detail::UiState::completeClipboard(ClipboardDelivery delivery) {
+    OperationScope operation(this);
+    if (!pendingClipboard_ || pendingClipboard_->request != delivery.request)
+        return {Status::notFound, u"剪貼簿請求已結束"};
+    auto pending = *std::exchange(pendingClipboard_, std::nullopt);
+    if (!delivery.result || pending.action == ClipboardAction::copy) return delivery.result;
+    if (pending.lifetime.expired()) return {Status::notFound, u"Component no longer exists"};
+    Field* field = nullptr;
+    if (auto result = writable(pending.target, field); !result) return result;
+    if (field->session.revision != pending.revision || field->session.selectionChanges != pending.selectionChanges)
+        return {Status::busy, u"文字或選取已變更"};
+    if (pending.action == ClipboardAction::cut) return replaceSelection(pending.target, *field, u"");
+    return applyClipboard(pending.target, delivery.data.text, delivery.data.rich);
 }
 float detail::UiState::textOffset(std::string_view id) const {
     auto it = edits_.find(id);
@@ -2919,6 +2953,7 @@ std::vector<Id> detail::UiState::focusOrder() const {
 Result detail::UiState::moveFocus(Id next) {
     OperationScope operation(this);
     if (next == focus_) return {};
+    pendingClipboard_.reset();
     if (!composing_.empty() && beforeFocus_) beforeFocus_();
     if (!popupSource_.empty() && next != popupSource_) closePopup();
     if (menu_ && next != menu_->target) closeMenu();
@@ -2963,6 +2998,7 @@ Result detail::UiState::compositionUpdate(std::u16string preedit, unsigned caret
     if (composing_.empty()) {
         Field* field = nullptr;
         if (auto result = writable(focus_, field); !result) return result;
+        pendingClipboard_.reset();
         composing_ = focus_;
     }
     edits_.at(composing_).session.updateComposition(std::move(preedit), caret);
@@ -3255,7 +3291,7 @@ Result detail::UiState::pointerUp(std::string_view id, std::optional<std::size_t
     return componentType(find(armed)->kind).pointerUp(*this, {armed, pressedOption, option, pressedValue});
 }
 void detail::UiState::cancelInput() {
-    OperationScope operation(this); endTextDrag(); keyArmed_.clear(); pointerArmed_.clear(); pointerOption_.reset(); pointerOptionValue_.reset(); endSliderDrag(false); }
+    OperationScope operation(this); pendingClipboard_.reset(); endTextDrag(); keyArmed_.clear(); pointerArmed_.clear(); pointerOption_.reset(); pointerOptionValue_.reset(); endSliderDrag(false); }
 Result detail::UiState::setError(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
@@ -3270,6 +3306,7 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
     auto* control = const_cast<Component*>(find(id));
     if (!control) return;
     control->enabled = enabled;
+    if (!enabled && pendingClipboard_ && pendingClipboard_->target == id) pendingClipboard_.reset();
     if (!enabled && menu_ && menu_->target == id) closeMenu();
     if (!enabled && popupSource_ == id) closePopup();
     if (!enabled && focus_ == control->id) moveFocus({});
@@ -3277,7 +3314,10 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
 }
 void detail::UiState::setReadOnly(std::string_view id, bool readOnly) {
     OperationScope operation(this);
-    if (auto* control = const_cast<Component*>(find(id))) control->readOnly = readOnly;
+    if (auto* control = const_cast<Component*>(find(id))) {
+        if (readOnly && pendingClipboard_ && pendingClipboard_->target == id) pendingClipboard_.reset();
+        control->readOnly = readOnly;
+    }
 }
 void detail::UiState::check(std::string_view id, bool checked) {
     OperationScope operation(this);

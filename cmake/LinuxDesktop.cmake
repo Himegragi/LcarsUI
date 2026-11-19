@@ -12,6 +12,7 @@ add_custom_command(OUTPUT "${shell_header}" "${shell_source}"
   COMMAND "${wayland_scanner}" private-code "${shell_xml}" "${shell_source}"
   DEPENDS "${shell_xml}" VERBATIM)
 target_sources(isoduo_desktop PRIVATE src/desktop_linux.cpp src/linux_x11.cpp src/linux_wayland.cpp
+  src/linux_x11_clipboard.cpp src/linux_wayland_clipboard.cpp
   src/linux_fonts.cpp src/linux_preferences.cpp src/renderer_opengl_egl.cpp "${shell_source}" "${shell_header}")
 target_include_directories(isoduo_desktop PRIVATE "${PROJECT_BINARY_DIR}/generated")
 target_link_libraries(isoduo_desktop PRIVATE PkgConfig::ISODUO_LINUX_DESKTOP Fontconfig::Fontconfig)
@@ -51,4 +52,8 @@ if(ISODUO_BUILD_TESTS)
   isoduo_target(isoduo_linux_desktop_native)
   target_include_directories(isoduo_linux_desktop_native PRIVATE src)
   target_link_libraries(isoduo_linux_desktop_native PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb Isoduo::AppearanceMaterial)
+  add_executable(isoduo_linux_clipboard_native tests/linux_clipboard_native.cpp)
+  isoduo_target(isoduo_linux_clipboard_native)
+  target_include_directories(isoduo_linux_clipboard_native PRIVATE src)
+  target_link_libraries(isoduo_linux_clipboard_native PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
 endif()

@@ -128,7 +128,8 @@ Result detail::UiState::openMenu(std::string_view id, std::optional<MenuPosition
     }
     OpenMenu menu;
     menu.target = target; menu.item = std::move(item); menu.at = at;
-    if (type.hasBuiltinMenu() && clipboard_) menu.clipboardText = bool(clipboard_->read());  // its paste item needs to know
+    if (type.hasBuiltinMenu())
+        menu.clipboardText = clipboard_ ? bool(clipboard_->read()) : asyncClipboard_ && asyncClipboard_->hasText();
     menu_ = std::move(menu);
     if (invalidate_) invalidate_();
     return {};

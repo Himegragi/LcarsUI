@@ -1,4 +1,5 @@
 #pragma once
+#include "async_clipboard.hpp"
 // Internal host, layout, legacy prototype and regression driver interface.
 // Applications use isoduo/core.hpp and typed handles instead.
 #include "isoduo/core.hpp"
@@ -283,7 +284,9 @@ public:
     Result pasteClipboard(std::string_view id);  // Ctrl+V: styles come along when the clipboard holds a matching payload
     Result copy(std::string_view id);  // writes the selection to the clipboard
     Result cut(std::string_view id);
-    void setClipboard(Clipboard* clipboard) { clipboard_ = clipboard; }
+    void setClipboard(Clipboard* clipboard) { pendingClipboard_.reset(); clipboard_ = clipboard; }
+    void setAsyncClipboard(AsyncClipboard* clipboard) { pendingClipboard_.reset(); asyncClipboard_ = clipboard; }
+    Result completeClipboard(ClipboardDelivery delivery);
     // IME composition targets the field focused when it starts. Preedit stays separate from
     // committed text; one commit is one undo entry; editing keys and commands wait while composing.
     // E01 default: focus leaving commits leftover preedit once, as Microsoft Bopomofo does on blur.
@@ -673,6 +676,20 @@ private:
     std::optional<std::size_t> pointerOption_;
     std::optional<OptionValue> pointerOptionValue_;
     Clipboard* clipboard_ = nullptr;
+    AsyncClipboard* asyncClipboard_ = nullptr;
+    enum class ClipboardAction { copy, cut, paste };
+    struct PendingClipboard {
+        std::uint64_t request;
+        ClipboardAction action;
+        Id target;
+        std::weak_ptr<void> lifetime;
+        std::uint64_t revision, selectionChanges;
+    };
+    std::optional<PendingClipboard> pendingClipboard_;
+    std::uint64_t nextClipboardRequest_ = 0;
+    Result beginClipboard(std::string_view id, Field& field, ClipboardAction action, ClipboardData data = {});
+    Result writeSelection(std::string_view id, Field& field, ClipboardAction action);
+    Result applyClipboard(std::string_view id, std::u16string_view text, std::string_view payload);
     std::shared_ptr<const WordBreaker> wordBreaker_;
     const WordBreaker& dictionary() const { return wordBreaker_ ? *wordBreaker_ : systemIcuBreaker(); }
     Words wordsOf(const Field& field) const { return segmentWords(field.session.text, field.segmentation, dictionary()); }
