@@ -228,35 +228,38 @@ def exercise_renderer_failure(root, host_log):
     check = find(root, "check")
     dropdown = find(root, "dropdown")
     option = children(dropdown)[1]
-    def action_names(node):
-        action = node.get_action_iface()
-        return [action.get_action_name(i) for i in range(action.get_n_actions())] if action else []
+    slider = find(root, "slider")
 
-    nodes = (button, check, dropdown, option)
-    normal = [action_names(node) for node in nodes]
+    def action_names(action):
+        return [action.get_action_name(i) for i in range(action.get_n_actions())]
+
+    actions = [node.get_action_iface() for node in (button, check, dropdown, option)]
+    assert all(action is not None for action in actions)
+    normal = [action_names(action) for action in actions]
     assert normal == [["click"], ["toggle"], ["expand", "collapse"], ["select"]], normal
     until(lambda: has(button, "SHOWING"))
     assert Atspi.Text.get_text(field, 0, -1) == "Retained draft"
     assert invoke(button)
     until(lambda: "Renderer failed: device reset" in host_log())
-    failed = [action_names(node) for node in nodes]
+    failed = [action_names(action) for action in actions]
     assert failed == [[], [], [], []], failed
+    print("PASS normal role actions disappear after failure", normal, failed, flush=True)
     assert Atspi.Text.get_text(field, 0, -1) == "Retained draft"
     assert not Atspi.EditableText.set_text_contents(field, "Rejected")
-    assert not Atspi.Value.set_current_value(find(root, "slider"), 8)
     assert not Atspi.Selection.select_child(dropdown, option.get_index_in_parent())
     assert Atspi.Text.get_text(field, 0, -1) == "Retained draft"
-    for node in nodes:
-        action = node.get_action_iface()
-        assert action is None or not action.do_action(0)
-    print("PASS renderer failure retains readable values and removes executable actions", normal, failed)
+    assert Atspi.Value.get_current_value(slider) == 2
+    for action in actions:
+        assert not action.do_action(0)
+    print("PASS renderer failure retains readable values and rejects cached action invocations")
 
 
 def main():
     Atspi.init()
     if sys.argv[2:] == ["--renderer-failure"]:
-        with fixture(sys.argv[1], "renderer-failure") as (_, host_log):
-            exercise_renderer_failure(until(lambda: window("renderer-failure")), host_log)
+        with fixture(sys.argv[1], "renderer-failure") as (host, host_log):
+            exercise_renderer_failure(
+                until(lambda: next((n for n in windows() if n.get_process_id() == host.pid), None)), host_log)
         return
     if sys.argv[2:] in (["--text-boundaries"], ["--text-boundaries-headless"]):
         with fixture(sys.argv[1], sys.argv[2][2:]):
