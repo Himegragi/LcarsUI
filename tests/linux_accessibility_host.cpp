@@ -1,12 +1,55 @@
 #include "isoduo/desktop.hpp"
 #include "isoduo/semantics.hpp"
+#include "linux_accessibility.hpp"
+#include "linux_window.hpp"
+#include <glib.h>
 #include <iostream>
+#include <stdexcept>
 #include <syncstream>
 #include <thread>
 
 using namespace isoduo;
 
 namespace {
+constexpr auto boundaryText = u"First words. Second sentence!";
+constexpr auto unicodeBoundaryText = u"Caf\u00e9,\u00a0\U00020000! \nLast?";
+
+// The accessibility bridge can answer text requests with committed text alone.
+class HeadlessWindow final : public detail::LinuxWindow {
+    NativeWindow reference_;
+public:
+    const NativeWindow& reference() const override { return reference_; }
+    detail::EglWindow& renderWindow() override { throw std::logic_error("No headless renderer"); }
+    detail::AsyncClipboard& clipboard() override { throw std::logic_error("No headless clipboard"); }
+    void title(std::string_view) override {}
+    bool poll(int) override { return false; }
+};
+
+int runTextFixture(bool headless) {
+    Ui ui;
+    auto text = ui.addTextField({.id = "fixture.text", .value = boundaryText, .multiline = true});
+    auto unicode = ui.addTextField({.id = "fixture.unicode", .value = unicodeBoundaryText, .multiline = true});
+    if (!text || !unicode) return 1;
+    constexpr auto title = u"Isoduo Accessibility text-boundaries";
+    if (!headless) {
+        ScrollState scroll;
+        DesktopConfig config;
+        config.title = title;
+        auto created = Desktop::create(ui, webAppearance(), [&] {
+            return layout::column({layout::component(*text), layout::component(*unicode)});
+        }, scroll, config);
+        return created.desktop && created.desktop->run().status == Status::ok ? 0 : 2;
+    }
+    HeadlessWindow window;
+    Frame frame;
+    const bool closing = false;
+    auto* context = g_main_context_default();
+    detail::LinuxAccessibility accessibility(context, ui, window, frame, title, closing);
+    auto loop = std::unique_ptr<GMainLoop, decltype(&g_main_loop_unref)>(g_main_loop_new(context, FALSE), g_main_loop_unref);
+    g_main_loop_run(loop.get());
+    return 0;
+}
+
 int runFixture(std::string mode) {
     const bool enabled = mode != "disabled";
     const std::string prefix = enabled ? "fixture." : "private.";
@@ -113,6 +156,8 @@ int runFixture(std::string mode) {
 
 int main(int argc, char** argv) {
     const std::string mode = argc > 1 ? argv[1] : "default";
+    if (mode == "text-boundaries" || mode == "text-boundaries-headless")
+        return runTextFixture(mode == "text-boundaries-headless");
     if (mode != "dual") return runFixture(mode);
     // Each host runs on its own UI thread, with both windows alive in one process.
     std::jthread disabled([] {

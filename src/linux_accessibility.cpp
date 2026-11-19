@@ -3,8 +3,11 @@
 #include "linux_window.hpp"
 #include "core_internal.hpp"
 #include "utf.hpp"
+#include "word_break.hpp"
 #include <gio/gio.h>
+#include <pango/pango.h>
 #include <algorithm>
+#include <array>
 #include <charconv>
 #include <ranges>
 #include <clocale>
@@ -896,6 +899,57 @@ private:
     std::vector<unsigned> units_{0};
 };
 
+std::pair<int, int> textBoundaryRange(std::u16string_view text, const TextOffsets& offsets,
+                                     const Placement* placement, atspi::TextBoundaryKind kind,
+                                     int index, std::string_view method) {
+    using Boundary = atspi::TextBoundaryKind;
+    constexpr std::pair<int, int> absent{-1, -1};
+    const bool before = method == "GetTextBeforeOffset", after = method == "GetTextAfterOffset";
+    if (!offsets.valid(index) || (index == offsets.size() && !before)) return absent;
+    if (kind == Boundary::character) {
+        index += static_cast<int>(after) - static_cast<int>(before);
+        return index >= 0 && index < offsets.size() ? std::pair{index, index + 1} : absent;
+    }
+
+    std::vector<int> bounds{0};
+    const auto append = [&](int boundary) {
+        if (boundary > bounds.back()) bounds.push_back(boundary);
+    };
+    const bool line = kind == Boundary::lineStart || kind == Boundary::lineEnd;
+    if (line && placement && placement->multiline) {
+        for (const auto& row : placement->view.lines)
+            append(offsets.characters(kind == Boundary::lineEnd ? row.end : row.begin));
+    } else if (line || kind == Boundary::paragraphStart) {
+        for (auto boundary : paragraphBounds(text)) {
+            if (kind == Boundary::lineEnd && boundary > 0 && text[boundary - 1] == u'\n') --boundary;
+            append(offsets.characters(boundary));
+        }
+    } else if (!text.empty()) {
+        // Word and sentence starts and ends are linguistic boundaries. Pango reports
+        // them in Unicode character offsets, which also match the AT-SPI wire offsets.
+        const auto utf8 = wireText(text);
+        std::vector<PangoLogAttr> attrs(static_cast<std::size_t>(offsets.size()) + 1);
+        pango_get_log_attrs(utf8.c_str(), static_cast<int>(utf8.size()), -1, pango_language_get_default(),
+                            attrs.data(), static_cast<int>(attrs.size()));
+        for (int at = 1; at < offsets.size(); ++at) {
+            const auto& attr = attrs[at];
+            const bool boundary = kind == Boundary::wordStart ? attr.is_word_start
+                : kind == Boundary::wordEnd ? attr.is_word_end
+                : kind == Boundary::sentenceStart ? attr.is_sentence_start
+                : attr.is_sentence_end;
+            if (boundary) append(at);
+        }
+    }
+    append(offsets.size());
+
+    // A separator belongs to the range between its neighboring delimiters.
+    // Before/after choose adjacent ranges from the same set of delimiters.
+    auto end = std::upper_bound(bounds.begin(), bounds.end(), index);
+    if (before) --end;
+    if (after && end != bounds.end()) ++end;
+    return end == bounds.begin() || end == bounds.end() ? absent : std::pair{*(end - 1), *end};
+}
+
 struct TextGeometry {
     const Placement& placement;
     const EditSession* composition;
@@ -1083,34 +1137,17 @@ GVariant* LinuxAccessibility::Impl::text(const NodeSnapshot& node, unsigned id, 
     }
     if (name == "GetStringAtOffset" || name == "GetTextAtOffset" ||
         name == "GetTextBeforeOffset" || name == "GetTextAfterOffset") {
-        const bool granularity = name == "GetStringAtOffset";
-        const auto kind = natural(args, 1);
-        const auto unit = [&](int index) -> std::pair<int, int> {
-            if (index < 0 || index >= offsets.size()) return {-1, -1};
-            if (kind == 0) return {index, index + 1};
-            const bool line = granularity ? kind == 3 : kind == 5 || kind == 6;
-            if (line && placement && placement->multiline && !composition) {
-                const auto& view = placement->view;
-                const auto row = view.lineOf(offsets.units(index));
-                const auto end = row + 1 < view.lines.size() ? view.lines[row + 1].begin
-                    : static_cast<unsigned>(node.value.size());
-                return {offsets.characters(view.lines[row].begin), offsets.characters(end)};
-            }
-            if (line && !node.scroll) return {0, offsets.size()};
-            if (line || (granularity && kind == 4) || (kind == 2 && granularity) || (!granularity && (kind == 3 || kind == 4))) {
-                if (auto range = ui.semantics().textUnit(node.ref.id, TextUnitKind::paragraph, offsets.units(index)))
-                    return {offsets.characters(range->begin), offsets.characters(range->end)};
-            }
-            if (kind == 1 || (!granularity && kind == 2)) {
-                if (auto range = ui.semantics().textUnit(node.ref.id, TextUnitKind::word, offsets.units(index)))
-                    return {offsets.characters(range->begin), offsets.characters(range->end)};
-            }
-            return {-1, -1};
-        };
-        const int index = integer(args);
-        auto [first, last] = unit(index);
-        if (name == "GetTextBeforeOffset") std::tie(first, last) = unit(index == offsets.size() ? index - 1 : first - 1);
-        if (name == "GetTextAfterOffset") std::tie(first, last) = unit(last);
+        using Boundary = atspi::TextBoundaryKind;
+        // Modern granularities select starts. The legacy numbers distinguish starts and ends.
+        constexpr std::array granularities{Boundary::character, Boundary::wordStart, Boundary::sentenceStart,
+                                           Boundary::lineStart, Boundary::paragraphStart};
+        const auto requested = natural(args, 1);
+        const bool modern = name == "GetStringAtOffset";
+        if (modern ? requested >= granularities.size() : requested > static_cast<unsigned>(Boundary::lineEnd))
+            return resultFor(-1, -1);
+        const auto kind = modern ? granularities[requested] : static_cast<Boundary>(requested);
+        const auto [first, last] = textBoundaryRange(node.value, offsets, composition ? nullptr : placement,
+                                                     kind, integer(args), name);
         return resultFor(first, last);
     }
 

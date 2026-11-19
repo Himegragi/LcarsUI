@@ -42,11 +42,11 @@ unshare --user --map-current-user --net env -u DISPLAY -u WAYLAND_DISPLAY sh too
 
 Install CMake, Ninja, Clang or GCC with C++20 support, pkg-config, and development
 packages for EGL 1.5, X11, X11-XCB, XCB, Wayland 1.22 or newer, xkbcommon,
-Fontconfig and GIO. The build also needs `wayland-scanner` and the protocol XML
+Fontconfig, GIO, and Pango. The build also needs `wayland-scanner` and the protocol XML
 from `wayland-protocols` 1.31 or newer. On Ubuntu these packages are `libegl-dev`,
 `libx11-dev`, `libx11-xcb-dev`, `libxcb1-dev`, `libwayland-dev`,
 `libwayland-bin`, `wayland-protocols`, `libxkbcommon-dev`,
-`libfontconfig-dev`, and `libglib2.0-dev`.
+`libfontconfig-dev`, `libglib2.0-dev`, and `libpango1.0-dev`.
 
 The Linux host reads the desktop's animation preference at creation. GNOME
 provides enable-animations and reduced-motion settings. Xfce can provide the

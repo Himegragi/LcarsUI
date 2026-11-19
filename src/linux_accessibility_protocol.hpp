@@ -21,6 +21,10 @@ enum State : unsigned {
 };
 enum Coordinate : unsigned { screen = 0, window = 1, parent = 2 };
 enum Relation : unsigned { labelFor = 1, labelledBy = 2, descriptionFor = 17, describedBy = 18 };
+// The first seven values are the legacy AtspiTextBoundaryType wire values.
+enum class TextBoundaryKind : unsigned {
+    character, wordStart, wordEnd, sentenceStart, sentenceEnd, lineStart, lineEnd, paragraphStart
+};
 
 #define ISO_IFACE(name) "<interface name='org.a11y.atspi." #name "'>"
 #define ISO_PROPERTY(name, type, access) "<property name='" #name "' type='" type "' access='" access "'/>"

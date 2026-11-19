@@ -1,6 +1,6 @@
 find_package(PkgConfig REQUIRED)
 find_package(Fontconfig REQUIRED)
-pkg_check_modules(ISODUO_LINUX_DESKTOP REQUIRED IMPORTED_TARGET egl>=1.5 x11 x11-xcb xcb wayland-client>=1.22 wayland-egl xkbcommon gio-2.0)
+pkg_check_modules(ISODUO_LINUX_DESKTOP REQUIRED IMPORTED_TARGET egl>=1.5 x11 x11-xcb xcb wayland-client>=1.22 wayland-egl xkbcommon gio-2.0 pango)
 pkg_check_modules(ISODUO_WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.31)
 pkg_get_variable(wayland_protocols_dir wayland-protocols pkgdatadir)
 find_program(wayland_scanner NAMES wayland-scanner REQUIRED)
@@ -78,8 +78,9 @@ if(ISODUO_BUILD_TESTS)
   target_include_directories(isoduo_linux_clipboard_native PRIVATE src)
   target_link_libraries(isoduo_linux_clipboard_native PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
 
-  # Run linux_accessibility_client.py with this fixture in a native desktop session.
+  # Run linux_accessibility_client.py in a native session or use its headless text fixture.
   add_executable(isoduo_linux_accessibility_host tests/linux_accessibility_host.cpp)
   isoduo_target(isoduo_linux_accessibility_host)
-  target_link_libraries(isoduo_linux_accessibility_host PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
+  target_include_directories(isoduo_linux_accessibility_host PRIVATE src)
+  target_link_libraries(isoduo_linux_accessibility_host PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb PkgConfig::ISODUO_LINUX_DESKTOP)
 endif()

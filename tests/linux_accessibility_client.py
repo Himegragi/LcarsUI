@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Run with the fixture binary in a native session with PyGObject and AT-SPI."""
+"""Run with the fixture binary in a native session with PyGObject and AT-SPI.
+
+Use --text-boundaries for targeted range checks or run --text-boundaries-headless
+under dbus-run-session to exercise the same bridge without a display.
+"""
 from contextlib import contextmanager
 import os
 import subprocess
@@ -151,8 +155,78 @@ def exercise(root, events):
     until(lambda: ("object:children-changed:add", root) in events)
 
 
+def exercise_text_boundaries(root):
+    granularity = Atspi.TextGranularity
+    boundary = Atspi.TextBoundaryType
+    modern = Atspi.Text.get_string_at_offset
+    at = Atspi.Text.get_text_at_offset
+    before = Atspi.Text.get_text_before_offset
+    after = Atspi.Text.get_text_after_offset
+    absent = ("", -1, -1)
+    failures = []
+
+    def check(field, method, kind, offset, expected):
+        span = method(field, offset, kind)
+        actual = (span.content, span.start_offset, span.end_offset)
+        print(method.__name__, kind.value_nick, offset, repr(actual))
+        if actual != expected:
+            failures.append((method.__name__, kind.value_nick, offset, actual, expected))
+
+    cases = [
+        (modern, granularity.WORD, 0, ("First ", 0, 6)),
+        (modern, granularity.WORD, 5, ("First ", 0, 6)),
+        (modern, granularity.WORD, 11, ("words. ", 6, 13)),
+        (modern, granularity.WORD, 28, ("sentence!", 20, 29)),
+        (modern, granularity.SENTENCE, 12, ("First words. ", 0, 13)),
+        (modern, granularity.SENTENCE, 13, ("Second sentence!", 13, 29)),
+        (at, boundary.WORD_START, 5, ("First ", 0, 6)),
+        (at, boundary.WORD_END, 5, (" words", 5, 11)),
+        (at, boundary.WORD_END, 11, (". Second", 11, 19)),
+        (before, boundary.WORD_START, 6, ("First ", 0, 6)),
+        (before, boundary.WORD_END, 5, ("First", 0, 5)),
+        (after, boundary.WORD_START, 5, ("words. ", 6, 13)),
+        (after, boundary.WORD_END, 4, (" words", 5, 11)),
+        (at, boundary.SENTENCE_START, 12, ("First words. ", 0, 13)),
+        (at, boundary.SENTENCE_END, 11, ("First words.", 0, 12)),
+        (at, boundary.SENTENCE_END, 12, (" Second sentence!", 12, 29)),
+        (before, boundary.SENTENCE_END, 13, ("First words.", 0, 12)),
+        (after, boundary.SENTENCE_END, 0, (" Second sentence!", 12, 29)),
+        (before, boundary.SENTENCE_START, 29, ("Second sentence!", 13, 29)),
+        (before, boundary.WORD_START, 0, absent),
+        (after, boundary.WORD_START, 28, absent),
+        (modern, granularity.WORD, -1, absent),
+        (modern, granularity.SENTENCE, 29, absent),
+    ]
+    field = find(root, "text")
+    for case in cases:
+        check(field, *case)
+
+    unicode_field = find(root, "unicode")
+    assert Atspi.Text.get_character_count(unicode_field) == 15
+    for case in [
+        (modern, granularity.CHAR, 6, ("𠀀", 6, 7)),
+        (modern, granularity.WORD, 5, ("Café,\u00a0", 0, 6)),
+        (modern, granularity.WORD, 7, ("𠀀! \n", 6, 10)),
+        (modern, granularity.SENTENCE, 8, ("Café,\u00a0𠀀! \n", 0, 10)),
+        (modern, granularity.SENTENCE, 10, ("Last?", 10, 15)),
+        (modern, granularity.LINE, 9, ("Café,\u00a0𠀀! \n", 0, 10)),
+        (modern, granularity.PARAGRAPH, 9, ("Café,\u00a0𠀀! \n", 0, 10)),
+        (at, boundary.LINE_START, 8, ("Café,\u00a0𠀀! \n", 0, 10)),
+        (at, boundary.LINE_END, 9, ("\nLast?", 9, 15)),
+        (at, boundary.SENTENCE_END, 8, (" \nLast?", 8, 15)),
+    ]:
+        check(unicode_field, *case)
+
+    assert not failures, failures
+    print("PASS modern and legacy text ranges")
+
+
 def main():
     Atspi.init()
+    if sys.argv[2:] in (["--text-boundaries"], ["--text-boundaries-headless"]):
+        with fixture(sys.argv[1], sys.argv[2][2:]):
+            exercise_text_boundaries(until(lambda: window("text-boundaries")))
+        return
     events = []
     listener = Atspi.EventListener.new(lambda event: events.append((event.type, event.source)))
     assert listener.register("object")
