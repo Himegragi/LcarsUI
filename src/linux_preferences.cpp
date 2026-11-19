@@ -90,11 +90,16 @@ LinuxDesktopPreferences readLinuxDesktopPreferences() {
 }
 
 struct LinuxPreferenceMonitor::Impl {
-    GMainContext* context = g_main_context_new();
+    GMainContext* context = [] {
+        // Desktop hosts created on one UI thread share a dispatch context.
+        thread_local std::unique_ptr<GMainContext, decltype(&g_main_context_unref)> threadContext(
+            g_main_context_new(), g_main_context_unref);
+        return g_main_context_ref(threadContext.get());
+    }();
     Settings enabled{nullptr, g_object_unref}, reduced{nullptr, g_object_unref};
     Bus bus{nullptr, g_object_unref};
     guint subscription = 0;
-    bool pending = false;
+    bool pending = false, ready = false;
     std::vector<GPollFD> sources;
     std::vector<pollfd> descriptors;
 
@@ -131,11 +136,11 @@ struct LinuxPreferenceMonitor::Impl {
 };
 
 LinuxPreferenceMonitor::LinuxPreferenceMonitor() {
+    impl_ = std::make_unique<Impl>();
     const auto* desktop = std::getenv("XDG_CURRENT_DESKTOP");
     if (!desktop) return;
     const bool gnome = desktopIs(desktop, "GNOME");
     if (!gnome && !desktopIs(desktop, "XFCE")) return;
-    impl_ = std::make_unique<Impl>();
     g_main_context_push_thread_default(impl_->context);
     if (gnome) {
         impl_->watch(impl_->enabled, gnomeInterface, gnomeAnimationsKey);
@@ -146,15 +151,21 @@ LinuxPreferenceMonitor::LinuxPreferenceMonitor() {
 LinuxPreferenceMonitor::~LinuxPreferenceMonitor() = default;
 
 bool LinuxPreferenceMonitor::changed() {
-    if (!impl_) return false;
-    g_main_context_iteration(impl_->context, FALSE);
+    // Run provider callbacks only after the native display has finished its poll
+    // (Wayland may have a prepared display read outstanding inside poll).
+    if (std::exchange(impl_->ready, false)) {
+        g_main_context_acquire(impl_->context);
+        g_main_context_dispatch(impl_->context);
+        g_main_context_release(impl_->context);
+    } else g_main_context_iteration(impl_->context, FALSE);
     return std::exchange(impl_->pending, false);
 }
 
+GMainContext* LinuxPreferenceMonitor::context() const { return impl_->context; }
+
 int LinuxPreferenceMonitor::poll(std::span<pollfd> native, int timeout) {
-    if (!impl_) return ::poll(native.data(), native.size(), timeout);
     auto& monitor = *impl_;
-    // This context belongs to this monitor and only the UI thread iterates it.
+    // The UI thread owns this context and integrates its sources with the native display poll.
     g_main_context_acquire(monitor.context);
     int priority = 0, wait = -1;
     g_main_context_prepare(monitor.context, &priority);
@@ -174,8 +185,7 @@ int LinuxPreferenceMonitor::poll(std::span<pollfd> native, int timeout) {
         std::copy_n(monitor.descriptors.begin(), native.size(), native.begin());
         for (int index = 0; index < count; ++index)
             monitor.sources[index].revents = monitor.descriptors[native.size() + index].revents;
-        if (g_main_context_check(monitor.context, priority, monitor.sources.data(), count))
-            g_main_context_dispatch(monitor.context);
+        monitor.ready = g_main_context_check(monitor.context, priority, monitor.sources.data(), count);
     }
     g_main_context_release(monitor.context);
     errno = error;

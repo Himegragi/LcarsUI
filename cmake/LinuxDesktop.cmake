@@ -1,6 +1,6 @@
 find_package(PkgConfig REQUIRED)
 find_package(Fontconfig REQUIRED)
-pkg_check_modules(ISODUO_LINUX_DESKTOP REQUIRED IMPORTED_TARGET egl>=1.5 x11 x11-xcb xcb wayland-client>=1.22 wayland-egl xkbcommon gio-2.0)
+pkg_check_modules(ISODUO_LINUX_DESKTOP REQUIRED IMPORTED_TARGET egl>=1.5 x11 x11-xcb xcb wayland-client>=1.22 wayland-egl xkbcommon gio-2.0 pango)
 pkg_check_modules(ISODUO_WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.31)
 pkg_get_variable(wayland_protocols_dir wayland-protocols pkgdatadir)
 find_program(wayland_scanner NAMES wayland-scanner REQUIRED)
@@ -21,7 +21,7 @@ isoduo_wayland_protocol(viewporter stable/viewporter/viewporter.xml)
 target_sources(isoduo_desktop PRIVATE src/desktop_linux.cpp src/linux_x11.cpp src/linux_wayland.cpp
   src/linux_x11_clipboard.cpp src/linux_wayland_clipboard.cpp
   src/linux_x11_ime.cpp src/linux_wayland_ime.cpp
-  src/linux_fonts.cpp src/linux_preferences.cpp src/renderer_opengl_egl.cpp)
+  src/linux_fonts.cpp src/linux_preferences.cpp src/linux_accessibility.cpp src/renderer_opengl_egl.cpp)
 target_include_directories(isoduo_desktop PRIVATE "${PROJECT_BINARY_DIR}/generated")
 target_link_libraries(isoduo_desktop PRIVATE PkgConfig::ISODUO_LINUX_DESKTOP Fontconfig::Fontconfig)
 
@@ -77,4 +77,10 @@ if(ISODUO_BUILD_TESTS)
   isoduo_target(isoduo_linux_clipboard_native)
   target_include_directories(isoduo_linux_clipboard_native PRIVATE src)
   target_link_libraries(isoduo_linux_clipboard_native PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
+
+  # Run linux_accessibility_client.py in a native session or use its headless text fixture.
+  add_executable(isoduo_linux_accessibility_host tests/linux_accessibility_host.cpp)
+  isoduo_target(isoduo_linux_accessibility_host)
+  target_include_directories(isoduo_linux_accessibility_host PRIVATE src)
+  target_link_libraries(isoduo_linux_accessibility_host PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb PkgConfig::ISODUO_LINUX_DESKTOP)
 endif()

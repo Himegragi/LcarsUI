@@ -99,6 +99,15 @@ public:
         XStoreName(display_, window_, std::string(value).c_str());
         XFlush(display_);
     }
+    std::optional<std::pair<int, int>> screenOrigin() const override {
+        if (!window_) return {};
+        auto* connection = XGetXCBConnection(display_);
+        const auto request = xcb_translate_coordinates(connection, window_, DefaultRootWindow(display_), 0, 0);
+        std::unique_ptr<xcb_translate_coordinates_reply_t, decltype(&std::free)> reply(
+            xcb_translate_coordinates_reply(connection, request, nullptr), std::free);
+        if (!reply || !reply->same_screen) return {};
+        return std::pair{reply->dst_x, reply->dst_y};
+    }
     bool prepareFrame() override {
         if (!mapRequested_) {
             XMapWindow(display_, window_);

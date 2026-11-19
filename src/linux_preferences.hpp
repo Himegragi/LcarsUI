@@ -4,6 +4,7 @@
 #include <span>
 
 struct pollfd;
+typedef struct _GMainContext GMainContext;
 
 namespace isoduo::detail {
 struct LinuxDesktopPreferences {
@@ -21,6 +22,7 @@ public:
     LinuxPreferenceMonitor();
     ~LinuxPreferenceMonitor();
     bool changed();
+    GMainContext* context() const;
     int poll(std::span<pollfd> native, int timeout);
 private:
     struct Impl;
