@@ -2810,7 +2810,7 @@ Query<WordSegmentation> detail::UiState::wordSegmentationInUse(std::string_view 
     if (auto r = configurationAccess(id, true); !r) return {r.status, r.message, std::nullopt};
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::notSupported, u"Not a text field", std::nullopt};
-    return {Status::ok, {}, segmentationInUse(it->second.segmentation, dictionary())};
+    return {Status::ok, {}, segmentationInUse(it->second.session.text, it->second.segmentation, dictionary())};
 }
 Query<TextSpan> detail::UiState::wordAt(std::string_view id, unsigned offset) const {
     if (auto r = configurationAccess(id, true); !r) return {r.status, r.message, std::nullopt};

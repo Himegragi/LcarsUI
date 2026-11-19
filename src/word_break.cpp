@@ -172,8 +172,10 @@ const WordBreaker& perCharacterBreaker() { static const PerCharacter breaker; re
 const WordBreaker& scriptRunBreaker() { static const ScriptRun breaker; return breaker; }
 const WordBreaker& systemIcuBreaker() { static const SystemIcu breaker; return breaker; }
 
-WordSegmentation segmentationInUse(WordSegmentation mode, const WordBreaker& dictionary) {
-    return mode == WordSegmentation::dictionary && !dictionary.usable() ? WordSegmentation::perCharacter : mode;
+WordSegmentation segmentationInUse(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary) {
+    if (mode != WordSegmentation::dictionary) return mode;
+    std::vector<unsigned> bounds;
+    return dictionary.boundaries(text, bounds) ? mode : WordSegmentation::perCharacter;
 }
 Words segmentWords(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary) {
     Words words;

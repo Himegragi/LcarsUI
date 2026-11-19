@@ -32,8 +32,8 @@ struct Words {
     std::vector<unsigned> bounds;
     WordSegmentation used = WordSegmentation::perCharacter;
 };
-// What segmentWords reports as `used` for any text: the mode itself, or perCharacter when the dictionary is unusable.
-WordSegmentation segmentationInUse(WordSegmentation mode, const WordBreaker& dictionary);
+// The effective mode for this text, including a per-character fallback if segmentation fails.
+WordSegmentation segmentationInUse(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary);
 Words segmentWords(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary);
 // Whitespace other than a line feed: Ctrl+arrow does not stop on it and a double click takes it along.
 bool isSpaceWord(std::u16string_view text, unsigned begin, unsigned end);

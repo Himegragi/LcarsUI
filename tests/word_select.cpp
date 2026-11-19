@@ -422,7 +422,15 @@ void theSemanticLayerReadsSelectsAndQueriesLikeTheTypedHandle() {
 }
 
 void theSemanticLayerReportsADictionaryFallbackAndTheSameAdmission() {
-    Field f(mixed, false, WordSegmentation::dictionary, std::make_shared<FailingBreaker>());
+    struct FieldFailure final : detail::WordBreaker {
+        bool boundaries(std::u16string_view text, std::vector<unsigned>&) const override {
+            return text == u"a";
+        }
+    };
+    auto breaker = std::make_shared<FieldFailure>();
+    check(breaker->usable(), "Dictionary answers the startup probe");
+    Field f(mixed, false, WordSegmentation::dictionary, breaker);
+    check(*f.handle.wordSegmentationInUse() == WordSegmentation::perCharacter, "The handle reports the field's fallback");
     auto& tree = f.ui.semantics();
     auto node = tree.get({"t"});
     check(node->wordSegmentation == WordSegmentation::dictionary && node->wordSegmentationInUse == WordSegmentation::perCharacter, "The node reports the fallback");
