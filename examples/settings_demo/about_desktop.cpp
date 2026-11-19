@@ -13,12 +13,15 @@ AboutInfo desktopAboutInfo(const isoduo::Appearance& appearance) {
     about.appearance = std::u16string(name.begin(), name.end());
     std::string configuration = ISODUO_DEMO_CONFIGURATION;
     about.build = std::u16string(ISODUO_DEMO_REVISION) + u"、" + std::u16string(configuration.begin(), configuration.end());
+    about.settingsPath = u"未知";
+#ifdef _WIN32
     wchar_t* raw = nullptr; std::size_t length = 0;
     if (_wdupenv_s(&raw, &length, L"APPDATA") == 0 && raw) {
         std::unique_ptr<wchar_t, decltype(&std::free)> appdata(raw, &std::free);
         std::wstring path = std::wstring(appdata.get()) + L"\\Isoduo\\SettingsDemo\\settings.json";
         about.settingsPath.assign(path.begin(), path.end());
-    } else about.settingsPath = u"未知";
+    }
+#endif
     about.licenses.push_back({{"isoduo"}, u"Isoduo 框架 — MIT", std::u16string(frameworkLicense)});
     const char* ids[] = {"freetype", "harfbuzz", "khronos", "unicode"};
     std::size_t i = 0;

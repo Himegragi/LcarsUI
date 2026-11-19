@@ -19,7 +19,7 @@ LoadResult SettingsStore::load() const {
     auto file=path(); HANDLE h=CreateFileW(file.c_str(),GENERIC_READ,FILE_SHARE_READ,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
     if (h==INVALID_HANDLE_VALUE) { auto e=GetLastError(); if (e==ERROR_FILE_NOT_FOUND || e==ERROR_PATH_NOT_FOUND) return {LoadKind::missing,{},{},false}; return {LoadKind::unreadable,{},errorText(e),false}; }
     LARGE_INTEGER size{}; if (!GetFileSizeEx(h,&size)) { auto e=GetLastError(); CloseHandle(h); return {LoadKind::unreadable,{},errorText(e),false}; }
-    std::string bytes; bool tooLarge=size.QuadPart>1024*1024; DWORD count=0;
+    std::string bytes; bool tooLarge=size.QuadPart>static_cast<LONGLONG>(maxSettingsBytes); DWORD count=0;
     if (!tooLarge) { bytes.resize(static_cast<size_t>(size.QuadPart)); if (!ReadFile(h,bytes.data(),static_cast<DWORD>(bytes.size()),&count,nullptr) || count!=bytes.size()) { auto e=GetLastError(); CloseHandle(h); return {LoadKind::unreadable,{},errorText(e),false}; } }
     CloseHandle(h);
     if (!tooLarge) if (auto doc=parseSettings(bytes)) return {LoadKind::loaded,std::move(doc),{},false};
@@ -29,6 +29,8 @@ LoadResult SettingsStore::load() const {
     return {LoadKind::corrupt,{},std::move(reason),renamed};
 }
 std::u16string SettingsStore::save(const SettingsDocument& doc) const {
+    auto bytes = writeSettings(doc);
+    if (bytes.size() > maxSettingsBytes) return u"\u8a2d\u5b9a\u6a94\u8d85\u904e 1 MiB";
     if (auto e=fault("directory")) return errorText(e);
     std::error_code ec; std::filesystem::create_directories(directory_,ec); if (ec) return errorText(static_cast<DWORD>(ec.value()));
     auto tmp=path(); tmp+=L"."+std::to_wstring(GetCurrentProcessId())+L".tmp";
@@ -36,7 +38,7 @@ std::u16string SettingsStore::save(const SettingsDocument& doc) const {
     if (auto e=fault("create")) { cleanup(); return errorText(e); }
     HANDLE h=CreateFileW(tmp.c_str(),GENERIC_WRITE,0,nullptr,CREATE_ALWAYS,FILE_ATTRIBUTE_NORMAL,nullptr);
     if (h==INVALID_HANDLE_VALUE) { auto e=GetLastError(); cleanup(); return errorText(e); }
-    auto bytes=writeSettings(doc); DWORD written=0; DWORD e=0;
+    DWORD written=0; DWORD e=0;
     e=fault("write"); if (!e && (!WriteFile(h,bytes.data(),static_cast<DWORD>(bytes.size()),&written,nullptr) || written!=bytes.size())) { e=GetLastError(); if (!e) e=ERROR_WRITE_FAULT; }
     if (!e) { e=fault("flush"); if (!e && !FlushFileBuffers(h)) e=GetLastError(); }
     auto closeError=fault("close"); if (!CloseHandle(h) && !e) e=GetLastError(); if (!e) e=closeError;

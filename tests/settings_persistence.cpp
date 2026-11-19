@@ -4,11 +4,16 @@
 #include "isoduo/semantics.hpp"
 #include <filesystem>
 #include <fstream>
+#ifdef _WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#else
+#include <cerrno>
+#include <unistd.h>
+#endif
 void roundTrip() {
     settingsDemo::Demo demo; auto document = demo.document();
-    document.name=u"Station A"; document.notices=false; document.mode=isoduo::OptionValue{"focus"}; document.region=isoduo::OptionValue{"south"}; document.volume=75;
+    document.name=u"工作站 A"; document.notices=false; document.mode=isoduo::OptionValue{"focus"}; document.region=isoduo::OptionValue{"south"}; document.volume=75;
     document.items[0].name=u"Changed"; document.items[0].note=u"Note"; document.items.push_back({{"T021"},u"New",u"Details"}); document.nextItemId=22;
     document.items[0].noteSpans = {{.start = 0, .length = 4, .bold = true, .color = "red"}};
     document.presentation.fontFamily=u"NoSuchFont"; document.presentation.textSize=23; document.presentation.variant=isoduo::ThemeVariant::dark(); document.presentation.density=isoduo::Density::compact; document.accent="green";
@@ -19,7 +24,12 @@ void roundTrip() {
     test::check(decoded && *decoded == document, "settings survive JSON round trip");
     auto legacy = bytes;
     legacy.replace(legacy.find("isoduo-settings-demo"), std::string("isoduo-settings-demo").size(), "lcars-settings-demo");
-    auto path = std::filesystem::temp_directory_path() / ("isoduo-legacy-store-" + std::to_string(GetCurrentProcessId()));
+#ifdef _WIN32
+    auto processId = GetCurrentProcessId();
+#else
+    auto processId = getpid();
+#endif
+    auto path = std::filesystem::temp_directory_path() / ("isoduo-legacy-store-" + std::to_string(processId));
     std::filesystem::create_directories(path);
     { std::ofstream file(path / "settings.json", std::ios::binary); file << legacy; }
     settingsDemo::SettingsStore store(path);
@@ -240,8 +250,30 @@ void failures() {
         for (const auto& entry : std::filesystem::directory_iterator(path))
             test::check(entry.path().extension()!=L".tmp", "failed save removes temporary file");
     }
-    int attempts=0; settingsDemo::SettingsStore retry(path,[&](std::string_view name) { return name=="move" && ++attempts<=2 ? 32u : 0u; });
+#ifdef _WIN32
+    constexpr unsigned transientMoveError = ERROR_SHARING_VIOLATION;
+#else
+    constexpr unsigned transientMoveError = EBUSY;
+#endif
+    int attempts=0; settingsDemo::SettingsStore retry(path,[&](std::string_view name) { return name=="move" && ++attempts<=2 ? transientMoveError : 0u; });
     test::check(retry.save(demo.document()).empty() && attempts==3,"transient move retries");
+    auto oversized = demo.document();
+    oversized.items.clear();
+    for (int id = 1000; id < 2000; ++id) {
+        oversized.items.push_back({{"T" + std::to_string(id)}, std::u16string(64, u'\u4e2d'),
+                                   std::u16string(200, u'\u4e2d'),
+                                   {{.start = 0, .length = 50, .bold = true},
+                                    {.start = 50, .length = 50, .italic = true},
+                                    {.start = 100, .length = 50, .underline = true},
+                                    {.start = 150, .length = 50, .bold = true}}});
+    }
+    oversized.nextItemId = 2000;
+    test::check(settingsDemo::writeSettings(oversized).size() > 1024 * 1024, "fixture exceeds the settings size limit");
+    test::check(!initial.save(oversized).empty(), "oversized settings are refused before replacement");
+    std::ifstream saved(initial.path(), std::ios::binary);
+    test::check(std::string(std::istreambuf_iterator<char>(saved), {}) == original, "size rejection preserves original bytes");
+    saved.close();
+    test::check(initial.load().document == demo.document(), "original settings still reopen");
     std::filesystem::remove_all(path);
 }
 void loadFailures() {
@@ -267,15 +299,32 @@ void order() {
     std::filesystem::remove_all(path);
 }
 void nativeFiles() {
-    auto path=std::filesystem::temp_directory_path()/L"測試 資料夾"/L"設定";
+    auto path=std::filesystem::temp_directory_path()/u8"測試 資料夾"/u8"設定";
     std::filesystem::remove_all(path.parent_path()); settingsDemo::SettingsStore store(path); settingsDemo::Demo demo;
     test::check(store.save(demo.document()).empty(),"Unicode directory saves");
     auto file=store.path();
+#ifdef _WIN32
     auto handle=CreateFileW(file.c_str(),GENERIC_READ,0,nullptr,OPEN_EXISTING,FILE_ATTRIBUTE_NORMAL,nullptr);
     test::check(handle!=INVALID_HANDLE_VALUE && store.load().kind==settingsDemo::LoadKind::unreadable,"exclusive read denied without renaming");
     test::check(!store.save(demo.document()).empty(),"locked destination refuses replacement"); CloseHandle(handle);
     test::check(SetFileAttributesW(file.c_str(),FILE_ATTRIBUTE_READONLY)!=0,"set read only");
     test::check(!store.save(demo.document()).empty(),"read-only destination refuses replacement"); SetFileAttributesW(file.c_str(),FILE_ATTRIBUTE_NORMAL);
+#else
+    std::filesystem::permissions(file, std::filesystem::perms::none);
+    if (geteuid() != 0) {
+        auto denied = store.load();
+        test::check(denied.kind == settingsDemo::LoadKind::unreadable && !denied.reason.empty(), "denied read reports a reason");
+        test::check(std::filesystem::exists(file) && !std::filesystem::exists(path/"settings.json.bad"), "denied read leaves file in place");
+    }
+    std::filesystem::permissions(file, std::filesystem::perms::owner_read);
+    test::check(store.load().document == demo.document(), "denied read preserves document bytes");
+    std::filesystem::permissions(path, std::filesystem::perms::owner_read | std::filesystem::perms::owner_exec);
+    if (geteuid() != 0) {
+        auto changed = demo.document(); changed.volume = 55;
+        test::check(!store.save(changed).empty() && store.load().document == demo.document(), "unwritable directory preserves settings");
+    }
+    std::filesystem::permissions(path, std::filesystem::perms::owner_all);
+#endif
     std::filesystem::remove_all(path.parent_path());
     auto obstruction=std::filesystem::temp_directory_path()/"isoduo-store-obstruction";
     { std::ofstream f(obstruction); f << 'x'; }
@@ -299,6 +348,18 @@ void edgeDocuments() {
     const std::string base=R"({"format":"isoduo-settings-demo","version":1,"general":{"name":"A","notices":true,"mode":"normal","region":"north","volume":40},"items":[{"id":"T005","name":"A","note":""}],"next_item_id":6,"presentation":{"font_family":"NoSuchFont","text_size":16,"variant":"light","density":"standard"}})";
     auto good=settingsDemo::parseSettings(base); test::check(good && good->presentation.fontFamily==u"NoSuchFont","uninstalled family retained");
     auto mutate=[&](std::string from,std::string to) { auto value=base; auto at=value.find(from); test::check(at!=std::string::npos,"edge fixture field"); value.replace(at,from.size(),to); return value; };
-    for (const auto& value : {mutate("{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"}","{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"},{\"id\":\"T005\",\"name\":\"B\",\"note\":\"\"}"), mutate("\"next_item_id\":6","\"next_item_id\":5"), mutate("\"presentation\":{","\"ignored\":{"), mutate("\"name\":\"A\"","\"name\":\"  \""), mutate("\"format\":\"isoduo-settings-demo\"",std::string("\"extra\":\"\xff\",\"format\":\"isoduo-settings-demo\""))})
-        test::check(!settingsDemo::parseSettings(value),"edge document rejected");
+    auto directory = std::filesystem::temp_directory_path() / "isoduo-persistence-edge";
+    std::filesystem::remove_all(directory);
+    std::filesystem::create_directory(directory);
+    settingsDemo::SettingsStore store(directory);
+    auto backup = store.path(); backup += ".bad";
+    for (const auto& value : {mutate("{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"}","{\"id\":\"T005\",\"name\":\"A\",\"note\":\"\"},{\"id\":\"T005\",\"name\":\"B\",\"note\":\"\"}"), mutate("\"next_item_id\":6","\"next_item_id\":5"), mutate("\"presentation\":{","\"ignored\":{"), mutate("\"name\":\"A\"","\"name\":\"  \""), mutate("\"format\":\"isoduo-settings-demo\"",std::string("\"extra\":\"\xff\",\"format\":\"isoduo-settings-demo\"")), std::string(1024 * 1024 + 1, 'x')}) {
+        { std::ofstream file(store.path(), std::ios::binary); file << value; }
+        auto result = store.load();
+        test::check(result.kind == settingsDemo::LoadKind::corrupt && result.renamed && !result.document, "invalid document is quarantined");
+        std::ifstream file(backup, std::ios::binary);
+        std::string original((std::istreambuf_iterator<char>(file)), {});
+        test::check(original == value && !std::filesystem::exists(store.path()), "quarantine preserves exact bytes");
+    }
+    std::filesystem::remove_all(directory);
 }
