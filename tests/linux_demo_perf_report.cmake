@@ -1,0 +1,16 @@
+# A 20 ms injected delay must fail the ordinary budget and pass the self-check.
+set(samples "${CMAKE_CURRENT_BINARY_DIR}/linux-demo-perf-samples.txt")
+file(WRITE "${samples}" "500 1 2 3 4 0\n1000 1 2 3 4 20\n")
+function(check scenario delay expected)
+  execute_process(COMMAND "${VERIFY}" summarize "${scenario}" "${delay}" -1 0 0 0
+    INPUT_FILE "${samples}" OUTPUT_VARIABLE report RESULT_VARIABLE result)
+  if(NOT result EQUAL 0 OR NOT report MATCHES "^status\t${expected}\n")
+    message(FATAL_ERROR "Expected ${expected}, got ${result}\n${report}")
+  endif()
+  if(NOT report MATCHES "warmup\t1\t10" OR NOT report MATCHES "steady\t1\t30")
+    message(FATAL_ERROR "Wrong warmup split or frame totals\n${report}")
+  endif()
+endfunction()
+check(list-hold-down 0 FAIL)
+check(list-hold-down 20 PASS)
+check(slider-drag-text-size 0 REPORT)

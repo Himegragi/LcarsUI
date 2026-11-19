@@ -37,8 +37,7 @@ auto symbol(const char* name) {
 #define GL_FUNCTIONS(X) \
  X(PFNGLGENQUERIESPROC, GenQueries) \
  X(PFNGLDELETEQUERIESPROC, DeleteQueries) \
- X(PFNGLBEGINQUERYPROC, BeginQuery) \
- X(PFNGLENDQUERYPROC, EndQuery) \
+ X(PFNGLQUERYCOUNTERPROC, QueryCounter) \
  X(PFNGLGETQUERYOBJECTUI64VPROC, GetQueryObjectui64v) \
  X(PFNGLGETSTRINGPROC, GetString) \
  X(PFNGLGETINTEGERVPROC, GetIntegerv) \
@@ -493,15 +492,25 @@ void Renderer::restoreAtlas(const std::vector<const AtlasPage*>& pages) {
 double Renderer::draw(const DrawList& list,int width,int height,bool measure,bool offscreen,double* submissionMs,std::chrono::steady_clock::time_point* presented){
     auto start=std::chrono::steady_clock::now();
     impl_->activate();
-    auto& gl=impl_->gl; GLuint query=0; GLuint64 ns=0;
-    if(measure){gl.GenQueries(1,&query); gl.BeginQuery(GL_TIME_ELAPSED,query);}
+    auto& gl=impl_->gl;
+    GLuint queries[2]{};
+    if (measure) {
+        // Bracket execution with timestamps. Some software drivers report a
+        // zero start for their first GL_TIME_ELAPSED query.
+        gl.GenQueries(2, queries);
+        gl.QueryCounter(queries[0], GL_TIMESTAMP);
+    }
     impl_->execute(list,width,height,offscreen);
-    if(measure) gl.EndQuery(GL_TIME_ELAPSED);
+    if (measure) gl.QueryCounter(queries[1], GL_TIMESTAMP);
     if(submissionMs) *submissionMs=std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count();
     if(!offscreen) impl_->present();
     if(presented) *presented=std::chrono::steady_clock::now();
-    if(measure){gl.GetQueryObjectui64v(query,GL_QUERY_RESULT,&ns); gl.DeleteQueries(1,&query);}
-    return double(ns)/1000000.0;
+    if (!measure) return 0;
+    GLuint64 begin=0, end=0;
+    gl.GetQueryObjectui64v(queries[0], GL_QUERY_RESULT, &begin);
+    gl.GetQueryObjectui64v(queries[1], GL_QUERY_RESULT, &end);
+    gl.DeleteQueries(2, queries);
+    return (double(end) - double(begin)) / 1000000.0;
 }
 RendererCapabilities Renderer::capabilities() const { return impl_->caps; }
 std::string Renderer::name() const {
