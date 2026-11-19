@@ -1,6 +1,7 @@
 #include "check.hpp"
 #include "desktop_linux_test.hpp"
 #include "isoduo/semantics.hpp"
+#include "linux_window.hpp"
 #include "render_role_checks.hpp"
 #include "text_geometry_checks.hpp"
 #include "utf.hpp"
@@ -29,6 +30,7 @@ struct Fixture {
                                             .visibleLines = 3, .rich = true}).value.value();
     LabelHandle horizontal = ui.addLabel({.id = "horizontal", .value = richText}).value.value();
     LabelHandle vertical;
+    std::optional<DropdownHandle> dropdown;
     unsigned reports = 0, shortcuts = 0, saves = 0, phase = 0;
     RichText saved{richText, {{.start = 0, .length = 7, .italic = true, .color = {}}}};
 
@@ -58,6 +60,15 @@ struct Fixture {
             check(bool(multi.setVisibleLines(*multi.visibleLines() == 3 ? 2 : 3)), "Change the viewport size");
         });
     }
+    void enableScaleTrial() {
+        dropdown = ui.addDropdown({.id = "dropdown", .label = u"Choose a value"},
+                                  {{{"one"}, u"First"}, {{"two"}, u"Second"}}).value.value();
+        check(dropdown->connectSource({[] { return std::optional<OptionValue>{{"two"}}; }, subscribe}) &&
+              dropdown->connectConfirmed([](const auto&) { return Result{}; }), "Connect scale trial dropdown");
+        bind("open", u"Open dropdown", {.letter = u'D', .ctrl = true}, [this] {
+            check(dropdown->focus() && dropdown->open(), "Open the dropdown for the native pointer trial");
+        });
+    }
 
     static std::function<void()> subscribe(std::function<void()>) { return [] {}; }
     static void connect(TextFieldHandle field, const char16_t* initial) {
@@ -74,6 +85,9 @@ struct Fixture {
     }
     auto page() {
         using namespace layout;
+        if (dropdown)
+            return layout::scroll(column({component(single), component(*dropdown), component(multi), component(rich),
+                                          component(horizontal), verticalText(vertical, 96)}, 12, 16));
         return column({component(single), component(multi), component(rich), component(horizontal), verticalText(vertical, 96)}, 12, 16);
     }
     void flow(unsigned next) {
@@ -122,10 +136,40 @@ struct Fixture {
         check(tree.get({"rich"})->styles == rich.richValue()->spans, "Typed and semantic styles agree");
         check(words.scroll->visibleLines == multi.visibleLines().value && words.scroll->firstLine == multi.scrollLine().value,
               "Typed and semantic viewports agree");
+        if (dropdown) {
+            const auto draft = dropdown->draft().value.value();
+            std::cout << "Dropdown " << reports << ' ' << (draft ? draft->id : "-") << ' ' << dropdown->describe()->expanded << '\n';
+        }
         std::cout << "Report " << reports << ' ' << shortcuts << ' ' << saves << ' ' << phase << ' '
                   << static_cast<int>(*words.wordSegmentation) << ' ' << static_cast<int>(*words.wordSegmentationInUse)
                   << ' ' << word.begin << ' ' << word.end << ' ' << rich.richValue()->spans.size()
                   << ' ' << saved.spans.size() << std::endl;
+    }
+    void observeScaleTrial(Desktop& desktop) {
+        bind("exit", u"Exit", {.letter = u'Q', .ctrl = true}, [&desktop] {
+            check(bool(desktop.close()), "Close the native scaling trial");
+        });
+        detail::LinuxDesktopTest::observeFrames(desktop, [this, &desktop, index = 0](const Frame& frame, const auto& geometry) mutable {
+            const auto* field = frame.find(single);
+            check(field && frame.offset >= 0 && frame.offset <= frame.maximum, "The resized frame clamps the scroll offset");
+            const auto point = field->caretRect(1);
+            std::cout << "Frame " << ++index << ' ' << geometry.width << ' ' << geometry.height << ' ' << geometry.scale
+                      << " scroll " << frame.offset << ' ' << frame.maximum << " hit " << point.x << ' '
+                      << point.y + point.h / 2;
+            const auto panel = std::find_if(frame.overlays.begin(), frame.overlays.end(),
+                                            [](const auto& item) { return item.dropdownPanel; });
+            if (panel != frame.overlays.end()) {
+                const auto& bounds = panel->bounds;
+                check(bounds.x >= 0 && bounds.y >= 0 && bounds.x + bounds.w <= geometry.width &&
+                      bounds.y + bounds.h <= geometry.height, "The dropdown panel stays inside the drawable");
+                const auto option = panel->options.front();
+                const int x = option.x + option.w / 2, y = option.y + option.h / 2;
+                check(frame.hit(x, y) == &*panel && frame.optionAt(*panel, x, y).has_value(), "The shown dropdown option can be hit");
+                std::cout << " option " << x << ' ' << y;
+            }
+            const auto atlas = detail::LinuxDesktopTest::atlasStats(desktop);
+            std::cout << " atlas " << atlas.clears << ' ' << atlas.rasterizations << std::endl;
+        });
     }
 };
 
@@ -168,20 +212,66 @@ void compare(Fixture& fixture, Desktop& desktop) {
           "The downstream caret is hit at the start of the scrolled row");
     std::cout << "PASS upstream and scrolled downstream wrap boundary at UTF-16 offset " << wrapPoint << std::endl;
 }
+
+void compareAtlas(Fixture& fixture, Desktop& desktop) {
+    using Host = detail::LinuxDesktopTest;
+    check(fixture.rich.focus() && fixture.rich.select(0, 2), "Select styled text before changing scale");
+    auto render = [&](int pixelWidth, int pixelHeight, float scale) {
+        Frame frame;
+        auto result = Host::compareFrame(desktop, pixelWidth, pixelHeight, scale, frame);
+        check(result && test::caretMatchesHit(frame, fixture.rich, 0, 2) &&
+              test::hasPaintRole(result, "rich", detail::PaintRole::caret) &&
+              test::hasPaintRole(result, "rich", detail::PaintRole::selection),
+              "Scale preserves caret, hit test and selection in the CPU and GPU images");
+        return result;
+    };
+    const auto reference = render(640, 480, 1.f).reference;
+    const auto warm = Host::atlasStats(desktop);
+    for (int i = 0; i < 100; ++i) render(640, 480, 1.f);
+    check(Host::atlasStats(desktop).rasterizations == warm.rasterizations, "100 redraws reuse rasterized glyphs");
+    std::cout << "PASS atlas reuse across 100 redraws, rasterizations " << warm.rasterizations << std::endl;
+    render(960, 720, 1.5f);
+    auto enlarged = Host::atlasStats(desktop);
+    check(enlarged.clears == warm.clears + 1 && enlarged.rasterizations > warm.rasterizations,
+          "Changing from 100% to 150% clears the atlas once and rasterizes new glyphs");
+    render(960, 720, 1.5f);
+    check(Host::atlasStats(desktop).clears == enlarged.clears, "Repainting the new scale does not clear the atlas");
+    check(render(640, 480, 1.f).reference.pixels == reference.pixels &&
+          Host::atlasStats(desktop).clears == enlarged.clears + 1, "Returning to 100% clears once and restores the original image");
+    auto changed = fixture.ui.presentation();
+    changed.textSize += 4;
+    const auto before = Host::atlasStats(desktop);
+    check(bool(fixture.ui.setPresentation(changed)), "Change text size");
+    check(render(640, 480, 1.f).reference.pixels != reference.pixels &&
+          Host::atlasStats(desktop).clears == before.clears + 1, "A new text size clears once and changes the rendered image");
+    std::cout << "PASS scale round-trip and text-size invalidations" << std::endl;
+    auto normal = render(640, 480, 1.f);
+    Host::configureAtlas(desktop, 64, 1);
+    auto bounded = render(640, 480, 1.f);
+    const auto final = Host::atlasStats(desktop);
+    check(final.peakPages == 1 && final.batches > 0 && bounded.reference.pixels == normal.reference.pixels,
+          "The bounded atlas batches glyphs within one page and retains the normal image");
+    std::cout << "PASS bounded atlas, batches " << final.batches << ", peak pages " << final.peakPages << std::endl;
+}
 }
 
 int main(int argc, char** argv) {
     try {
-        check(argc == 3, "Usage: isoduo_linux_text_geometry <wayland|x11> <input|compare>");
+        check(argc == 3 || argc == 5, "Usage: isoduo_linux_text_geometry <wayland|x11> <input|compare|atlas> [widthDip heightDip]");
         const std::string_view backend = argv[1], mode = argv[2];
         check(backend == "wayland" || backend == "x11", "Choose a native backend");
-        check(mode == "input" || mode == "compare", "Choose real input or CPU/OpenGL comparison");
+        check(mode == "input" || mode == "compare" || mode == "atlas", "Choose real input or CPU/OpenGL comparison");
         Fixture fixture;
+        if (argc == 5 && mode == "input") fixture.enableScaleTrial();
         DesktopConfig config;
         config.backend = backend == "wayland" ? DesktopBackend::wayland : DesktopBackend::x11;
         config.title = u"Isoduo text geometry";
-        config.width = width;
-        config.height = height;
+        config.width = argc == 5 ? std::stoi(argv[3]) : width;
+        config.height = argc == 5 ? std::stoi(argv[4]) : height;
+        if (fixture.dropdown) config.onRendererFailed = [](Desktop& desktop, const RendererFailure& failure) {
+            std::cerr << detail::utf8FromUtf16(failure.message) << '\n';
+            desktop.close();
+        };
         auto opened = Desktop::create(fixture.ui, webAppearance(), [&] { return fixture.page(); }, fixture.scroll, config);
         if (opened.failure) std::cerr << detail::utf8FromUtf16(opened.failure->message) << '\n';
         check(opened.desktop && opened.desktop->nativeWindow()->backend == config.backend, "Open the requested native window");
@@ -190,7 +280,11 @@ int main(int argc, char** argv) {
         std::cout << "Window " << desktop.nativeWindow()->windowId << ' ' << backend << ' '
                   << detail::utf8FromUtf16(caps.version) << ' ' << detail::utf8FromUtf16(caps.renderer) << std::endl;
         if (mode == "compare") compare(fixture, *opened.desktop);
-        else check(opened.desktop->run().status == Status::ok, "Finish the native input trial");
+        else if (mode == "atlas") compareAtlas(fixture, *opened.desktop);
+        else {
+            if (fixture.dropdown) fixture.observeScaleTrial(*opened.desktop);
+            check(opened.desktop->run().status == Status::ok, "Finish the native input trial");
+        }
         return 0;
     } catch (const std::exception& error) {
         std::cerr << "FAIL " << error.what() << '\n';

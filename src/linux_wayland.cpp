@@ -4,6 +4,8 @@
 #include "renderer_opengl_egl.hpp"
 #include "renderer.hpp"
 #include "utf.hpp"
+#include "fractional-scale-v1-client-protocol.h"
+#include "viewporter-client-protocol.h"
 #include "xdg-shell-client-protocol.h"
 #include <EGL/eglext.h>
 #include <wayland-egl.h>
@@ -17,6 +19,7 @@
 #include <chrono>
 #include <cmath>
 #include <cstring>
+#include <limits>
 #include <map>
 #include <utility>
 
@@ -30,8 +33,8 @@ public:
         try {
             clipboard_ = std::make_unique<WaylandClipboard>(display_, [this](auto result) { clipboardDelivered(std::move(result)); });
             ime_ = std::make_unique<WaylandIme>([this](auto edit) { imeEdited(std::move(edit)); });
-            width_ = pendingWidth_ = config.width;
-            height_ = pendingHeight_ = config.height;
+            logicalWidth_ = pendingWidth_ = config.width;
+            logicalHeight_ = pendingHeight_ = config.height;
             registry_ = wl_display_get_registry(display_);
             wl_registry_add_listener(registry_, &registryListener_, this);
             auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
@@ -48,6 +51,13 @@ public:
             if (!surface_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate the Wayland surface"}};
             ime_->surface(surface_);
             wl_surface_add_listener(surface_, &surfaceListener_, this);
+            if (fractionalManager_ && viewporter_) {
+                viewport_ = wp_viewporter_get_viewport(viewporter_, surface_);
+                fractional_ = wp_fractional_scale_manager_v1_get_fractional_scale(fractionalManager_, surface_);
+                if (!viewport_ || !fractional_)
+                    throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate Wayland fractional scaling objects"}};
+                wp_fractional_scale_v1_add_listener(fractional_, &fractionalListener_, this);
+            }
             shellSurface_ = xdg_wm_base_get_xdg_surface(shell_, surface_);
             if (!shellSurface_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate xdg_surface"}};
             xdg_surface_add_listener(shellSurface_, &shellSurfaceListener_, this);
@@ -59,7 +69,7 @@ public:
             wl_surface_commit(surface_);
             if (!waitFor(configured_, deadline))
                 throw StartupError{{StartupFailureKind::window, {}, {}, u"Wayland did not configure the initial window"}};
-            eglWindow_ = wl_egl_window_create(surface_, width_ * scale_, height_ * scale_);
+            eglWindow_ = wl_egl_window_create(surface_, geometry_.width, geometry_.height);
             if (!eglWindow_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate the Wayland EGL window"}};
             egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_WAYLAND_KHR, display_);
             egl_->nativeWindow(eglWindow_);
@@ -75,16 +85,32 @@ public:
     AsyncClipboard& clipboard() override { return *clipboard_; }
     void clipboardSerial(std::uint32_t serial) override { clipboard_->serial(serial); }
     void updateIme(const std::optional<LinuxImeState>& state, bool externalChange) override {
-        ime_->update(state, scale_, externalChange);
+        Rect surfaceCaret{};
+        if (state) {
+            const auto rect = state->caret;
+            const auto x = static_cast<int>(std::floor(rect.x / scaleX()));
+            const auto y = static_cast<int>(std::floor(rect.y / scaleY()));
+            surfaceCaret = {x, y, std::max(1, static_cast<int>(std::ceil((rect.x + rect.w) / scaleX())) - x),
+                                  std::max(1, static_cast<int>(std::ceil((rect.y + rect.h) / scaleY())) - y)};
+        }
+        ime_->update(state, surfaceCaret, externalChange);
+    }
+    void pointerToClient(NativeEvent& event) const override {
+        event.x = static_cast<int>(std::floor(wl_fixed_to_double(event.x) * scaleX()));
+        event.y = static_cast<int>(std::floor(wl_fixed_to_double(event.y) * scaleY()));
     }
     void title(std::string_view value) override { xdg_toplevel_set_title(toplevel_, std::string(value).c_str()); }
     bool prepareFrame() override { return !frameCallback_; }
     void requestFrame() override {
         frameCallback_ = wl_surface_frame(surface_);
-        if (frameCallback_) wl_callback_add_listener(frameCallback_, &frameListener_, this);
+        if (frameCallback_) {
+            frameChangesGeometry_ = std::exchange(geometryChanged_, false);
+            wl_callback_add_listener(frameCallback_, &frameListener_, this);
+        }
     }
     void discardFrame() override {
         if (frameCallback_) wl_callback_destroy(std::exchange(frameCallback_, nullptr));
+        geometryChanged_ |= std::exchange(frameChangesGeometry_, false);
     }
     bool poll(int timeoutMs) override {
         if (wl_display_dispatch_pending(display_) < 0) return false;
@@ -138,12 +164,16 @@ private:
         if (frameCallback_) wl_callback_destroy(frameCallback_);
         if (toplevel_) xdg_toplevel_destroy(toplevel_);
         if (shellSurface_) xdg_surface_destroy(shellSurface_);
+        if (fractional_) wp_fractional_scale_v1_destroy(fractional_);
+        if (viewport_) wp_viewport_destroy(viewport_);
         if (surface_) wl_surface_destroy(surface_);
         if (pointer_) wl_pointer_release(pointer_);
         if (keyboard_) wl_keyboard_release(keyboard_);
         if (seat_) wl_seat_release(seat_);
         for (auto [id, output] : outputs_) wl_output_destroy(output.handle);
         if (shell_) xdg_wm_base_destroy(shell_);
+        if (fractionalManager_) wp_fractional_scale_manager_v1_destroy(fractionalManager_);
+        if (viewporter_) wp_viewporter_destroy(viewporter_);
         if (compositor_) wl_compositor_destroy(compositor_);
         if (registry_) wl_registry_destroy(registry_);
         wl_display_flush(display_);
@@ -151,30 +181,53 @@ private:
         if (keyState_) xkb_state_unref(keyState_);
         if (keyContext_) xkb_context_unref(keyContext_);
     }
-    void resize() {
-        if (eglWindow_) wl_egl_window_resize(eglWindow_, width_ * scale_, height_ * scale_, 0, 0);
+    double scaleX() const { return static_cast<double>(geometry_.width) / logicalWidth_; }
+    double scaleY() const { return static_cast<double>(geometry_.height) / logicalHeight_; }
+    void updateGeometry() {
+        if (!configured_) return;
+        const bool supportsBufferScale = wl_surface_get_version(surface_) >= WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION;
+        int integerScale = 1;
+        if (!fractionalScale_ && supportsBufferScale) {
+            integerScale = preferredScale_ ? preferredScale_ : 1;
+            if (!preferredScale_)
+                for (auto [id, output] : outputs_)
+                    if (output.entered) integerScale = std::max(integerScale, output.scale);
+        }
+        constexpr double scaleUnit = 120;
+        const double numerator = fractionalScale_ ? fractionalScale_ : integerScale * scaleUnit;
+        const auto pixels = [numerator](int dip) {
+            return static_cast<int>(std::clamp(std::round(dip * numerator / scaleUnit), 1.0,
+                                               static_cast<double>(std::numeric_limits<int>::max())));
+        };
+        LinuxClientGeometry next{pixels(logicalWidth_), pixels(logicalHeight_), static_cast<float>(numerator / scaleUnit)};
+        if (supportsBufferScale && bufferScale_ != integerScale) {
+            wl_surface_set_buffer_scale(surface_, integerScale);
+            bufferScale_ = integerScale;
+        }
+        const std::pair destination{logicalWidth_, logicalHeight_};
+        const bool viewportChanged = fractionalScale_ && viewportSize_ != destination;
+        if (viewportChanged) {
+            // The destination and the resized buffer take effect in the same surface commit.
+            wp_viewport_set_destination(viewport_, logicalWidth_, logicalHeight_);
+            viewportSize_ = destination;
+        }
+        if (geometry_ == next && !viewportChanged) return;
+        if (eglWindow_ && (geometry_.width != next.width || geometry_.height != next.height))
+            wl_egl_window_resize(eglWindow_, next.width, next.height, 0, 0);
+        geometry_ = next;
+        geometryChanged_ = true;
         events.emplace_back(NativeEvent::Kind::redraw);
     }
-    void updateScale() {
-        int scale = preferredScale_ ? preferredScale_ : 1;
-        if (!preferredScale_)
-            for (auto [id, output] : outputs_)
-                if (output.entered) scale = std::max(scale, output.scale);
-        if (scale_ == scale) return;
-        scale_ = scale;
-        if (wl_surface_get_version(surface_) >= WL_SURFACE_SET_BUFFER_SCALE_SINCE_VERSION)
-            wl_surface_set_buffer_scale(surface_, scale_);
-        resize();
-    }
     void inputPosition(wl_fixed_t x, wl_fixed_t y) {
-        x_ = wl_fixed_to_int(x);
-        y_ = wl_fixed_to_int(y);
+        x_ = x;
+        y_ = y;
         pointerEvent(NativeEvent::Kind::motion);
     }
     NativeEvent& pointerEvent(NativeEvent::Kind kind) {
         auto& event = events.emplace_back(kind);
-        event.x = x_ * scale_;
-        event.y = y_ * scale_;
+        // Preserve surface-local precision until the host consumes the event.
+        event.x = x_;
+        event.y = y_;
         return event;
     }
     struct PointerAxis {
@@ -186,7 +239,7 @@ private:
     }
     void emitWheel(PointerAxis& axis, bool horizontal) {
         const double delta = axis.ticks ? *axis.ticks * (48.0 / 120.0) : axis.delta;
-        const double pixels = (horizontal ? delta : -delta) * scale_ + axis.remainder;
+        const double pixels = (horizontal ? delta : -delta) * geometry_.scale + axis.remainder;
         const auto amount = static_cast<int>(std::lround(pixels));
         axis = {.delta = 0, .remainder = pixels - amount, .ticks = {}};
         if (!amount) return;
@@ -269,6 +322,7 @@ private:
     static const xdg_toplevel_listener toplevelListener_;
     static const wl_callback_listener frameListener_;
     static const wl_surface_listener surfaceListener_;
+    static const wp_fractional_scale_v1_listener fractionalListener_;
     static const wl_output_listener outputListener_;
     static const wl_seat_listener seatListener_;
     static const wl_keyboard_listener keyboardListener_;
@@ -280,6 +334,10 @@ private:
     wl_compositor* compositor_ = nullptr;
     xdg_wm_base* shell_ = nullptr;
     wl_surface* surface_ = nullptr;
+    wp_viewporter* viewporter_ = nullptr;
+    wp_viewport* viewport_ = nullptr;
+    wp_fractional_scale_manager_v1* fractionalManager_ = nullptr;
+    wp_fractional_scale_v1* fractional_ = nullptr;
     xdg_surface* shellSurface_ = nullptr;
     xdg_toplevel* toplevel_ = nullptr;
     wl_callback* frameCallback_ = nullptr;
@@ -297,9 +355,14 @@ private:
     std::unique_ptr<WaylandClipboard> clipboard_;
     std::unique_ptr<WaylandIme> ime_;
     NativeWindow reference_{};
-    int pendingWidth_ = 0, pendingHeight_ = 0, preferredScale_ = 0, x_ = 0, y_ = 0;
+    int logicalWidth_ = 0, logicalHeight_ = 0, pendingWidth_ = 0, pendingHeight_ = 0;
+    int preferredScale_ = 0, bufferScale_ = 1;
+    uint32_t fractionalScale_ = 0;
+    std::pair<int, int> viewportSize_;
+    wl_fixed_t x_ = 0, y_ = 0;
     PointerAxis verticalAxis_, horizontalAxis_;
     bool configured_ = false, suspended_ = false, pendingSuspended_ = false;
+    bool geometryChanged_ = false, frameChangesGeometry_ = false;
 };
 
 const wl_registry_listener WaylandWindow::registryListener_{
@@ -315,6 +378,11 @@ const wl_registry_listener WaylandWindow::registryListener_{
                 w.clipboard_->bind(registry, id, version);
             } else if (!std::strcmp(interface, "zwp_text_input_manager_v3")) {
                 w.ime_->bind(registry, id);
+            } else if (!std::strcmp(interface, wp_fractional_scale_manager_v1_interface.name) && !w.fractionalManager_) {
+                w.fractionalManager_ = static_cast<wp_fractional_scale_manager_v1*>(
+                    wl_registry_bind(registry, id, &wp_fractional_scale_manager_v1_interface, 1));
+            } else if (!std::strcmp(interface, wp_viewporter_interface.name) && !w.viewporter_) {
+                w.viewporter_ = static_cast<wp_viewporter*>(wl_registry_bind(registry, id, &wp_viewporter_interface, 1));
             } else if (!std::strcmp(interface, wl_seat_interface.name) && version >= 5 && !w.seat_) {
                 w.seat_ = static_cast<wl_seat*>(wl_registry_bind(registry, id, &wl_seat_interface,
                     std::min(version, static_cast<uint32_t>(WL_POINTER_AXIS_VALUE120_SINCE_VERSION))));
@@ -333,7 +401,7 @@ const wl_registry_listener WaylandWindow::registryListener_{
             if (output == w.outputs_.end()) return;
             wl_output_destroy(output->second.handle);
             w.outputs_.erase(output);
-            if (w.surface_) w.updateScale();
+            w.updateGeometry();
         }
 };
 
@@ -346,22 +414,22 @@ const xdg_surface_listener WaylandWindow::shellSurfaceListener_{
             auto& w = self(data);
             xdg_surface_ack_configure(surface, serial);
             w.configured_ = true;
-            w.width_ = w.pendingWidth_;
-            w.height_ = w.pendingHeight_;
+            w.logicalWidth_ = w.pendingWidth_;
+            w.logicalHeight_ = w.pendingHeight_;
             if (w.suspended_ != w.pendingSuspended_) {
                 w.suspended_ = w.pendingSuspended_;
                 if (w.suspended_) w.discardFrame();
                 w.events.emplace_back(NativeEvent::Kind::visibility).active = !w.suspended_;
             }
-            w.resize();
+            w.updateGeometry();
         }
 };
 
 const xdg_toplevel_listener WaylandWindow::toplevelListener_{
         [](void* data, xdg_toplevel*, int32_t width, int32_t height, wl_array* states) {
             auto& w = self(data);
-            w.pendingWidth_ = width > 0 ? width : w.width_;
-            w.pendingHeight_ = height > 0 ? height : w.height_;
+            w.pendingWidth_ = width > 0 ? width : w.logicalWidth_;
+            w.pendingHeight_ = height > 0 ? height : w.logicalHeight_;
 #ifdef XDG_TOPLEVEL_STATE_SUSPENDED_SINCE_VERSION
             const auto* begin = static_cast<const uint32_t*>(states->data);
             w.pendingSuspended_ = false;
@@ -379,7 +447,12 @@ const xdg_toplevel_listener WaylandWindow::toplevelListener_{
 const wl_callback_listener WaylandWindow::frameListener_{
         [](void* data, wl_callback* callback, uint32_t) {
             wl_callback_destroy(callback);
-            self(data).frameCallback_ = nullptr;
+            auto& w = self(data);
+            w.frameCallback_ = nullptr;
+            // The compositor can reposition the surface when applying its resized
+            // buffer. Re-send the same surface-local caret against that position.
+            if (std::exchange(w.frameChangesGeometry_, false) && w.ime_->refreshCaret())
+                w.events.emplace_back(NativeEvent::Kind::redraw);
         }
 };
 
@@ -387,24 +460,32 @@ const wl_surface_listener WaylandWindow::surfaceListener_{
         [](void* data, wl_surface*, wl_output* output) {
             auto& w = self(data);
             for (auto& [id, item] : w.outputs_) if (item.handle == output) item.entered = true;
-            w.updateScale();
+            w.updateGeometry();
         },
         [](void* data, wl_surface*, wl_output* output) {
             auto& w = self(data);
             for (auto& [id, item] : w.outputs_) if (item.handle == output) item.entered = false;
-            w.updateScale();
+            w.updateGeometry();
         },
         [](void* data, wl_surface*, int32_t scale) {
             self(data).preferredScale_ = std::max(1, scale);
-            self(data).updateScale();
+            self(data).updateGeometry();
         },
         [](void*, wl_surface*, uint32_t) {}
+};
+const wp_fractional_scale_v1_listener WaylandWindow::fractionalListener_{
+        [](void* data, wp_fractional_scale_v1*, uint32_t scale) {
+            if (!scale) return;
+            auto& w = self(data);
+            w.fractionalScale_ = scale;
+            w.updateGeometry();
+        }
 };
 
 const wl_output_listener WaylandWindow::outputListener_{
         [](void*, wl_output*, int32_t, int32_t, int32_t, int32_t, int32_t, const char*, const char*, int32_t) {},
         [](void*, wl_output*, uint32_t, int32_t, int32_t, int32_t) {},
-        [](void* data, wl_output*) { auto& w = self(data); if (w.surface_) w.updateScale(); },
+        [](void* data, wl_output*) { self(data).updateGeometry(); },
         [](void* data, wl_output* output, int32_t scale) {
             for (auto& [id, item] : self(data).outputs_) if (item.handle == output) item.scale = std::max(1, scale);
         },

@@ -136,7 +136,9 @@ struct Desktop::Impl {
         explicit WorkScope(bool& active) : flag(active) { flag = true; }
         ~WorkScope() { flag = false; }
     };
-    int atlasScale = 0;
+    float atlasScale = 0;
+    LinuxClientGeometry layoutGeometry;
+    std::function<void(const Frame&, const LinuxClientGeometry&)> observeFrame;
     int textSize = 0;
     std::u16string fontFamily;
     std::set<std::u16string> unavailableFamilies;
@@ -220,14 +222,16 @@ struct Desktop::Impl {
         textSize = settings.textSize;
         fontFamily = settings.fontFamily;
     }
-    void arrange() {
-        WorkScope work(arranging);
-        auto scale = window->scale();
+    void prepareAtlas(float scale) {
         if (atlasScale && atlasScale != scale) text.clearAtlas();
         atlasScale = scale;
+    }
+    void arrange() {
+        WorkScope work(arranging);
+        layoutGeometry = window->geometry();
         const auto target = std::exchange(reveal, {});
-        frame = isoduo::arrange(page(), ui, appearance, measure, window->width() * scale, window->height() * scale,
-            static_cast<float>(scale), scroll, target);
+        frame = isoduo::arrange(page(), ui, appearance, measure, layoutGeometry.width, layoutGeometry.height,
+            layoutGeometry.scale, scroll, target);
     }
     void stopIme() {
         if (imeField.empty()) return;
@@ -306,12 +310,14 @@ struct Desktop::Impl {
         try {
             arrange();
             if (closing) return;
-            const int width = window->width() * window->scale(), height = window->height() * window->scale();
+            const auto [width, height, scale] = layoutGeometry;
+            prepareAtlas(scale);
             RecordingCanvas canvas(width, height, access(ui).effectivePalette(appearance).background);
-            paintDesktop(canvas, frame, static_cast<float>(window->scale()), focused, ui, appearance, text, measure);
+            paintDesktop(canvas, frame, scale, focused, ui, appearance, text, measure);
             if (closing) return;
             window->requestFrame();
             renderer->draw(canvas.list, width, height);
+            if (observeFrame) observeFrame(frame, layoutGeometry);
         } catch (const FrameError& error) {
             for (auto code : error.codes) diagnostics.push(frameDiagnostic(code));
             fail(error.failure);
@@ -459,7 +465,7 @@ struct Desktop::Impl {
                     textDrag = *field;
                     state.hoverCapture(id);
                 }
-            } else if (type.beginValueDrag(state, *placed, event.x, static_cast<float>(window->scale()))) sliderDrag = id;
+            } else if (type.beginValueDrag(state, *placed, event.x, layoutGeometry.scale)) sliderDrag = id;
         } else if (event.kind == Kind::release) {
             if (!sliderDrag.empty()) {
                 state.sliderPointer(sliderDrag, event.x);
@@ -551,7 +557,10 @@ struct Desktop::Impl {
         } else if (event.kind == Kind::keyUp) {
             if (event.key.key == Key::space) spaceTextTarget.clear();
             state.keyUp(event.key.key);
-        } else pointer(event);
+        } else {
+            window->pointerToClient(event);
+            pointer(event);
+        }
     }
     int delay() {
         if (failure) return -1;
@@ -600,9 +609,20 @@ GpuComparison LinuxDesktopTest::compareFrame(Desktop& desktop, int width, int he
                                              int fault, std::string_view reveal) {
     auto& host = *desktop.impl_;
     frame = layoutFrame(desktop, width, height, scale, reveal);
+    host.prepareAtlas(scale);
     RecordingCanvas canvas(width, height, access(host.ui).effectivePalette(host.appearance).background);
     paintDesktop(canvas, frame, scale, true, host.ui, host.appearance, host.text, host.measure);
     return detail::compareDrawList(*host.renderer, canvas.list, width, height, fault);
+}
+void LinuxDesktopTest::observeFrames(Desktop& desktop, std::function<void(const Frame&, const LinuxClientGeometry&)> observer) {
+    desktop.impl_->observeFrame = std::move(observer);
+}
+void LinuxDesktopTest::configureAtlas(Desktop& desktop, int size, int pages) {
+    desktop.impl_->text.configureAtlas(size, pages);
+}
+LinuxAtlasStats LinuxDesktopTest::atlasStats(const Desktop& desktop) {
+    const auto& text = desktop.impl_->text;
+    return {text.rasterizations(), text.atlasClears(), text.atlasBatches(), text.atlasPeakPages()};
 }
 RunResult Desktop::run() {
     auto& host = *impl_;
@@ -630,6 +650,7 @@ RunResult Desktop::run() {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
         if (host.preferences->changed()) host.refreshPreferences();
+        if (host.layoutGeometry != host.window->geometry()) host.dirty = true;
         auto events = std::exchange(host.window->events, {});
         for (auto& event : events) {
             host.dispatch(event, *this);

@@ -1,27 +1,27 @@
 find_package(PkgConfig REQUIRED)
 find_package(Fontconfig REQUIRED)
 pkg_check_modules(ISODUO_LINUX_DESKTOP REQUIRED IMPORTED_TARGET egl>=1.5 x11 x11-xcb xcb wayland-client>=1.22 wayland-egl xkbcommon gio-2.0)
-pkg_check_modules(ISODUO_WAYLAND_PROTOCOLS REQUIRED wayland-protocols)
+pkg_check_modules(ISODUO_WAYLAND_PROTOCOLS REQUIRED wayland-protocols>=1.31)
 pkg_get_variable(wayland_protocols_dir wayland-protocols pkgdatadir)
 find_program(wayland_scanner NAMES wayland-scanner REQUIRED)
-set(shell_xml "${wayland_protocols_dir}/stable/xdg-shell/xdg-shell.xml")
-set(shell_header "${PROJECT_BINARY_DIR}/generated/xdg-shell-client-protocol.h")
-set(shell_source "${PROJECT_BINARY_DIR}/generated/xdg-shell-protocol.c")
-add_custom_command(OUTPUT "${shell_header}" "${shell_source}"
-  COMMAND "${wayland_scanner}" client-header "${shell_xml}" "${shell_header}"
-  COMMAND "${wayland_scanner}" private-code "${shell_xml}" "${shell_source}"
-  DEPENDS "${shell_xml}" VERBATIM)
-set(text_input_xml "${wayland_protocols_dir}/unstable/text-input/text-input-unstable-v3.xml")
-set(text_input_header "${PROJECT_BINARY_DIR}/generated/text-input-v3-client-protocol.h")
-set(text_input_source "${PROJECT_BINARY_DIR}/generated/text-input-v3-protocol.c")
-add_custom_command(OUTPUT "${text_input_header}" "${text_input_source}"
-  COMMAND "${wayland_scanner}" client-header "${text_input_xml}" "${text_input_header}"
-  COMMAND "${wayland_scanner}" private-code "${text_input_xml}" "${text_input_source}"
-  DEPENDS "${text_input_xml}" VERBATIM)
+function(isoduo_wayland_protocol name path)
+  set(xml "${wayland_protocols_dir}/${path}")
+  set(header "${PROJECT_BINARY_DIR}/generated/${name}-client-protocol.h")
+  set(source "${PROJECT_BINARY_DIR}/generated/${name}-protocol.c")
+  add_custom_command(OUTPUT "${header}" "${source}"
+    COMMAND "${wayland_scanner}" client-header "${xml}" "${header}"
+    COMMAND "${wayland_scanner}" private-code "${xml}" "${source}"
+    DEPENDS "${xml}" VERBATIM)
+  target_sources(isoduo_desktop PRIVATE "${header}" "${source}")
+endfunction()
+isoduo_wayland_protocol(xdg-shell stable/xdg-shell/xdg-shell.xml)
+isoduo_wayland_protocol(text-input-v3 unstable/text-input/text-input-unstable-v3.xml)
+isoduo_wayland_protocol(fractional-scale-v1 staging/fractional-scale/fractional-scale-v1.xml)
+isoduo_wayland_protocol(viewporter stable/viewporter/viewporter.xml)
 target_sources(isoduo_desktop PRIVATE src/desktop_linux.cpp src/linux_x11.cpp src/linux_wayland.cpp
   src/linux_x11_clipboard.cpp src/linux_wayland_clipboard.cpp
-  src/linux_x11_ime.cpp src/linux_wayland_ime.cpp "${text_input_header}" "${text_input_source}"
-  src/linux_fonts.cpp src/linux_preferences.cpp src/renderer_opengl_egl.cpp "${shell_source}" "${shell_header}")
+  src/linux_x11_ime.cpp src/linux_wayland_ime.cpp
+  src/linux_fonts.cpp src/linux_preferences.cpp src/renderer_opengl_egl.cpp)
 target_include_directories(isoduo_desktop PRIVATE "${PROJECT_BINARY_DIR}/generated")
 target_link_libraries(isoduo_desktop PRIVATE PkgConfig::ISODUO_LINUX_DESKTOP Fontconfig::Fontconfig)
 

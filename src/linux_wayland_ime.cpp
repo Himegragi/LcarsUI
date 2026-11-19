@@ -30,7 +30,12 @@ void WaylandIme::commit() {
     zwp_text_input_v3_commit(input_);
     ++serial_;
 }
-void WaylandIme::update(const std::optional<LinuxImeState>& state, int scale, bool externalChange) {
+bool WaylandIme::refreshCaret() {
+    if (!entered_ || !target_ || !caret_) return false;
+    caret_.reset();
+    return true;
+}
+void WaylandIme::update(const std::optional<LinuxImeState>& state, Rect surfaceCaret, bool externalChange) {
     if (!entered_) return;
     const auto next = state ? state->target : 0;
     const bool changed = target_ != next;
@@ -50,13 +55,10 @@ void WaylandIme::update(const std::optional<LinuxImeState>& state, int scale, bo
             ZWP_TEXT_INPUT_V3_CONTENT_PURPOSE_NORMAL);
     }
     if (!state) return;
-    const auto rect = state->caret;
-    const Rect caret{rect.x / scale, rect.y / scale, std::max(1, (rect.w + scale - 1) / scale),
-                    std::max(1, (rect.h + scale - 1) / scale)};
-    const bool moved = caret_ != caret;
+    const bool moved = caret_ != surfaceCaret;
     if (moved) {
-        zwp_text_input_v3_set_cursor_rectangle(input_, caret.x, caret.y, caret.w, caret.h);
-        caret_ = caret;
+        zwp_text_input_v3_set_cursor_rectangle(input_, surfaceCaret.x, surfaceCaret.y, surfaceCaret.w, surfaceCaret.h);
+        caret_ = surfaceCaret;
     }
     // A protocol message is limited to 4000 bytes. Keep the full selection where it fits.
     const auto text = utf8FromUtf16(state->text);

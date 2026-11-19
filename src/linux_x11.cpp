@@ -7,12 +7,17 @@
 #include <EGL/eglext.h>
 #include <X11/XKBlib.h>
 #include <X11/Xlib-xcb.h>
+#include <X11/Xresource.h>
 #include <X11/Xutil.h>
+#include <X11/Xatom.h>
 #include <xkbcommon/xkbcommon.h>
 #include <poll.h>
 #include <cerrno>
 #include <climits>
+#include <algorithm>
 #include <array>
+#include <charconv>
+#include <cmath>
 #include <utility>
 #include <cstdlib>
 
@@ -24,8 +29,17 @@ public:
         display_ = XOpenDisplay(nullptr);
         if (!display_) throw StartupError{{StartupFailureKind::window, {}, {}, u"Unable to connect to the X11 display"}};
         try {
-            if (config.width > USHRT_MAX || config.height > USHRT_MAX)
+            // RESOURCE_MANAGER is on screen zero, even when the window uses another X screen.
+            resources_ = RootWindow(display_, 0);
+            XSelectInput(display_, resources_, PropertyChangeMask);
+            XrmInitialize();
+            geometry_.scale = desktopScale();
+            const double width = std::round(config.width * static_cast<double>(geometry_.scale));
+            const double height = std::round(config.height * static_cast<double>(geometry_.scale));
+            if (width > USHRT_MAX || height > USHRT_MAX)
                 throw StartupError{{StartupFailureKind::window, {}, {}, u"X11 client dimensions exceed the protocol limit"}};
+            geometry_.width = std::max(1, static_cast<int>(width));
+            geometry_.height = std::max(1, static_cast<int>(height));
             egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_X11_KHR, display_);
             XVisualInfo match{};
             match.visualid = egl_->visualId();
@@ -43,13 +57,11 @@ public:
             const uint32_t eventMask = ExposureMask | StructureNotifyMask | FocusChangeMask | VisibilityChangeMask |
                 KeyPressMask | KeyReleaseMask | KeymapStateMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
                 EnterWindowMask | LeaveWindowMask;
-            width_ = config.width;
-            height_ = config.height;
             // Checked requests keep server-side failures local to this creation. Xlib retains event queue ownership.
             const auto window = xcb_generate_id(connection);
             const uint32_t values[] = {0, eventMask, colormap};
-            checked(connection, xcb_create_window_checked(connection, visual->depth, window, root, 0, 0, width_,
-                height_, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, visual->visualid,
+            checked(connection, xcb_create_window_checked(connection, visual->depth, window, root, 0, 0, geometry_.width,
+                geometry_.height, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, visual->visualid,
                 XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP, values), u"Unable to create the X11 window");
             window_ = window;
             clipboard_ = std::make_unique<X11Clipboard>(display_, [this](auto result) { clipboardDelivered(std::move(result)); });
@@ -88,12 +100,12 @@ public:
         XFlush(display_);
     }
     bool prepareFrame() override {
-        if (!mapped_) {
+        if (!mapRequested_) {
             XMapWindow(display_, window_);
-            XSync(display_, False);
-            mapped_ = true;
+            XFlush(display_);
+            mapRequested_ = true;
         }
-        return true;
+        return mapped_;
     }
     bool poll(int timeoutMs) override {
         clipboard_->expire();
@@ -110,7 +122,14 @@ public:
             XEvent event{};
             XNextEvent(display_, &event);
             // KeymapNotify has no window in the wire event.
-            if (event.type == KeymapNotify ||
+            if (event.type == PropertyNotify && event.xproperty.window == resources_ &&
+                event.xproperty.atom == XA_RESOURCE_MANAGER) {
+                const auto scale = desktopScale();
+                if (scale != geometry_.scale) {
+                    geometry_.scale = scale;
+                    events.emplace_back(NativeEvent::Kind::redraw);
+                }
+            } else if (event.type == KeymapNotify ||
                 (!clipboard_->dispatch(event) && !XFilterEvent(&event, None) && event.xany.window == window_))
                 translate(event);
             // Apply focus and edits before passing the next native event to XIM.
@@ -121,6 +140,30 @@ public:
     }
 
 private:
+    float desktopScale() const {
+        // Xfce publishes its desktop-wide DPI here. RandR's physical sizes and
+        // output transforms do not specify a per-output application UI scale.
+        auto* connection = XGetXCBConnection(display_);
+        const auto request = xcb_get_property(connection, false, resources_, XA_RESOURCE_MANAGER, XA_STRING, 0, 65536);
+        std::unique_ptr<xcb_get_property_reply_t, decltype(&std::free)> reply(
+            xcb_get_property_reply(connection, request, nullptr), std::free);
+        if (!reply || reply->format != 8 || reply->bytes_after) return 1.f;
+        const auto* data = static_cast<const char*>(xcb_get_property_value(reply.get()));
+        const std::string resources(data, xcb_get_property_value_length(reply.get()));
+        std::unique_ptr<_XrmHashBucketRec, decltype(&XrmDestroyDatabase)> database(
+            XrmGetStringDatabase(resources.c_str()), XrmDestroyDatabase);
+        char* type = nullptr;
+        XrmValue value{};
+        if (!database || !XrmGetResource(database.get(), "Xft.dpi", "Xft.Dpi", &type, &value) || !value.size)
+            return 1.f;
+        const std::string_view text(value.addr, value.size - 1);
+        const auto first = text.find_first_not_of(" \t");
+        if (first == text.npos) return 1.f;
+        const auto* end = text.data() + text.find_last_not_of(" \t") + 1;
+        float dpi = 0;
+        const auto parsed = std::from_chars(text.data() + first, end, dpi);
+        return parsed.ec == std::errc{} && parsed.ptr == end && dpi >= 24.f && dpi <= 768.f ? dpi / 96.f : 1.f;
+    }
     static void checked(xcb_connection_t* connection, xcb_void_cookie_t request, std::u16string message) {
         std::unique_ptr<xcb_generic_error_t, decltype(&std::free)> error(xcb_request_check(connection, request), std::free);
         if (error) message += u" (X11 error " + utf16FromUtf8(std::to_string(error->error_code)) + u")";
@@ -141,8 +184,8 @@ private:
         case Expose: events.emplace_back(Kind::redraw); break;
         case ConfigureNotify:
             ime_->moved();
-            width_ = event.xconfigure.width;
-            height_ = event.xconfigure.height;
+            geometry_.width = event.xconfigure.width;
+            geometry_.height = event.xconfigure.height;
             events.emplace_back(Kind::redraw);
             break;
         case DestroyNotify:
@@ -150,8 +193,12 @@ private:
             events.emplace_back(Kind::destroyed);
             break;
         case MapNotify:
+            // The window manager can resize the client while handling MapRequest.
+            readDrawableSize();
+            [[fallthrough]];
         case UnmapNotify:
-            events.emplace_back(Kind::visibility).active = event.type == MapNotify;
+            mapped_ = event.type == MapNotify;
+            events.emplace_back(Kind::visibility).active = mapped_;
             break;
         case VisibilityNotify:
             events.emplace_back(Kind::visibility).active = event.xvisibility.state != VisibilityFullyObscured;
@@ -204,7 +251,8 @@ private:
                 auto& wheel = events.emplace_back(horizontal ? Kind::horizontalWheel : Kind::wheel);
                 wheel.x = button.x;
                 wheel.y = button.y;
-                wheel.amount = button.button == 4 || button.button == 7 ? 48 : -48;
+                const int step = static_cast<int>(std::lround(48 * geometry_.scale));
+                wheel.amount = button.button == 4 || button.button == 7 ? step : -step;
                 wheel.active = (button.state & ShiftMask) != 0;
             }
             break;
@@ -245,8 +293,18 @@ private:
         }
     }
 
+    void readDrawableSize() {
+        auto* connection = XGetXCBConnection(display_);
+        const auto request = xcb_get_geometry(connection, window_);
+        std::unique_ptr<xcb_get_geometry_reply_t, decltype(&std::free)> geometry(
+            xcb_get_geometry_reply(connection, request, nullptr), std::free);
+        if (!geometry) return;
+        geometry_.width = geometry->width;
+        geometry_.height = geometry->height;
+    }
+
     Display* display_ = nullptr;
-    Window window_ = 0;
+    Window window_ = 0, resources_ = 0;
     Colormap colormap_ = 0;
     Atom protocols_ = None, close_ = None, titleProperty_ = None, utf8_ = None;
     std::unique_ptr<EglWindow> egl_;
@@ -256,7 +314,7 @@ private:
     std::array<bool, 256> down_{};
     bool detectableRepeat_ = false;
     bool readFocusKeymap_ = false;
-    bool mapped_ = false;
+    bool mapRequested_ = false, mapped_ = false;
 };
 }
 
