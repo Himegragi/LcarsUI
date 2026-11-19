@@ -257,6 +257,23 @@ void failures() {
 #endif
     int attempts=0; settingsDemo::SettingsStore retry(path,[&](std::string_view name) { return name=="move" && ++attempts<=2 ? transientMoveError : 0u; });
     test::check(retry.save(demo.document()).empty() && attempts==3,"transient move retries");
+    auto oversized = demo.document();
+    oversized.items.clear();
+    for (int id = 1000; id < 2000; ++id) {
+        oversized.items.push_back({{"T" + std::to_string(id)}, std::u16string(64, u'\u4e2d'),
+                                   std::u16string(200, u'\u4e2d'),
+                                   {{.start = 0, .length = 50, .bold = true},
+                                    {.start = 50, .length = 50, .italic = true},
+                                    {.start = 100, .length = 50, .underline = true},
+                                    {.start = 150, .length = 50, .bold = true}}});
+    }
+    oversized.nextItemId = 2000;
+    test::check(settingsDemo::writeSettings(oversized).size() > 1024 * 1024, "fixture exceeds the settings size limit");
+    test::check(!initial.save(oversized).empty(), "oversized settings are refused before replacement");
+    std::ifstream saved(initial.path(), std::ios::binary);
+    test::check(std::string(std::istreambuf_iterator<char>(saved), {}) == original, "size rejection preserves original bytes");
+    saved.close();
+    test::check(initial.load().document == demo.document(), "original settings still reopen");
     std::filesystem::remove_all(path);
 }
 void loadFailures() {

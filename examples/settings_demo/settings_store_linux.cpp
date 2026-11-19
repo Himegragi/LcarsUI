@@ -56,17 +56,16 @@ LoadResult SettingsStore::load() const {
     if (!S_ISREG(original.st_mode)) return {LoadKind::unreadable, {}, u"設定路徑不是一般檔案"};
 
     // Bound the read even if the file grows after it is opened.
-    constexpr std::size_t limit = 1024 * 1024;
     std::string bytes;
-    bool tooLarge = original.st_size > static_cast<off_t>(limit);
+    bool tooLarge = original.st_size > static_cast<off_t>(maxSettingsBytes);
     while (!tooLarge) {
         char buffer[8192];
-        auto count = ::read(input.fd, buffer, std::min(sizeof buffer, limit + 1 - bytes.size()));
+        auto count = ::read(input.fd, buffer, std::min(sizeof buffer, maxSettingsBytes + 1 - bytes.size()));
         if (count < 0 && errno == EINTR) continue;
         if (count < 0) return unreadable(errno);
         if (count == 0) break;
         bytes.append(buffer, static_cast<std::size_t>(count));
-        tooLarge = bytes.size() > limit;
+        tooLarge = bytes.size() > maxSettingsBytes;
     }
     if (!tooLarge) {
         if (auto document = parseSettings(bytes)) return {LoadKind::loaded, std::move(document), {}};
@@ -92,6 +91,7 @@ LoadResult SettingsStore::load() const {
 
 std::u16string SettingsStore::save(const SettingsDocument& document) const {
     auto bytes = writeSettings(document);
+    if (bytes.size() > maxSettingsBytes) return u"\u8a2d\u5b9a\u6a94\u8d85\u904e 1 MiB";
     if (auto error = fault("directory")) return errorText(error);
     std::error_code directoryError;
     std::filesystem::create_directories(directory_, directoryError);

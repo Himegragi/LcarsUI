@@ -53,7 +53,7 @@ static bool noteValue(const json& item, Item& out) {
     return true;
 }
 std::optional<SettingsDocument> parseSettings(const std::string& bytes) {
-    if (bytes.size()>1024*1024) return {};
+    if (bytes.size()>maxSettingsBytes) return {};
     auto j=json::parse(bytes,nullptr,false); if (!j.is_object()) return {};
     try {
         (void)j.dump(); // Validate UTF-8 even in ignored fields.
