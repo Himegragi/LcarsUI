@@ -2,6 +2,7 @@
 // #81 rich text through the public core seams: the value type, typed editing, shortcuts, clipboard,
 // data connections and the semantic layer. Expected values are worked out by hand in each case.
 #include "check.hpp"
+#include "rich_text_contract.hpp"
 #include "component_type.hpp"
 #include "fake_measure.hpp"
 #include "isoduo/core.hpp"
@@ -408,6 +409,104 @@ TextFieldHandle connectPlain(Ui& ui, ComponentConfig control) {
     return field;
 }
 
+struct DeferredClipboard final : detail::AsyncClipboard {
+    std::uint64_t request = 0;
+    detail::ClipboardData offered;
+    bool hasText() const override { return true; }
+    Result read(std::uint64_t id, bool) override { request = id; return {}; }
+    Result write(std::uint64_t id, detail::ClipboardData data) override {
+        request = id;
+        offered = std::move(data);
+        return {};
+    }
+};
+
+void delayedPasteRequiresOriginalSelection() {
+    Ui ui;
+    auto field = connectRich(ui, richControl("note", u"before"));
+    auto& host = detail::access(ui);
+    DeferredClipboard clipboard;
+    host.setAsyncClipboard(&clipboard);
+    host.focus("note");
+    host.select("note", 0, 6);
+    check(bool(host.keyDown(ctrl(u'V'))) && field.richValue()->text == u"before", "paste waits for delivery");
+    const auto pending = clipboard.request;
+    host.select("note", 1, 1);
+    host.select("note", 0, 6);
+    check(!host.completeClipboard({pending, {}, {u"stale", {}}}) && field.richValue()->text == u"before",
+          "moving away and restoring the selection invalidates the first paste");
+    host.keyDown(ctrl(u'V'));
+    check(bool(host.completeClipboard({clipboard.request, {}, {u"繁體中文", {}}})), "new request accepts the delivery");
+    check(field.richValue()->text == u"繁體中文" && bool(field.undo()) && field.richValue()->text == u"before",
+          "a valid delivery replaces the original range in one undo step");
+    host.select("note", 0, 6);
+    host.keyDown(ctrl(u'V'));
+    check(bool(host.completeClipboard({clipboard.request, {},
+          {u"舊格式\r\n測試", "LcarsUI.RichText.1\n16\n舊格式\n測試\n1\n0 3 5 4:teal\n"}})) &&
+          *field.richValue() == RichText{u"舊格式\n測試", {{.start = 0, .length = 3, .bold = true, .underline = true, .color = "teal"}}},
+          "a delivered legacy payload preserves styles when its text matches");
+}
+
+void delayedClipboardRespectsEditingAdmission() {
+    Ui ui;
+    auto field = connectRich(ui, richControl("note", u"before"));
+    auto other = connectRich(ui, richControl("other", u"other"));
+    auto& host = detail::access(ui);
+    DeferredClipboard clipboard;
+    host.setAsyncClipboard(&clipboard);
+    field.focus();
+    field.select(0, 6);
+    field.setStyle(0, 6, {.bold = true});
+    const auto before = *field.richValue();
+    check(bool(field.cut()) && clipboard.offered.text == before.text && *field.richValue() == before,
+          "cut offers the original text before any edit");
+    check(test::canonicalRichRoundTrip(clipboard.offered.rich, before), "cut offers canonical rich data");
+    check(host.completeClipboard({clipboard.request, {Status::failed, {}}, {}}).status == Status::failed &&
+          *field.richValue() == before, "failed supply preserves text and style");
+    field.cut();
+    auto cut = clipboard.request;
+    check(bool(host.completeClipboard({cut, {}, {}})) && field.richValue()->text.empty() &&
+          bool(field.undo()) && *field.richValue() == before, "confirmed supply commits one undoable cut");
+    check(!host.completeClipboard({cut, {}, {}}) && *field.richValue() == before, "completion is consumed once");
+
+    for (auto change : {
+        +[](TextFieldHandle f, TextFieldHandle o, detail::UiState&) { o.focus(); f.focus(); },
+        +[](TextFieldHandle f, TextFieldHandle, detail::UiState&) { f.readOnly(true); f.readOnly(false); },
+        +[](TextFieldHandle f, TextFieldHandle, detail::UiState&) { f.enable(false); f.enable(true); f.focus(); },
+        +[](TextFieldHandle, TextFieldHandle, detail::UiState& h) { h.compositionUpdate(u"x", 1); h.compositionCancel(); },
+        +[](TextFieldHandle, TextFieldHandle, detail::UiState& h) { h.cancelInput(); },
+        +[](TextFieldHandle f, TextFieldHandle, detail::UiState&) { f.setValue(u"edited"); f.undo(); }}) {
+        field.select(0, 6);
+        check(bool(host.keyDown(ctrl(u'V'))), "paste admitted");
+        change(field, other, host);
+        check(!host.completeClipboard({clipboard.request, {}, {u"stale", {}}}) && *field.richValue() == before,
+              "intervening editing intent invalidates delivery");
+    }
+    field.readOnly(true);
+    check(bool(field.copy()) && field.cut().status == Status::readOnly &&
+          host.keyDown(ctrl(u'V')).status == Status::readOnly, "read-only admits just copy");
+    field.readOnly(false);
+    field.select(0, 6);
+    host.keyDown(ctrl(u'V'));
+    for (auto status : {Status::notSupported, Status::failed}) {
+        check(host.completeClipboard({clipboard.request, {status, {}}, {}}).status == status &&
+              *field.richValue() == before, "absence and failure are distinct and nonmutating");
+        host.keyDown(ctrl(u'V'));
+    }
+    field.remove();
+    check(!host.completeClipboard({clipboard.request, {}, {u"stale", {}}}), "a removed component refuses delivery");
+
+    other.focus();
+    field = connectRich(ui, richControl("note", u"before"));
+    field.select(0, 6);
+    field.cut();
+    field.remove();
+    auto replacement = connectRich(ui, richControl("note", u"before"));
+    replacement.select(0, 6);
+    check(!host.completeClipboard({clipboard.request, {}, {}}) && replacement.richValue()->text == u"before",
+          "reusing the ID and selection of an unfocused cut target cannot admit delivery");
+}
+
 void copyAndPasteKeepStylesBetweenRichFields() {
     Ui ui;
     auto source = connectRich(ui, richControl("source", u"abc\ndef"));
@@ -767,6 +866,8 @@ void compositionTakesTheTypingStyleAndCommitsAsOneStyledUndoEntry() {
 }
 
 const test::Case cases[] = {
+    {"delayed_paste_requires_original_selection", delayedPasteRequiresOriginalSelection},
+    {"delayed_clipboard_respects_editing_admission", delayedClipboardRespectsEditingAdmission},
     {"normalization_merges_sorts_and_drops_empty_spans", normalizationMergesSortsAndDropsEmptySpans},
     {"normalization_rejects_overlap_and_out_of_range_spans", normalizationRejectsOverlapAndOutOfRangeSpans},
     {"a_rich_field_is_a_multi_line_option_fixed_at_creation", aRichFieldIsAMultiLineOptionFixedAtCreation},

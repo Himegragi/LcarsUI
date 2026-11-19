@@ -2,6 +2,7 @@
 #include "renderer_opengl_egl.hpp"
 #include "renderer.hpp"
 #include "utf.hpp"
+#include "linux_x11_clipboard.hpp"
 #include <EGL/eglext.h>
 #include <X11/XKBlib.h>
 #include <X11/Xlib-xcb.h>
@@ -48,6 +49,7 @@ public:
                 height_, 0, XCB_WINDOW_CLASS_INPUT_OUTPUT, visual->visualid,
                 XCB_CW_BORDER_PIXEL | XCB_CW_EVENT_MASK | XCB_CW_COLORMAP, values), u"Unable to create the X11 window");
             window_ = window;
+            clipboard_ = std::make_unique<X11Clipboard>(display_, [this](auto result) { clipboardDelivered(std::move(result)); });
             protocols_ = XInternAtom(display_, "WM_PROTOCOLS", False);
             close_ = XInternAtom(display_, "WM_DELETE_WINDOW", False);
             titleProperty_ = XInternAtom(display_, "_NET_WM_NAME", False);
@@ -67,6 +69,11 @@ public:
     ~X11Window() override { release(); }
     const NativeWindow& reference() const override { return reference_; }
     EglWindow& renderWindow() override { return *egl_; }
+    AsyncClipboard& clipboard() override { return *clipboard_; }
+    void handoffClipboard() override {
+        if (!clipboard_->beginHandoff()) return;
+        while (clipboard_->handingOff() && poll(-1)) events.clear();
+    }
     void title(std::string_view value) override {
         XChangeProperty(display_, window_, titleProperty_, utf8_, 8, PropModeReplace,
             reinterpret_cast<const unsigned char*>(value.data()), static_cast<int>(value.size()));
@@ -82,19 +89,22 @@ public:
         return true;
     }
     bool poll(int timeoutMs) override {
+        clipboard_->expire();
+        if (!events.empty()) timeoutMs = 0;
+        clipboard_->limitWait(timeoutMs);
         if (!XPending(display_)) {
             pollfd fd{ConnectionNumber(display_), POLLIN, 0};
             int ready = ::poll(&fd, 1, timeoutMs);
             if (ready < 0) return errno == EINTR;
             if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) return false;
-            if (!ready) return true;
+            if (!ready) { clipboard_->expire(); return true; }
         }
         for (int count = 0; count < 256 && XPending(display_); ++count) {
             XEvent event{};
             XNextEvent(display_, &event);
-            translate(event);
-            if (!window_) break;
+            if (!clipboard_->dispatch(event) && event.xany.window == window_) translate(event);
         }
+        clipboard_->expire();
         return true;
     }
 
@@ -106,6 +116,7 @@ private:
             throw StartupError{{StartupFailureKind::window, {}, {}, std::move(message)}};
     }
     void release() {
+        clipboard_.reset();
         egl_.reset();
         if (window_) XDestroyWindow(display_, window_);
         if (colormap_) XFreeColormap(display_, colormap_);
@@ -143,8 +154,11 @@ private:
         case ButtonPress:
         case ButtonRelease: {
             auto& button = event.xbutton;
-            if (button.button == Button1) {
-                auto& input = events.emplace_back(event.type == ButtonPress ? Kind::press : Kind::release);
+            if (button.button == Button1 || button.button == Button3) {
+                const bool pressed = event.type == ButtonPress;
+                const auto kind = button.button == Button1 ? (pressed ? Kind::press : Kind::release)
+                                                          : (pressed ? Kind::rightPress : Kind::rightRelease);
+                auto& input = events.emplace_back(kind);
                 input.x = button.x;
                 input.y = button.y;
                 input.active = (button.state & ShiftMask) != 0;
@@ -185,6 +199,7 @@ private:
     Colormap colormap_ = 0;
     Atom protocols_ = None, close_ = None, titleProperty_ = None, utf8_ = None;
     std::unique_ptr<EglWindow> egl_;
+    std::unique_ptr<X11Clipboard> clipboard_;
     NativeWindow reference_{};
     std::array<bool, 256> down_{};
     bool mapped_ = false;

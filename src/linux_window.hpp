@@ -1,18 +1,22 @@
 #pragma once
+#include "async_clipboard.hpp"
 #include "isoduo/desktop.hpp"
 #include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace isoduo::detail {
 class EglWindow;
 struct NativeEvent {
-    enum class Kind { redraw, close, destroyed, focus, keyDown, keyUp, motion, leave, press, release, wheel };
+    enum class Kind { redraw, close, destroyed, focus, keyDown, keyUp, motion, leave, press, release, rightPress, rightRelease, wheel, clipboard };
     Kind kind;
     int x = 0, y = 0, amount = 0;
     bool active = false;
     KeyPress key;
     std::u16string text;
+    std::optional<std::uint32_t> inputSerial;
+    std::optional<ClipboardDelivery> clipboard;
     explicit NativeEvent(Kind value) : kind(value) {}
 };
 class LinuxWindow {
@@ -22,6 +26,9 @@ public:
     virtual EglWindow& renderWindow() = 0;
     virtual void title(std::string_view value) = 0;
     virtual bool poll(int timeoutMs) = 0;
+    virtual AsyncClipboard& clipboard() = 0;
+    virtual void clipboardSerial(std::uint32_t) {}
+    virtual void handoffClipboard() {}
     virtual bool prepareFrame() { return true; }
     virtual void requestFrame() {}
     virtual void discardFrame() {}
@@ -31,6 +38,9 @@ public:
     std::vector<NativeEvent> events;
 
 protected:
+    void clipboardDelivered(ClipboardDelivery delivery) {
+        events.emplace_back(NativeEvent::Kind::clipboard).clipboard = std::move(delivery);
+    }
     int width_ = 0, height_ = 0, scale_ = 1;
 };
 std::unique_ptr<LinuxWindow> makeWaylandWindow(const DesktopConfig&);

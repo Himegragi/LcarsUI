@@ -96,6 +96,7 @@ struct Desktop::Impl {
     std::string reveal;
     std::string textDrag;
     bool focused = false, attached = false, dirty = true, closing = false, running = false;
+    bool swallowRight = false;
     bool painting = false, arranging = false;
     struct WorkScope {
         bool& flag;
@@ -122,6 +123,7 @@ struct Desktop::Impl {
         auto& state = access(ui);
         configureFont();
         attached = true;
+        state.setAsyncClipboard(&window->clipboard());
         state.rendererFailed(false);
         state.bindAppearance(&appearance);
         state.setSystemKeyboardCues(false);
@@ -141,6 +143,7 @@ struct Desktop::Impl {
     void release() {
         if (attached) {
             auto& state = access(ui);
+            state.setAsyncClipboard(nullptr);
             state.onInvalidate({});
             state.onRelayout({});
             state.onReveal({});
@@ -207,12 +210,41 @@ struct Desktop::Impl {
             return;
         }
         if (dirty) arrange();
+        if (event.kind == Kind::rightPress) {
+            state.pointerPressed();
+            swallowRight = state.menuOpen() && !frame.menuContains(event.x, event.y);
+            if (swallowRight) state.closeMenu();
+            return;
+        }
+        if (event.kind == Kind::rightRelease && std::exchange(swallowRight, false)) return;
+        if (state.menuOpen()) {
+            auto row = frame.menuItemAt(event.x, event.y);
+            if (event.kind == Kind::motion && row) state.menuHighlight(*row);
+            if (event.kind == Kind::press) {
+                state.pointerPressed();
+                if (!frame.menuContains(event.x, event.y)) state.closeMenu();
+                else if (row) state.menuPointerDown(*row);
+            }
+            if (event.kind == Kind::release) state.menuPointerUp(row ? *row : std::string{});
+            if (event.kind == Kind::rightRelease && row) {
+                state.menuPointerDown(*row);
+                state.menuPointerUp(*row);
+            }
+            if (event.kind == Kind::wheel) frame.wheel(ui, event.x, event.y, event.amount, event.active);
+            return;
+        }
         const auto* hit = frame.hit(event.x, event.y);
         const auto option = hit ? frame.optionAt(*hit, event.x, event.y) : std::nullopt;
         const Id id = hit ? hit->id : Id{};
         const bool selectsText = hit && componentType(hit->kind).selectsText();
         state.pointerOver(frame, event.x, event.y);
-        if (event.kind == Kind::motion && !textDrag.empty()) {
+        if (event.kind == Kind::rightRelease) {
+            if (!hit || !hit->dropdownPanel) state.closePopup();
+            if (!hit || hit->dropdownPanel || hit->tooltip) return;
+            std::optional<unsigned> offset;
+            if (selectsText) offset = placementTextHit(frame, id, event.x, event.y).offset;
+            state.menuPointerOpen(id, option, offset, {event.x, event.y});
+        } else if (event.kind == Kind::motion && !textDrag.empty()) {
             state.textPointerDrag(textDrag, placementTextHit(frame, textDrag, event.x, event.y),
                 placementTextCell(frame, textDrag, event.x, event.y));
         } else if (event.kind == Kind::press) {
@@ -231,7 +263,7 @@ struct Desktop::Impl {
             dirty = true;
         }
     }
-    void dispatch(const NativeEvent& event, Desktop& desktop) {
+    void dispatch(NativeEvent& event, Desktop& desktop) {
         using Kind = NativeEvent::Kind;
         auto& state = access(ui);
         switch (event.kind) {
@@ -242,12 +274,16 @@ struct Desktop::Impl {
             return;
         case Kind::focus:
             focused = event.active;
-            if (!focused) { state.cancelInput(); textDrag.clear(); }
+            if (!focused) { state.cancelInput(); textDrag.clear(); swallowRight = false; }
             dirty = true;
+            return;
+        case Kind::clipboard:
+            state.completeClipboard(std::move(*event.clipboard));
             return;
         default: break;
         }
         if (failure) return;
+        if (event.inputSerial) window->clipboardSerial(*event.inputSerial);
         if (event.kind == Kind::keyDown) {
             if (dirty) arrange();
             auto previous = state.focused();
@@ -316,7 +352,7 @@ RunResult Desktop::run() {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
         auto events = std::exchange(host.window->events, {});
-        for (const auto& event : events) {
+        for (auto& event : events) {
             host.dispatch(event, *this);
             if (host.closing) break;
         }
@@ -327,6 +363,7 @@ RunResult Desktop::run() {
             if (state.animationRunning()) host.dirty = true;
         }
     }
+    host.window->handoffClipboard();
     if (host.failure) return {Status::rendererFailed, host.failure, {}};
     return {};
 }

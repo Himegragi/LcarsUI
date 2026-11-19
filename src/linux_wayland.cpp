@@ -1,4 +1,5 @@
 #include "linux_window.hpp"
+#include "linux_wayland_clipboard.hpp"
 #include "renderer_opengl_egl.hpp"
 #include "renderer.hpp"
 #include "utf.hpp"
@@ -25,6 +26,7 @@ public:
         display_ = wl_display_connect(nullptr);
         if (!display_) throw StartupError{{StartupFailureKind::window, {}, {}, u"Unable to connect to the Wayland display"}};
         try {
+            clipboard_ = std::make_unique<WaylandClipboard>(display_, [this](auto result) { clipboardDelivered(std::move(result)); });
             width_ = pendingWidth_ = config.width;
             height_ = pendingHeight_ = config.height;
             registry_ = wl_display_get_registry(display_);
@@ -66,6 +68,8 @@ public:
     ~WaylandWindow() override { release(); }
     const NativeWindow& reference() const override { return reference_; }
     EglWindow& renderWindow() override { return *egl_; }
+    AsyncClipboard& clipboard() override { return *clipboard_; }
+    void clipboardSerial(std::uint32_t serial) override { clipboard_->serial(serial); }
     void title(std::string_view value) override { xdg_toplevel_set_title(toplevel_, std::string(value).c_str()); }
     bool prepareFrame() override { return !frameCallback_; }
     void requestFrame() override {
@@ -86,14 +90,17 @@ public:
             if (errno != EAGAIN) { cancel(); return false; }
             flags |= POLLOUT;
         }
-        pollfd fd{wl_display_get_fd(display_), flags, 0};
-        int ready = ::poll(&fd, 1, timeoutMs);
-        if (ready <= 0) { cancel(); return ready == 0 || errno == EINTR; }
-        if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) { cancel(); return false; }
-        if (fd.revents & POLLIN) {
+        std::vector<pollfd> fds{{wl_display_get_fd(display_), flags, 0}};
+        clipboard_->preparePoll(fds, timeoutMs);
+        int ready = ::poll(fds.data(), fds.size(), timeoutMs);
+        if (ready < 0) { cancel(); return errno == EINTR; }
+        if (fds.front().revents & (POLLERR | POLLHUP | POLLNVAL)) { cancel(); return false; }
+        if (fds.front().revents & POLLIN) {
             if (wl_display_read_events(display_) < 0) return false;
         } else cancel();
-        return wl_display_dispatch_pending(display_) >= 0;
+        if (wl_display_dispatch_pending(display_) < 0) return false;
+        clipboard_->dispatchIo();
+        return true;
     }
 
 private:
@@ -108,6 +115,7 @@ private:
     static WaylandWindow& self(void* data) { return *static_cast<WaylandWindow*>(data); }
 
     void release() {
+        clipboard_.reset();
         egl_.reset();
         if (eglWindow_) wl_egl_window_destroy(eglWindow_);
         if (frameCallback_) wl_callback_destroy(frameCallback_);
@@ -170,10 +178,11 @@ private:
         if (keyState_) xkb_state_unref(keyState_);
         keyState_ = state;
     }
-    void key(uint32_t code, bool pressed) {
+    void key(uint32_t serial, uint32_t code, bool pressed) {
         if (!keyState_) return;
         const auto key = code + 8;
         auto& event = events.emplace_back(pressed ? NativeEvent::Kind::keyDown : NativeEvent::Kind::keyUp);
+        event.inputSerial = serial;
         event.key = linuxKey(xkb_state_key_get_one_sym(keyState_, key), modifier(XKB_MOD_NAME_SHIFT),
             modifier(XKB_MOD_NAME_CTRL));
         if (pressed && !event.key.ctrl && !modifier(XKB_MOD_NAME_ALT)) {
@@ -182,6 +191,10 @@ private:
             if (size > 0 && size < static_cast<int>(sizeof(text))) event.text = utf16FromUtf8({text, static_cast<std::size_t>(size)});
         }
     }
+    void keyboardFocus(bool active) {
+        events.emplace_back(NativeEvent::Kind::focus).active = active;
+        clipboard_->focused(active);
+    }
     void changeSeat(uint32_t caps) {
         if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !keyboard_) {
             keyboard_ = wl_seat_get_keyboard(seat_);
@@ -189,7 +202,7 @@ private:
         } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && keyboard_) {
             wl_keyboard_release(keyboard_);
             keyboard_ = nullptr;
-            events.emplace_back(NativeEvent::Kind::focus).active = false;
+            keyboardFocus(false);
         }
         if ((caps & WL_SEAT_CAPABILITY_POINTER) && !pointer_) {
             pointer_ = wl_seat_get_pointer(seat_);
@@ -227,6 +240,7 @@ private:
     xkb_state* keyState_ = nullptr;
     wl_egl_window* eglWindow_ = nullptr;
     std::unique_ptr<EglWindow> egl_;
+    std::unique_ptr<WaylandClipboard> clipboard_;
     NativeWindow reference_{};
     int pendingWidth_ = 0, pendingHeight_ = 0, preferredScale_ = 0, x_ = 0, y_ = 0;
     bool configured_ = false;
@@ -240,9 +254,12 @@ const wl_registry_listener WaylandWindow::registryListener_{
             else if (!std::strcmp(interface, xdg_wm_base_interface.name)) {
                 w.shell_ = static_cast<xdg_wm_base*>(wl_registry_bind(registry, id, &xdg_wm_base_interface, 1));
                 xdg_wm_base_add_listener(w.shell_, &shellListener_, &w);
+            } else if (!std::strcmp(interface, wl_data_device_manager_interface.name)) {
+                w.clipboard_->bind(registry, id, version);
             } else if (!std::strcmp(interface, wl_seat_interface.name) && version >= 5 && !w.seat_) {
                 w.seat_ = static_cast<wl_seat*>(wl_registry_bind(registry, id, &wl_seat_interface, 5));
                 wl_seat_add_listener(w.seat_, &seatListener_, &w);
+                w.clipboard_->seat(w.seat_);
             } else if (!std::strcmp(interface, wl_output_interface.name) && version >= 2) {
                 auto* output = static_cast<wl_output*>(wl_registry_bind(registry, id, &wl_output_interface, 2));
                 w.outputs_.emplace(id, Output{output});
@@ -326,10 +343,10 @@ const wl_seat_listener WaylandWindow::seatListener_{
 
 const wl_keyboard_listener WaylandWindow::keyboardListener_{
         [](void* data, wl_keyboard*, uint32_t format, int fd, uint32_t size) { self(data).keymap(format, fd, size); },
-        [](void* data, wl_keyboard*, uint32_t, wl_surface*, wl_array*) { self(data).events.emplace_back(NativeEvent::Kind::focus).active = true; },
-        [](void* data, wl_keyboard*, uint32_t, wl_surface*) { self(data).events.emplace_back(NativeEvent::Kind::focus).active = false; },
-        [](void* data, wl_keyboard*, uint32_t, uint32_t, uint32_t code, uint32_t state) {
-            self(data).key(code, state == WL_KEYBOARD_KEY_STATE_PRESSED);
+        [](void* data, wl_keyboard*, uint32_t, wl_surface*, wl_array*) { self(data).keyboardFocus(true); },
+        [](void* data, wl_keyboard*, uint32_t, wl_surface*) { self(data).keyboardFocus(false); },
+        [](void* data, wl_keyboard*, uint32_t serial, uint32_t, uint32_t code, uint32_t state) {
+            self(data).key(serial, code, state == WL_KEYBOARD_KEY_STATE_PRESSED);
         },
         [](void* data, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group) {
             if (auto* state = self(data).keyState_) xkb_state_update_mask(state, depressed, latched, locked, 0, 0, group);
@@ -341,11 +358,16 @@ const wl_pointer_listener WaylandWindow::pointerListener_{
         [](void* data, wl_pointer*, uint32_t, wl_surface*, wl_fixed_t x, wl_fixed_t y) { self(data).inputPosition(x, y); },
         [](void* data, wl_pointer*, uint32_t, wl_surface*) { self(data).events.emplace_back(NativeEvent::Kind::leave); },
         [](void* data, wl_pointer*, uint32_t, wl_fixed_t x, wl_fixed_t y) { self(data).inputPosition(x, y); },
-        [](void* data, wl_pointer*, uint32_t, uint32_t, uint32_t button, uint32_t state) {
-            if (button != BTN_LEFT) return;
+        [](void* data, wl_pointer*, uint32_t serial, uint32_t, uint32_t button, uint32_t state) {
+            if (button != BTN_LEFT && button != BTN_RIGHT) return;
             auto& w = self(data);
-            w.pointerEvent(state == WL_POINTER_BUTTON_STATE_PRESSED ? NativeEvent::Kind::press : NativeEvent::Kind::release)
-                .active = w.modifier(XKB_MOD_NAME_SHIFT);
+            using Kind = NativeEvent::Kind;
+            const bool pressed = state == WL_POINTER_BUTTON_STATE_PRESSED;
+            const auto kind = button == BTN_LEFT ? (pressed ? Kind::press : Kind::release)
+                                                 : (pressed ? Kind::rightPress : Kind::rightRelease);
+            auto& event = w.pointerEvent(kind);
+            event.active = w.modifier(XKB_MOD_NAME_SHIFT);
+            event.inputSerial = serial;
         },
         [](void* data, wl_pointer*, uint32_t, uint32_t axis, wl_fixed_t value) {
             if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL || !value) return;
