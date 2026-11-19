@@ -28,7 +28,7 @@ struct X11Clipboard::State {
         Atom target, richTarget = None;
         std::string bytes;
         std::u16string text;
-        bool incremental = false;
+        std::optional<std::size_t> incrementalMinimum = std::nullopt;
         bool fallback = false;
     };
     struct Write { std::uint64_t request; Contents contents; };
@@ -93,7 +93,7 @@ struct X11Clipboard::State {
     }
     void convert(Atom target) {
         incoming->target = target;
-        incoming->incremental = false;
+        incoming->incrementalMinimum.reset();
         incoming->bytes.clear();
         XConvertSelection(display, clipboard, target, property, incoming->window, CurrentTime);
         XFlush(display);
@@ -142,15 +142,20 @@ struct X11Clipboard::State {
     void receiveBytes(const xcb_get_property_reply_t& reply) {
         if (reply.type != incoming->target || reply.format != 8 ||
             incoming->bytes.size() + reply.value_len > clipboardLimit) return conversionFailed();
-        if (incoming->incremental && reply.value_len) {
-            incoming->bytes.append(static_cast<const char*>(xcb_get_property_value(&reply)), reply.value_len);
-            return;
+        if (incoming->incrementalMinimum) {
+            if (reply.value_len) {
+                incoming->bytes.append(static_cast<const char*>(xcb_get_property_value(&reply)), reply.value_len);
+                return;
+            }
+            // INCR announces a lower bound, so the terminating empty property cannot arrive before it.
+            if (incoming->bytes.size() < *incoming->incrementalMinimum) return conversionFailed();
+        } else if (reply.value_len) {
+            incoming->bytes.assign(static_cast<const char*>(xcb_get_property_value(&reply)), reply.value_len);
         }
-        if (reply.value_len) incoming->bytes.assign(static_cast<const char*>(xcb_get_property_value(&reply)), reply.value_len);
         finishPart();
     }
     void receiveNotify(const XSelectionEvent& event) {
-        if (event.target != incoming->target || incoming->incremental) return;
+        if (event.target != incoming->target || incoming->incrementalMinimum) return;
         if (XGetSelectionOwner(display, clipboard) != incoming->owner) return completeRead(clipboardFailure());
         if (event.property != property) {
             // Older owners may implement conversion without TARGETS.
@@ -165,8 +170,9 @@ struct X11Clipboard::State {
         if (!reply) return conversionFailed();
         if (incoming->target == targets) return receiveTargets(*reply);
         if (reply->type == incr && reply->format == 32 && reply->value_len == 1) {
-            if (*static_cast<const uint32_t*>(xcb_get_property_value(reply.get())) > clipboardLimit) return conversionFailed();
-            incoming->incremental = true;
+            const auto minimum = *static_cast<const uint32_t*>(xcb_get_property_value(reply.get()));
+            if (minimum > clipboardLimit) return conversionFailed();
+            incoming->incrementalMinimum = minimum;
             return;
         }
         receiveBytes(*reply);
@@ -267,7 +273,7 @@ struct X11Clipboard::State {
             return true;
         }
         if (incoming && event.window == incoming->window) {
-            if (event.atom == property && event.state == PropertyNewValue && incoming->incremental) {
+            if (event.atom == property && event.state == PropertyNewValue && incoming->incrementalMinimum) {
                 auto reply = get(event.window, property, true);
                 if (reply) receiveBytes(*reply);
                 else conversionFailed();
