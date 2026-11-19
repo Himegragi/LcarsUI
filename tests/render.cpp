@@ -1,5 +1,6 @@
 #include "render.hpp"
 #include "glyph_atlas.hpp"
+#include "draw_list_fixture.hpp"
 #include <stdexcept>
 using namespace isoduo::detail;
 
@@ -7,6 +8,8 @@ void require(bool condition, const char* message) {
     if (!condition) throw std::runtime_error(message);
 }
 int main() {
+    require(test::matchesLayeredDrawList(renderCpu(test::layeredDrawList(), 8, 6)),
+            "layered draw list preserves clipping, color, alpha, orientation, and ordering");
     DrawList list;
     list.clear({10, 20, 30, 255});
     list.setClip({1, 0, 1, 2});

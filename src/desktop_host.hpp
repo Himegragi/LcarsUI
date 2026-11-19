@@ -26,20 +26,6 @@ private:
     HWND window_;
 };
 
-struct GpuRegion {
-    Rect bounds{};
-    std::string owner;
-    unsigned role = 0;
-    bool popup = false, ink = false, passed = false;
-};
-struct GpuComparison {
-    Image reference, actual;
-    ImageComparison comparison;
-    unsigned roles = 0, failedRoles = 0;
-    std::vector<GpuRegion> regions;
-    bool passed = false;
-    explicit operator bool() const { return passed; }
-};
 class DesktopHost {
 public:
     static CreateResult createForTest(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopConfig, RendererTestHooks*);
