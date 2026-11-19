@@ -4285,7 +4285,7 @@ int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario,
         cpuMs=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paintMessages()-beforePaints; presents=host.frames()-beforeFrames;
     }
     auto warm=host.perfSamples().summary(true), steady=host.perfSamples().summary(false);
-    bool ok=scenario==L"startup" ? host.firstPresentMs()>=0 && host.firstPresentMs()<=1000 : scenario==L"idle" ? detail::idlePass(presents,paints,cpuMs) : steady.count>0 && (delay ? steady.overBudget>0 : steady.maximum<=16.7);
+    bool ok=scenario==L"startup" ? detail::startupPass(host.firstPresentMs()) : scenario==L"idle" ? detail::idlePass(presents,paints,cpuMs) : detail::activePerfPass(steady,delay!=0);
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/"perf.tsv");
@@ -4418,7 +4418,7 @@ int runDemoPerf(const std::filesystem::path& evidence, const std::wstring& scena
         cpuMs=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paintMessages()-beforePaints; presents=host.frames()-beforeFrames;
     }
     auto warm=host.perfSamples().summary(true), steady=host.perfSamples().summary(false);
-    bool ok=sliderDrag ? true : scenario==L"startup" ? host.firstPresentMs()>=0 && host.firstPresentMs()<=1000 : (scenario==L"idle" || idleAfterAnimation) ? detail::idlePass(presents,paints,cpuMs) : steady.count>0 && (delay ? steady.overBudget>0 : steady.maximum<=16.7);
+    bool ok=sliderDrag ? true : scenario==L"startup" ? detail::startupPass(host.firstPresentMs()) : (scenario==L"idle" || idleAfterAnimation) ? detail::idlePass(presents,paints,cpuMs) : detail::activePerfPass(steady,delay!=0);
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
     if (sliderDrag && warm.count+steady.count==0) throw std::runtime_error("Perf slider drag produced no frames");

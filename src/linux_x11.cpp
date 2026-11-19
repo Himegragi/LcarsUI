@@ -116,6 +116,12 @@ public:
         }
         return mapped_;
     }
+    void fullscreenForTest() override {
+        const auto state = XInternAtom(display_, "_NET_WM_STATE", False);
+        const auto fullscreen = XInternAtom(display_, "_NET_WM_STATE_FULLSCREEN", False);
+        XChangeProperty(display_, window_, state, XA_ATOM, 32, PropModeReplace,
+            reinterpret_cast<const unsigned char*>(&fullscreen), 1);
+    }
     bool poll(int timeoutMs) override {
         clipboard_->expire();
         if (!events.empty()) return true;

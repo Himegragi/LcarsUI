@@ -100,6 +100,7 @@ public:
         event.y = static_cast<int>(std::floor(wl_fixed_to_double(event.y) * scaleY()));
     }
     void title(std::string_view value) override { xdg_toplevel_set_title(toplevel_, std::string(value).c_str()); }
+    void fullscreenForTest() override { xdg_toplevel_set_fullscreen(toplevel_, nullptr); }
     bool prepareFrame() override { return !frameCallback_; }
     void requestFrame() override {
         frameCallback_ = wl_surface_frame(surface_);
