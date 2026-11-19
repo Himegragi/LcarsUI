@@ -69,6 +69,13 @@ if(ISODUO_BUILD_TESTS)
   target_include_directories(isoduo_linux_render_verify PRIVATE src)
   target_link_libraries(isoduo_linux_render_verify PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb Isoduo::AppearanceMaterial
     isoduo_edit_form isoduo_settings_demo)
+  add_executable(isoduo_linux_demo_perf tests/linux_demo_perf.cpp)
+  isoduo_target(isoduo_linux_demo_perf)
+  target_include_directories(isoduo_linux_demo_perf PRIVATE src)
+  target_link_libraries(isoduo_linux_demo_perf PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb
+    Isoduo::AppearanceMaterial isoduo_settings_demo isoduo_settings_demo_about)
+  add_test(NAME linux_demo_perf_report COMMAND "${CMAKE_COMMAND}"
+    "-DVERIFY=$<TARGET_FILE:isoduo_linux_demo_perf>" -P "${PROJECT_SOURCE_DIR}/tests/linux_demo_perf_report.cmake")
   add_executable(isoduo_linux_text_geometry tests/linux_text_geometry.cpp)
   isoduo_target(isoduo_linux_text_geometry)
   target_include_directories(isoduo_linux_text_geometry PRIVATE src)

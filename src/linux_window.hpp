@@ -44,6 +44,7 @@ public:
     virtual bool prepareFrame() { return true; }
     virtual void requestFrame() {}
     virtual void discardFrame() {}
+    virtual void fullscreenForTest() = 0;
     virtual void pointerToClient(NativeEvent&) const {}
     LinuxClientGeometry geometry() const { return geometry_; }
     void observePreferences(LinuxPreferenceMonitor& monitor) { preferences_ = &monitor; }

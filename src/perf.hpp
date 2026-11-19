@@ -33,4 +33,8 @@ public:
     PerfBreakdownSummary summary(bool warm) const { return {stage(layout_,warm), stage(list_,warm), stage(gpu_,warm)}; }
 };
 inline bool idlePass(int presents, int paints, double cpuMs) { return presents==0 && paints==0 && cpuMs<=20; }
+inline bool startupPass(double firstPresentMs) { return firstPresentMs>=0 && firstPresentMs<=1000; }
+inline bool activePerfPass(const PerfSummary& steady, bool injectedDelay) {
+    return steady.count>0 && (injectedDelay ? steady.overBudget>0 : steady.overBudget==0);
+}
 }

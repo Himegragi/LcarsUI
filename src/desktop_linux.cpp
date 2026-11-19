@@ -62,6 +62,10 @@ KeyPress linuxKey(unsigned symbol, bool shift, bool ctrl) {
 namespace isoduo {
 namespace {
 using namespace detail;
+using PerfClock = std::chrono::steady_clock;
+double elapsedMs(PerfClock::time_point begin, PerfClock::time_point end) {
+    return std::chrono::duration<double, std::milli>(end - begin).count();
+}
 constexpr auto wrongThread = u"Operation requires the UI thread";
 std::uint64_t nowMs() {
     return std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -139,6 +143,10 @@ struct Desktop::Impl {
     float atlasScale = 0;
     LinuxClientGeometry layoutGeometry;
     std::function<void(const Frame&, const LinuxClientGeometry&)> observeFrame;
+    std::function<void(const LinuxFrameMeasurement&)> measureFrame;
+    std::function<void()> observeRedraw;
+    std::chrono::milliseconds paintDelay{};
+    double pendingLayoutMs = 0;
     int textSize = 0;
     std::u16string fontFamily;
     std::set<std::u16string> unavailableFamilies;
@@ -227,11 +235,13 @@ struct Desktop::Impl {
         atlasScale = scale;
     }
     void arrange() {
+        const auto start = measureFrame ? PerfClock::now() : PerfClock::time_point{};
         WorkScope work(arranging);
         layoutGeometry = window->geometry();
         const auto target = std::exchange(reveal, {});
         frame = isoduo::arrange(page(), ui, appearance, measure, layoutGeometry.width, layoutGeometry.height,
             layoutGeometry.scale, scroll, target);
+        if (measureFrame) pendingLayoutMs += elapsedMs(start, PerfClock::now());
     }
     void stopIme() {
         if (imeField.empty()) return;
@@ -310,13 +320,26 @@ struct Desktop::Impl {
         try {
             arrange();
             if (closing) return;
+            const auto listStart = measureFrame ? PerfClock::now() : PerfClock::time_point{};
             const auto [width, height, scale] = layoutGeometry;
             prepareAtlas(scale);
             RecordingCanvas canvas(width, height, access(ui).effectivePalette(appearance).background);
             paintDesktop(canvas, frame, scale, focused, ui, appearance, text, measure);
             if (closing) return;
             window->requestFrame();
-            renderer->draw(canvas.list, width, height);
+            if (measureFrame) {
+                const auto beforeDelay = PerfClock::now();
+                if (paintDelay.count()) std::this_thread::sleep_for(paintDelay);
+                const double delayMs = elapsedMs(beforeDelay, PerfClock::now());
+                double submissionMs = 0;
+                PerfClock::time_point presented;
+                const auto gpuMs = renderer->draw(canvas.list, width, height, true, false, &submissionMs, &presented);
+                measureFrame({frame, layoutGeometry, presented, std::exchange(pendingLayoutMs, 0),
+                    elapsedMs(listStart, beforeDelay), submissionMs, gpuMs, delayMs, focused,
+                    access(ui).animationRunning()});
+            } else {
+                renderer->draw(canvas.list, width, height);
+            }
             if (observeFrame) observeFrame(frame, layoutGeometry);
         } catch (const FrameError& error) {
             for (auto code : error.codes) diagnostics.push(frameDiagnostic(code));
@@ -481,7 +504,10 @@ struct Desktop::Impl {
         using Kind = NativeEvent::Kind;
         auto& state = access(ui);
         switch (event.kind) {
-        case Kind::redraw: dirty = true; return;
+        case Kind::redraw:
+            if (observeRedraw) observeRedraw();
+            dirty = true;
+            return;
         case Kind::destroyed: closing = true; return;
         case Kind::close:
             finishIme();
@@ -623,6 +649,15 @@ GpuComparison LinuxDesktopTest::compareFrame(Desktop& desktop, int width, int he
 }
 void LinuxDesktopTest::observeFrames(Desktop& desktop, std::function<void(const Frame&, const LinuxClientGeometry&)> observer) {
     desktop.impl_->observeFrame = std::move(observer);
+}
+void LinuxDesktopTest::measureFrames(Desktop& desktop, std::chrono::milliseconds delay,
+                                    std::function<void(const LinuxFrameMeasurement&)> observer,
+                                    std::function<void()> redraw) {
+    auto& host = *desktop.impl_;
+    host.paintDelay = delay;
+    host.measureFrame = std::move(observer);
+    host.observeRedraw = std::move(redraw);
+    host.window->fullscreenForTest();
 }
 void LinuxDesktopTest::configureAtlas(Desktop& desktop, int size, int pages) {
     desktop.impl_->text.configureAtlas(size, pages);
