@@ -134,6 +134,7 @@ struct Desktop::Impl {
     std::optional<ThumbDrag> thumbDrag;
     Id spaceTextTarget;
     bool focused = false, attached = false, dirty = true, closing = false, running = false;
+    bool layoutDirty = true;
     bool leftPressed = false, rightPressed = false, hidden = false;
     bool animationScheduled = false;
     bool painting = false, arranging = false;
@@ -179,13 +180,13 @@ struct Desktop::Impl {
         state.animationTime(nowMs);
         state.tooltipClock(nowMs);
         state.setClickClock(nowMs);
-        state.onInvalidate([this] { dirty = true; });
+        state.onInvalidate([this] { invalidateFrame(); });
         state.onRelayout([this] { if (!arranging && !painting && !closing) arrange(); });
-        state.onReveal([this](const Id& id) { reveal = id; dirty = true; });
+        state.onReveal([this](const Id& id) { reveal = id; invalidateFrame(); });
         state.onPresentation([this] {
             configureFont();
             reveal = access(ui).focused();
-            dirty = true;
+            invalidateFrame();
         });
     }
     void refreshPreferences() {
@@ -237,9 +238,17 @@ struct Desktop::Impl {
         if (atlasScale && atlasScale != scale) text.clearAtlas();
         atlasScale = scale;
     }
+    void invalidateFrame() {
+        dirty = layoutDirty = true;
+    }
+    void arrangeIfNeeded() {
+        // Input and IME may already have arranged the state we are about to paint.
+        if (layoutDirty || layoutGeometry != window->geometry()) arrange();
+    }
     void arrange() {
         const auto start = measureFrame ? PerfClock::now() : PerfClock::time_point{};
         WorkScope work(arranging);
+        layoutDirty = false;
         layoutGeometry = window->geometry();
         const auto target = std::exchange(reveal, {});
         frame = isoduo::arrange(page(), ui, appearance, measure, layoutGeometry.width, layoutGeometry.height,
@@ -259,7 +268,7 @@ struct Desktop::Impl {
         auto text = session->preedit;
         stopIme();
         state.compositionCommit(text);
-        dirty = true;
+        invalidateFrame();
     }
     void syncIme(bool externalChange = true) {
         if (failure || closing || !focused) {
@@ -274,7 +283,7 @@ struct Desktop::Impl {
         if (!field || !field->enabled || field->readOnly || !session || !placement || state.menuOpen()) {
             if (session && session->composing) {
                 state.compositionCancel();
-                dirty = true;
+                invalidateFrame();
             }
             stopIme();
             return;
@@ -315,13 +324,13 @@ struct Desktop::Impl {
         // A native cancel or commit is already reflected by the input method.
         session = state.edit(imeField);
         imeComposing = session && session->composing;
-        dirty = true;
+        invalidateFrame();
     }
     void paint() {
         dirty = false;
         WorkScope work(painting);
         try {
-            arrange();
+            arrangeIfNeeded();
             if (closing) return;
             const auto listStart = measureFrame ? PerfClock::now() : PerfClock::time_point{};
             const auto [width, height, scale] = layoutGeometry;
@@ -386,14 +395,14 @@ struct Desktop::Impl {
             const int grabOffset = it->thumb.contains(x, y) ? along - thumbStart : (it->horizontal ? it->thumb.w : it->thumb.h) / 2;
             thumbDrag = ThumbDrag{it->state, it->component, grabOffset};
             state.hoverCapture({});
-            if (frame.scrollTo(ui, *it, it->offsetForThumb(along - grabOffset))) dirty = true;
+            if (frame.scrollTo(ui, *it, it->offsetForThumb(along - grabOffset))) invalidateFrame();
             return true;
         }
         return false;
     }
     void dragText(int x, int y) {
         textDragPoint = {x, y};
-        if (dirty) arrange();
+        arrangeIfNeeded();
         const auto* field = textDrag ? frame.find(*textDrag) : nullptr;
         if (!field || access(ui).focused() != field->id) { textScrollDeadline.reset(); return; }
         const auto& view = field->view;
@@ -401,7 +410,7 @@ struct Desktop::Impl {
         const bool scrollBelow = y >= view.text.y + view.text.h && view.first + view.visible < view.lines.size();
         if (field->multiline && (scrollAbove || scrollBelow)) textScrollDeadline = nowMs() + 60;
         else textScrollDeadline.reset();
-        if (frame.selectTo(ui, *textDrag, x, y)) dirty = true;
+        if (frame.selectTo(ui, *textDrag, x, y)) invalidateFrame();
     }
     void pointer(const NativeEvent& event) {
         using Kind = NativeEvent::Kind;
@@ -411,12 +420,12 @@ struct Desktop::Impl {
             return;
         }
         if (event.kind == Kind::press || event.kind == Kind::rightPress) finishIme();
-        if (dirty) arrange();
+        arrangeIfNeeded();
         if (event.kind == Kind::wheel || event.kind == Kind::horizontalWheel) {
             const bool scrolled = event.kind == Kind::wheel
                 ? frame.wheel(ui, event.x, event.y, event.amount, event.active)
                 : !state.menuOpen() && frame.hwheel(ui, event.x, event.y, event.amount);
-            if (scrolled) dirty = true;
+            if (scrolled) invalidateFrame();
             return;
         }
         if (event.kind == Kind::rightPress) {
@@ -471,7 +480,7 @@ struct Desktop::Impl {
                 });
                 if (region != frame.regions.end()) {
                     const int along = region->horizontal ? event.x : event.y;
-                    if (frame.scrollTo(ui, *region, region->offsetForThumb(along - thumbDrag->grabOffset))) dirty = true;
+                    if (frame.scrollTo(ui, *region, region->offsetForThumb(along - thumbDrag->grabOffset))) invalidateFrame();
                 }
             }
         } else if (event.kind == Kind::press) {
@@ -509,7 +518,7 @@ struct Desktop::Impl {
         switch (event.kind) {
         case Kind::redraw:
             if (observeRedraw) observeRedraw();
-            dirty = true;
+            invalidateFrame();
             return;
         case Kind::destroyed: closing = true; return;
         case Kind::close:
@@ -529,7 +538,7 @@ struct Desktop::Impl {
                 spaceTextTarget.clear();
                 cancelPointer();
             }
-            dirty = true;
+            invalidateFrame();
             return;
         case Kind::captureLost:
             cancelPointer();
@@ -539,7 +548,7 @@ struct Desktop::Impl {
             state.setWindowHidden(hidden);
             state.windowActive(focused && !hidden);
             if (hidden) cancelPointer();
-            dirty = true;
+            invalidateFrame();
             return;
         case Kind::clipboard:
             state.completeClipboard(std::move(*event.clipboard));
@@ -561,11 +570,11 @@ struct Desktop::Impl {
             if (const auto* session = state.edit(state.focused()); session && session->composing) {
                 stopIme();
                 state.compositionCancel();
-                dirty = true;
+                invalidateFrame();
                 return;
             }
         }
-        if (event.kind == Kind::keyDown && dirty) arrange();
+        if (event.kind == Kind::keyDown) arrangeIfNeeded();
         const auto previous = state.focused();
         if (event.kind == Kind::keyDown) {
             const bool menu = state.menuOpen();
@@ -576,12 +585,11 @@ struct Desktop::Impl {
             state.keyDown(event.key);
             // Keyboard navigation can change retained viewport offsets or the
             // selection without an invalidation from the component.
-            dirty = true;
+            invalidateFrame();
             if (const auto* component = state.find(state.focused()); component && componentType(component->kind).hasRowCursor()) {
                 switch (event.key.key) {
                 case Key::up: case Key::down: case Key::left: case Key::right: case Key::home: case Key::end:
                     reveal = component->id;
-                    dirty = true;
                     break;
                 default: break;
                 }
@@ -595,7 +603,7 @@ struct Desktop::Impl {
         }
         if (previous != state.focused()) {
             reveal = state.focused();
-            dirty = true;
+            invalidateFrame();
         }
     }
     int delay() {
@@ -697,12 +705,12 @@ RunResult Desktop::run() {
         if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
-        if (host.layoutGeometry != host.window->geometry()) host.dirty = true;
+        if (host.layoutGeometry != host.window->geometry()) host.invalidateFrame();
         auto events = std::exchange(host.window->events, {});
         for (auto& event : events) {
             host.dispatch(event, *this);
             if (host.closing) break;
-            if (host.dirty && !host.failure) host.arrange();
+            if (host.dirty && !host.failure) host.arrangeIfNeeded();
             host.syncIme(event.kind != NativeEvent::Kind::imeEdit);
         }
         if (!host.closing && host.preferences->changed()) host.refreshPreferences();
@@ -714,7 +722,7 @@ RunResult Desktop::run() {
                 host.dragText(host.textDragPoint.first, host.textDragPoint.second);
             const bool animating = state.animationRunning();
             // A timer that outlives the transition still paints the terminal frame.
-            if (host.animationScheduled || animating) host.dirty = true;
+            if (host.animationScheduled || animating) host.invalidateFrame();
             host.animationScheduled = animating;
         }
     }
@@ -759,7 +767,7 @@ Result Desktop::rebuildRenderer() {
     }
     host.failure.reset();
     access(host.ui).rendererFailed(false);
-    host.dirty = true;
+    host.invalidateFrame();
     return {};
 }
 RunResult runDesktop(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page,

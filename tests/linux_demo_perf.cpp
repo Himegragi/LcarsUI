@@ -10,6 +10,7 @@
 #include <iomanip>
 #include <iostream>
 #include <stdexcept>
+#include <utility>
 
 using namespace isoduo;
 using namespace detail;
@@ -72,7 +73,8 @@ int run(char** argv) {
     if (animation && !demo.volume.focus()) throw std::runtime_error("Cannot focus demo volume");
     if (slider && !demo.nav.select({"appearance"})) throw std::runtime_error("Cannot open appearance page");
 
-    auto creation = Desktop::create(demo.ui, theme, [&] { return demo.page(); }, demo.scroll, config);
+    unsigned arrangements = 0;
+    auto creation = Desktop::create(demo.ui, theme, [&] { ++arrangements; return demo.page(); }, demo.scroll, config);
     if (!creation.desktop) throw std::runtime_error(creation.failure ? utf8FromUtf16(creation.failure->message) : "Cannot open desktop");
     auto& desktop = *creation.desktop;
     const auto caps = desktop.capabilities();
@@ -88,6 +90,7 @@ int run(char** argv) {
                       << sample.geometry.scale << '\t' << sample.layoutMs << '\t'
                       << sample.listMs << '\t' << sample.submissionMs << '\t' << sample.gpuMs
                       << '\t' << sample.delayMs << '\t' << sample.focused << '\n';
+            std::cout << "arrangements\t" << std::exchange(arrangements, 0) << '\n';
             if (list) {
                 const auto candidate = demo.itemsList.describe().value->candidate;
                 std::cout << "list\t" << (candidate ? candidate->id : "") << '\n';
