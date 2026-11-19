@@ -38,8 +38,9 @@ public:
             checked(connection, xcb_create_colormap_checked(connection, XCB_COLORMAP_ALLOC_NONE, colormap,
                 root, visual->visualid), u"Unable to allocate the X11 colormap");
             colormap_ = colormap;
-            const uint32_t eventMask = ExposureMask | StructureNotifyMask | FocusChangeMask |
-                KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask | LeaveWindowMask;
+            const uint32_t eventMask = ExposureMask | StructureNotifyMask | FocusChangeMask | VisibilityChangeMask |
+                KeyPressMask | KeyReleaseMask | ButtonPressMask | ButtonReleaseMask | PointerMotionMask |
+                EnterWindowMask | LeaveWindowMask;
             width_ = config.width;
             height_ = config.height;
             // Checked requests keep server-side failures local to this creation. Xlib retains event queue ownership.
@@ -58,6 +59,7 @@ public:
             title(utf8FromUtf16(config.title));
             Bool detectable = False;
             XkbSetDetectableAutoRepeat(display_, True, &detectable);
+            detectableRepeat_ = detectable;
             XSync(display_, False);
             egl_->nativeWindow(&window_);
             reference_ = {DesktopBackend::x11, display_, nullptr, window_};
@@ -94,7 +96,7 @@ public:
         clipboard_->limitWait(timeoutMs);
         if (!XPending(display_)) {
             pollfd fd{ConnectionNumber(display_), POLLIN, 0};
-            int ready = ::poll(&fd, 1, timeoutMs);
+            int ready = pollFileDescriptors({&fd, 1}, timeoutMs);
             if (ready < 0) return errno == EINTR;
             if (fd.revents & (POLLERR | POLLHUP | POLLNVAL)) return false;
             if (!ready) { clipboard_->expire(); return true; }
@@ -135,6 +137,13 @@ private:
             window_ = 0;
             events.emplace_back(Kind::destroyed);
             break;
+        case MapNotify:
+        case UnmapNotify:
+            events.emplace_back(Kind::visibility).active = event.type == MapNotify;
+            break;
+        case VisibilityNotify:
+            events.emplace_back(Kind::visibility).active = event.xvisibility.state != VisibilityFullyObscured;
+            break;
         case ClientMessage:
             if (event.xclient.message_type == protocols_ && event.xclient.format == 32 &&
                 static_cast<Atom>(event.xclient.data.l[0]) == close_) events.emplace_back(Kind::close);
@@ -145,6 +154,12 @@ private:
             if (event.type == FocusOut) down_.fill(false);
             break;
         case LeaveNotify: events.emplace_back(Kind::leave); break;
+        case EnterNotify: {
+            auto& motion = events.emplace_back(Kind::motion);
+            motion.x = event.xcrossing.x;
+            motion.y = event.xcrossing.y;
+            break;
+        }
         case MotionNotify: {
             auto& motion = events.emplace_back(Kind::motion);
             motion.x = event.xmotion.x;
@@ -162,11 +177,12 @@ private:
                 input.x = button.x;
                 input.y = button.y;
                 input.active = (button.state & ShiftMask) != 0;
-            } else if (event.type == ButtonPress && (button.button == Button4 || button.button == Button5)) {
-                auto& wheel = events.emplace_back(Kind::wheel);
+            } else if (event.type == ButtonPress && button.button >= 4 && button.button <= 7) {
+                const bool horizontal = button.button >= 6;
+                auto& wheel = events.emplace_back(horizontal ? Kind::horizontalWheel : Kind::wheel);
                 wheel.x = button.x;
                 wheel.y = button.y;
-                wheel.amount = button.button == Button4 ? 120 : -120;
+                wheel.amount = button.button == 4 || button.button == 7 ? 48 : -48;
                 wheel.active = (button.state & ShiftMask) != 0;
             }
             break;
@@ -174,17 +190,25 @@ private:
         case KeyPress:
         case KeyRelease: {
             auto& key = event.xkey;
+            const bool pressed = event.type == KeyPress;
+            if (!pressed && !detectableRepeat_ && XEventsQueued(display_, QueuedAfterReading)) {
+                XEvent next{};
+                XPeekEvent(display_, &next);
+                if (next.type == KeyPress && next.xkey.window == key.window &&
+                    next.xkey.keycode == key.keycode && next.xkey.time == key.time) break;
+            }
             KeySym symbol = NoSymbol;
             unsigned consumed = 0;
             XkbLookupKeySym(display_, key.keycode, key.state, &consumed, &symbol);
-            const bool pressed = event.type == KeyPress;
+            const bool alt = (key.state & Mod1Mask) != 0;
+            if (pressed && !linuxKeyDownAllowed(static_cast<unsigned>(symbol), alt)) break;
             auto& input = events.emplace_back(pressed ? Kind::keyDown : Kind::keyUp);
             input.key = linuxKey(static_cast<unsigned>(symbol), key.state & ShiftMask, key.state & ControlMask);
             if (key.keycode < down_.size()) {
                 input.key.repeat = pressed && down_[key.keycode];
                 down_[key.keycode] = pressed;
             }
-            if (pressed && !(key.state & (ControlMask | Mod1Mask))) {
+            if (pressed && !input.key.ctrl && !alt) {
                 char utf8[8]{};
                 if (xkb_keysym_to_utf8(static_cast<xkb_keysym_t>(symbol), utf8, sizeof(utf8)) > 1)
                     input.text = utf16FromUtf8(utf8);
@@ -202,6 +226,7 @@ private:
     std::unique_ptr<X11Clipboard> clipboard_;
     NativeWindow reference_{};
     std::array<bool, 256> down_{};
+    bool detectableRepeat_ = false;
     bool mapped_ = false;
 };
 }
