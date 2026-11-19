@@ -36,7 +36,14 @@ On Linux or WSL with unprivileged user and network namespaces enabled, configure
 unshare --user --map-current-user --net env -u DISPLAY -u WAYLAND_DISPLAY sh tools/test-linux-core.sh
 ```
 
-`word_select` exercises the portable selection behavior. CTest reports `word_select_icu` as skipped on Linux because the system ICU integration currently uses Windows' `icu.dll`.
+`word_select` exercises the portable selection and fallback behavior. `word_select_icu`
+uses the installed system dictionary and skips when it is unavailable. To require
+that the real dictionary cases run, invoke `isoduo_word_select_tests --require-icu`.
+Linux Core builds and installed consumers need only the platform dynamic loader.
+Dictionary mode optionally loads the system ICU runtime (`libicuuc.so.60` through
+`libicuuc.so.99`, or `libicuuc.so` with unversioned exports) and its CJK break data.
+Ubuntu 26.04 provides these through `libicu78`. Core needs no ICU development
+package, and can build and run offline with or without the runtime.
 
 ## Linux native desktop build
 
@@ -233,7 +240,7 @@ note.doubleClick(12);                        // select it, and arm a drag that g
 ui.semantics().perform({"item.note"}, isoduo::Verb::selectParagraph, 12);  // the same operations, same Status values
 ```
 
-- **Where words are.** `dictionary` (the default) asks the Windows system ICU (`icu.dll`, loaded from System32 on first use, locale `zh_TW`), so Chinese is cut into words (設定|管理|示範). If the library is missing or cannot open a break iterator the field falls back to `perCharacter` without interrupting anything; `wordSegmentation()` reports the mode set, `wordSegmentationInUse()` the mode in effect. `perCharacter`: every Chinese or Japanese character is a word, a run of Latin letters and digits is one word. `scriptRun`: a run of Chinese or Japanese characters is one word. In every mode each punctuation mark and each LF is a word of its own and a run of spaces stays together. The dictionary result follows the Windows version, so only rule-independent cases (script changes, punctuation) are asserted against it.
+- **Where words are.** `dictionary` (the default) asks system ICU for `zh_TW` word boundaries, so Chinese is cut into words. ICU is loaded on first use from System32 on Windows and from the system's shared libraries on Linux. If the dictionary is unavailable, the field falls back to `perCharacter`. `wordSegmentation()` reports the requested mode and `wordSegmentationInUse()` reports the effective mode. `perCharacter` gives each Chinese or Japanese character its own word and keeps runs of Latin letters and digits together. `scriptRun` also keeps Chinese or Japanese runs together. The two rule modes split each punctuation mark and keep runs of spaces together. Dictionary boundaries follow the installed ICU version. Every mode treats each LF as a separate word.
 - **Clicks.** The desktop host reads `GetDoubleClickTime()` and `SM_CXDOUBLECLK/SM_CYDOUBLECLK` on each press and lets core count: a press counts as the next click when it comes within the double-click time of the previous one and inside the box centered on the first press; the fourth press is a single click again. Core takes an injectable clock and settings (`UiState::setClickClock/set_click_settings`) and the press entry `UiState::textPointerDown`, so tests never depend on a real clock.
 - **Read-only and disabled.** A read-only field selects and moves by words, and Ctrl+Backspace/Delete answer `Status::readOnly`. A disabled field does nothing (`Status::disabled`). Clicks during input-method composition behave like a single click does.
 - **Programmatic control.** `TextFieldHandle::setWordSegmentation / wordSegmentation / wordSegmentationInUse / wordAt / paragraphAt / nextWordStop / previousWordStop / selectWord / selectParagraph / doubleClick / tripleClick`, and the semantic `Verb::setWordSegmentation / selectWord / selectParagraph / doubleClick / tripleClick` with `SemanticTree::textUnit` and `wordStop`, share one set of functions.
