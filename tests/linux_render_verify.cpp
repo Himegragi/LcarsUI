@@ -10,6 +10,7 @@
 
 #include <array>
 #include <fstream>
+#include <optional>
 #include <thread>
 
 using namespace isoduo;
@@ -92,6 +93,22 @@ public:
         std::cout << (pass ? "PASS " : "FAIL ") << name << '\n';
     }
 
+    template<class Compare>
+    std::optional<GpuComparison> compare(std::string_view name, int w, int h, float scale, bool setup, Compare&& compareFrame) {
+        try {
+            return compareFrame();
+        } catch (const FrameError& error) {
+            ++failures_;
+            auto message = utf8FromUtf16(error.failure.message);
+            for (auto& ch : message) if (ch == '\r' || ch == '\n' || ch == '\t') ch = ' ';
+            out_ << name << '\t' << w << 'x' << h << '\t' << scale << "\t-\t-\t-\t-\t-\t" << setup
+                 << "\t-\tFAIL\treadback_error=" << error.failure.nativeCode << ' ' << message << std::endl;
+            check(bool(out_), "Write comparison failure");
+            std::cerr << "FAIL " << name << ": " << message << '\n';
+            return std::nullopt;
+        }
+    }
+
     int failures() const { return failures_; }
 private:
     std::filesystem::path folder_;
@@ -109,8 +126,10 @@ void drawList(DesktopConfig config, Report& report) {
     ScrollState scroll;
     auto desktop = openDesktop(ui, webAppearance(), [] { return layout::column({}); }, scroll, config);
     reportContext(*desktop, std::cout);
-    const auto result = LinuxDesktopTest::compareDrawList(*desktop, test::layeredDrawList(), 8, 6);
-    report.row("layered-draw-list", 1.f, result, test::matchesLayeredDrawList(result.reference), true);
+    const auto result = report.compare("layered-draw-list", 8, 6, 1.f, true, [&] {
+        return LinuxDesktopTest::compareDrawList(*desktop, test::layeredDrawList(), 8, 6);
+    });
+    if (result) report.row("layered-draw-list", 1.f, *result, test::matchesLayeredDrawList(result->reference), true);
 }
 
 void showcase(DesktopConfig config, const Appearance& appearance, std::string_view appearanceName, Report& report) {
@@ -184,9 +203,14 @@ void showcase(DesktopConfig config, const Appearance& appearance, std::string_vi
             setup = handles.tabs.activate({"v03"}) && handles.dialogOpen.invoke() && *handles.dialog.isOpen();
             break;
         }
-        auto result = LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 0, reveal);
+        const auto name = std::string(names[scene]) + "-" + std::string(appearanceName) +
+            (scale == 1.f ? "-100" : "-150");
+        const auto result = report.compare(name, width, height, scale, setup, [&] {
+            return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 0, reveal);
+        });
+        if (!result) continue;
         auto has = [&](std::string_view owner, PaintRole role, bool popup = false) {
-            return test::hasPaintRole(result, owner, role, popup);
+            return test::hasPaintRole(*result, owner, role, popup);
         };
         bool cues = true;
         switch (scene) {
@@ -216,18 +240,21 @@ void showcase(DesktopConfig config, const Appearance& appearance, std::string_vi
             break;
         case 9: cues = has(handles.dialogCancel.describe()->id, PaintRole::focusIndicator); break;
         }
-        if (scene == 0 && scale == 1.f && setup && result && cues) {
-            const auto shifted = LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 1);
-            const auto missing = LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 2);
-            check(!shifted && (shifted.failedRoles & static_cast<unsigned>(PaintRole::caret)),
+        report.row(name, scale, *result, setup, cues);
+        if (scene == 0 && scale == 1.f && setup && *result && cues) {
+            const auto shifted = report.compare(name + "-shifted-caret", width, height, scale, true, [&] {
+                return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 1);
+            });
+            const auto missing = report.compare(name + "-missing-focus", width, height, scale, true, [&] {
+                return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame, 2);
+            });
+            if (!shifted || !missing) continue;
+            check(!*shifted && (shifted->failedRoles & static_cast<unsigned>(PaintRole::caret)),
                   "Move the caret by one pixel and fail its region");
-            check(!missing && (missing.failedRoles & static_cast<unsigned>(PaintRole::focusIndicator)),
+            check(!*missing && (missing->failedRoles & static_cast<unsigned>(PaintRole::focusIndicator)),
                   "Omit the focus indicator and fail its region");
             std::cout << "PASS role fault controls " << appearanceName << '\n';
         }
-        const auto name = std::string(names[scene]) + "-" + std::string(appearanceName) +
-            (scale == 1.f ? "-100" : "-150");
-        report.row(name, scale, result, setup, cues);
     }
 }
 
@@ -282,8 +309,13 @@ void demoScenes(DesktopConfig config, const Appearance& appearance, std::string_
             break;
         case 8: setup &= bool(demo.nav.select({"about"})); break;
         }
-        const auto result = LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame);
-        auto has = [&](std::string_view owner, PaintRole role) { return test::hasPaintRole(result, owner, role); };
+        const auto name = std::string("SD-") + char('a' + scene) + "-" + std::string(appearanceName) +
+            (dark ? "-dark" : "-light") + (scale == 1.f ? "-100" : "-150");
+        const auto result = report.compare(name, width, height, scale, setup, [&] {
+            return LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame);
+        });
+        if (!result) continue;
+        auto has = [&](std::string_view owner, PaintRole role) { return test::hasPaintRole(*result, owner, role); };
         bool cues = true;
         switch (scene) {
         case 0: cues = has("general.name", PaintRole::focusIndicator) && has("general.name", PaintRole::caret); break;
@@ -293,11 +325,9 @@ void demoScenes(DesktopConfig config, const Appearance& appearance, std::string_
             break;
         case 2: cues = has("items.list", PaintRole::focusIndicator) && has("items.list", PaintRole::selection); break;
         case 7: cues = has("app.nav", PaintRole::focusIndicator); break;
-        case 8: cues = test::matchesVerticalLabel(result, frame.find(demo.aboutVertical())); break;
+        case 8: cues = test::matchesVerticalLabel(*result, frame.find(demo.aboutVertical())); break;
         }
-        const auto name = std::string("SD-") + char('a' + scene) + "-" + std::string(appearanceName) +
-            (dark ? "-dark" : "-light") + (scale == 1.f ? "-100" : "-150");
-        report.row(name, scale, result, setup, cues);
+        report.row(name, scale, *result, setup, cues);
     }
 }
 
