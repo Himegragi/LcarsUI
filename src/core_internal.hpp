@@ -567,6 +567,7 @@ private:
     void hoverFromFrame(const Frame& frame, int x, int y);
     void hoverClear();
     std::uint64_t tooltipNow_ = 0;
+    void resumeTooltipClock();
     std::optional<std::uint64_t> tooltipPausedAt_;
     std::function<std::uint64_t()> tooltipClock_;
     bool windowActive_ = false, keyboardCues_ = false, systemCues_ = false;

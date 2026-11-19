@@ -1184,7 +1184,7 @@ TooltipHandle detail::UiState::addTooltip(ComponentHandle source, std::u16string
 }
 void detail::UiState::refreshTooltips() {
     OperationScope operation(this);
-    if (rendererFailed_) return;
+    if (rendererFailed_ || tooltipPausedAt_) return;
     if (tooltipClock_) tooltipNow_ = tooltipClock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
@@ -1209,10 +1209,14 @@ void detail::UiState::rendererFailed(bool failed) {
     if (failed) {
         pendingClipboard_.reset();
         closeMenu();
-        if (tooltipClock_) tooltipPausedAt_ = tooltipClock_();
+        if (tooltipClock_ && !tooltipPausedAt_) tooltipPausedAt_ = tooltipClock_();
         rendererFailed_ = true;
         return;
     }
+    rendererFailed_ = false;
+    if (windowActive_) resumeTooltipClock();
+}
+void detail::UiState::resumeTooltipClock() {
     if (tooltipPausedAt_ && tooltipClock_) {
         auto now = tooltipClock_();
         auto elapsed = now >= *tooltipPausedAt_ ? now - *tooltipPausedAt_ : 0;
@@ -1220,7 +1224,6 @@ void detail::UiState::rendererFailed(bool failed) {
         tooltipNow_ = now;
     }
     tooltipPausedAt_.reset();
-    rendererFailed_ = false;
 }
 void detail::UiState::frameVisibility(std::map<Id, bool, std::less<>> visibility) {
     visibility_ = std::move(visibility);
@@ -1242,6 +1245,7 @@ void detail::UiState::scrolled() {
     if (changed && invalidate_) invalidate_();
 }
 std::optional<std::uint64_t> detail::UiState::tooltipDeadline() const {
+    if (tooltipPausedAt_) return std::nullopt;
     std::optional<std::uint64_t> deadline;
     for (const auto& [id, tip] : tooltips_) {
         if (tip.eligible && !tip.visible && !tip.dismissed && (!deadline || tip.deadline < *deadline))
@@ -1250,6 +1254,7 @@ std::optional<std::uint64_t> detail::UiState::tooltipDeadline() const {
     return deadline;
 }
 const std::u16string* detail::UiState::tooltipText(std::string_view id) const {
+    if (!windowActive_ && !rendererFailed_) return nullptr;
     auto it = tooltips_.find(id);
     return it != tooltips_.end() && it->second.visible ? &it->second.text : nullptr;
 }
@@ -1272,6 +1277,7 @@ void detail::UiState::windowActive(bool active) {
     OperationScope operation(this);
     if (windowActive_ == active) return;
     windowActive_ = active;
+    if (active && !rendererFailed_) resumeTooltipClock();
     if (!active) { tooltipHover_.clear(); hoverClear(); closeMenu(); }  // a menu does not outlive window activation
     refreshTooltips();
 }
@@ -1384,7 +1390,7 @@ Query<bool> TooltipHandle::visible() const {
         if (auto r = ui_->configurationAccess(id_, true); !r) return {r.status, r.message, std::nullopt};
         auto it = ui_->tooltips_.find(id_);
         if (it == ui_->tooltips_.end()) return {Status::notFound, u"Tooltip no longer exists", std::nullopt};
-        return {Status::ok, {}, it->second.visible};
+        return {Status::ok, {}, it->second.visible && (ui_->windowActive_ || ui_->rendererFailed_)};
     }, detail::UiState::uiGone);
 }
 bool detail::UiState::dialogMember(std::string_view id) const {

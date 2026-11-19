@@ -1482,6 +1482,32 @@ void pagesKeepIndependentDraftsHistoryAndScroll() {
           *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");
 }
 
+void tooltipDelayWaitsForFocusAfterRendererRecovery() {
+    Ui ui;
+    auto button = ui.addButton({.id = "pending", .label = u"Pending"}).value.value();
+    auto tip = ui.addTooltip("pending.tip", button, u"Help", 1000).value.value();
+    auto& state = detail::access(ui);
+    std::uint64_t now = 1000;
+    state.tooltipClock([&] { return now; });
+    state.windowActive(true);
+    state.setSystemKeyboardCues(true);
+    check(bool(button.focus()) && state.tooltipDeadline() == 2000, "Focus starts the tooltip delay");
+    now = 1400;
+    state.rendererFailed(true);
+    state.windowActive(false);
+    now = 6000;
+    state.rendererFailed(false);
+    state.frameVisibility({{"pending", true}});
+    check(!state.tooltipDeadline() && !*tip.visible(), "An inactive rebuilt frame does not restart the delay");
+    now = 6200;
+    state.windowActive(true);
+    check(state.tooltipDeadline() == 6800, "Focus return resumes the remaining 600 ms");
+    state.tooltipTime(now = 6799);
+    check(!*tip.visible(), "Tooltip remains pending until its restored deadline");
+    state.tooltipTime(now = 6800);
+    check(*tip.visible(), "Tooltip appears after the remaining delay");
+}
+
 void tooltipKeyboardDelayAndEscape() {
     Ui ui;
     auto source = ui.addButton({.id = "source", .label = u"50%"}).value.value();
@@ -3043,6 +3069,7 @@ int main() {
         {"C11 tooltip lifetime and window focus", tooltipWindowModalAndSourceLifetime},
         {"P05 tooltip pointer visit", tooltipPointerVisitCanRestartAfterEscape},
         {"P05 tooltip keyboard delay and Escape", tooltipKeyboardDelayAndEscape},
+        {"R24 tooltip resumes after focus returns", tooltipDelayWaitsForFocusAfterRendererRecovery},
         {"Closed dialog members are hidden", closedDialogMembersAreHiddenAndRejectInput},
         {"P01 cancel dialog", dialogCancelPreservesProgress},
         {"P02 P03 modal input and confirm", dialogConfinesInputAndConfirmsOnce},
