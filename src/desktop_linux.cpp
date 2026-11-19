@@ -1,5 +1,6 @@
 #include "linux_window.hpp"
 #include "linux_preferences.hpp"
+#include "linux_accessibility.hpp"
 #include "desktop_linux_test.hpp"
 #include "desktop_paint.hpp"
 #include "diagnostic_queue.hpp"
@@ -116,6 +117,7 @@ struct Desktop::Impl {
     RendererCapabilities caps;
     std::optional<RendererFailure> failure;
     Frame frame;
+    std::optional<LinuxAccessibility> accessibility;
     Id imeField;
     std::uint64_t imeTarget = 0;
     bool imeComposing = false;
@@ -193,6 +195,7 @@ struct Desktop::Impl {
         state.setSystemAnimations(settings.animations.value_or(true));
     }
     void release() {
+        accessibility.reset();
         if (attached) {
             auto& state = access(ui);
             state.beforeFocus({});
@@ -676,6 +679,8 @@ RunResult Desktop::run() {
         Impl& host;
         ~RunScope() { host.release(); host.running = false; }
     } run{host};
+    if (!host.closing && host.config.platformAccessibilityEnabled)
+        host.accessibility.emplace(host.preferences->context(), host.ui, *host.window, host.frame, host.config.title, host.closing);
     while (!host.closing) {
         if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
             host.paint();
@@ -686,12 +691,12 @@ RunResult Desktop::run() {
         }
         host.diagnostics.drain();
         host.ui.semantics().dispatchEvents();
+        if (host.accessibility) host.accessibility->flushLayout();
         if (host.closing) break;
         host.syncIme();
         if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
-        if (host.preferences->changed()) host.refreshPreferences();
         if (host.layoutGeometry != host.window->geometry()) host.dirty = true;
         auto events = std::exchange(host.window->events, {});
         for (auto& event : events) {
@@ -700,6 +705,7 @@ RunResult Desktop::run() {
             if (host.dirty && !host.failure) host.arrange();
             host.syncIme(event.kind != NativeEvent::Kind::imeEdit);
         }
+        if (!host.closing && host.preferences->changed()) host.refreshPreferences();
         if (!host.failure && !host.closing) {
             auto& state = access(host.ui);
             const auto deadline = state.tooltipDeadline();
@@ -721,6 +727,8 @@ Result Desktop::setTitle(std::u16string title) {
     if (!impl_->window) return {Status::notFound, u"Desktop window is closed"};
     if (!validSingleLine(title, title.size())) return {Status::invalidValue, u"Invalid title"};
     impl_->window->title(utf8FromUtf16(title));
+    if (impl_->accessibility) impl_->accessibility->title(title);
+    impl_->config.title = std::move(title);
     return {};
 }
 Result Desktop::close() {

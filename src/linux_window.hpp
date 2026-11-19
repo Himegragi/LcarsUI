@@ -36,6 +36,7 @@ public:
     virtual const NativeWindow& reference() const = 0;
     virtual EglWindow& renderWindow() = 0;
     virtual void title(std::string_view value) = 0;
+    virtual std::optional<std::pair<int, int>> screenOrigin() const { return {}; }
     virtual bool poll(int timeoutMs) = 0;
     virtual AsyncClipboard& clipboard() = 0;
     virtual void clipboardSerial(std::uint32_t) {}
