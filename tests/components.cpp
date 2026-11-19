@@ -389,6 +389,51 @@ void overLimitEditIsRejectedWhole() {
     check(refused, "Initial text must respect the field limit");
 }
 
+void invalidTextInputPreservesTheSelectionAndRedo() {
+    Ui ui;
+    populate(ui, {{ComponentKind::textField, {.id = "code", .value = u"A\U0001f600B"}}});
+    auto& input = detail::access(ui);
+    check(input.focus("code") && input.select("code", 3, 1) && input.textInput(u"x") && input.undo("code"),
+          "Undo a replacement of a reverse selection across a surrogate pair");
+    const std::u16string badUtf16{static_cast<char16_t>(0xd800), u'y'};
+    check(input.textInput(u"x\ty").status == Status::invalidValue &&
+          input.textInput(badUtf16).status == Status::invalidValue,
+          "Each invalid input is rejected in full");
+    const auto node = ui.semantics().get({"code"});
+    check(node && node->value == u"A\U0001f600B" && node->textSelection == Selection{3, 1},
+          "The draft and reverse selection are unchanged");
+    check(input.redo("code") && input.text("code") == u"AxB", "The same replacement can still be redone");
+}
+
+void standaloneEditSessionPreeditReplacesAReverseSelection() {
+    EditSession session;
+    session.text = u"A\U0001f600BC";
+    session.select(4, 2);
+    check(session.selection == Selection{4, 1} && session.begin() == 1 && session.end() == 4,
+          "Reverse selection snaps to the start of the surrogate pair and sorts its endpoints");
+    session.updateComposition(u"中\U0001f600", 3);
+    check(session.visible() == u"A中\U0001f600C" && session.visibleCaret() == 4 && session.text == u"A\U0001f600BC",
+          "Preedit replaces only the visible selection and positions its caret in UTF-16 units");
+    session.cancelComposition();
+    check(session.visible() == u"A\U0001f600BC" && session.visibleCaret() == 1 &&
+          session.selection == Selection{4, 1}, "Cancel restores both the committed text and the reverse selection");
+}
+
+void publicValidationAndPasteNormalizationAgree() {
+    const auto plain = pasteAsSingleLine(u"a\r\n\U0001f600\rb\n");
+    const auto multiline = pasteAsMultiLine(u"a\r\n\U0001f600\rb\n");
+    check(plain == u"a \U0001f600 b " && multiline == u"a\n\U0001f600\nb\n",
+          "CRLF, CR, and LF each contribute one separator");
+    check(validSingleLine(plain, 7) && !validSingleLine(plain, 6) &&
+          validMultiLine(multiline, 7) && !validSingleLine(multiline) && !validMultiLine(u"a\r\nb"),
+          "The validators count UTF-16 units and only the multiline validator accepts LF");
+    const std::u16string invalid{static_cast<char16_t>(0xdc00)};
+    check(!validSingleLine(pasteAsSingleLine(invalid)) && !validMultiLine(pasteAsMultiLine(invalid)),
+          "Line-break normalization does not make malformed text valid");
+    check(normalizeRichText({multiline, {{.start = 3, .length = 1, .bold = true}}}).status == Status::invalidValue,
+          "A rich span cannot start between the halves of the surrogate pair");
+}
+
 bool has(const std::vector<Verb>& actions, Verb operation) {
     return std::find(actions.begin(), actions.end(), operation) != actions.end();
 }
@@ -1700,6 +1745,9 @@ int main() {
         {"G07 focus notifications queue instead of recursing", focusNotificationsQueueInsteadOfRecursing},
         {"AC10 keyboard editing obeys the same admission", keyboardEditingObeysTheSameAdmission},
         {"AC08 over-limit edit is rejected whole", overLimitEditIsRejectedWhole},
+        {"invalid text input preserves the selection and redo", invalidTextInputPreservesTheSelectionAndRedo},
+        {"standalone preedit replaces a reverse selection", standaloneEditSessionPreeditReplacesAReverseSelection},
+        {"public validation and paste normalization agree", publicValidationAndPasteNormalizationAgree},
         {"AC11 owner hears focus moves and semantics list actions", ownerHearsFocusMovesAndSemanticsListActions},
     };
     return test::run("components", cases);

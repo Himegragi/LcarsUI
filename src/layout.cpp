@@ -54,7 +54,8 @@ std::vector<std::pair<unsigned, unsigned>> wrapRanges(std::u16string_view text, 
         float base = 0;
         for (const auto& [stop, x] : run.stops) {
             if (stop == 0) continue;
-            if (x - base > width && previous > lineStart) {
+            // After a preferred break there can still be too much text before this stop.
+            while (x - base > width && previous > lineStart) {
                 unsigned cut = previous;  // hard cut unless a caret stop on this line may break
                 for (auto it = run.stops.rbegin(); it != run.stops.rend(); ++it)
                     if (it->first > lineStart && it->first <= previous && breakable(it->first)) { cut = it->first; break; }

@@ -3,6 +3,7 @@
 // fake text backend. Expected values are worked out by hand in each case.
 #include "check.hpp"
 #include "fake_measure.hpp"
+#include "text_geometry_checks.hpp"
 #include "isoduo/core.hpp"
 #include "isoduo/layout.hpp"
 #include "isoduo/semantics.hpp"
@@ -322,6 +323,32 @@ void pointerPositionsMapToLineAndOffset() {
     check(laid.field->caretX(5) == view.text.x + 8 && laid.field->caretY(5) == view.text.y + 24, "Caret position of offset 5: column 1, second line");
 }
 
+void aWideStyledStopAfterAPreferredBreakStillFits() {
+    FakeMeasure measure;
+    constexpr std::u16string_view text = u" bbbc\n\U0001f600\n";
+    const std::vector<StyleSpan> spans{{.start = 4, .length = 1, .bold = true}};
+    const auto lines = wrapLines(measure, text, 16, 32, &spans);
+    check(lines.size() == 5, "The preferred space break leaves three narrow letters and a wide letter on separate lines");
+    check(lines[0].begin == 0 && lines[0].end == 1 && lines[0].soft && lines[0].run.width == 8 &&
+          lines[1].begin == 1 && lines[1].end == 4 && lines[1].soft && lines[1].run.width == 24 &&
+          lines[2].begin == 4 && lines[2].end == 5 && !lines[2].soft && lines[2].run.width == 10,
+          "The styled advance is included and the paragraph's LF is excluded");
+    check(lines[3].begin == 6 && lines[3].end == 8 && !lines[3].soft && lines[3].run.width == 16 &&
+          lines[3].run.stops.size() == 2 && lines[4].begin == 9 && lines[4].end == 9,
+          "An emoji takes one advance and a trailing LF leaves an empty line");
+}
+
+void publicWrappingMarksParagraphsAndPreservesEmptyLines() {
+    FakeMeasure measure;
+    constexpr std::u16string_view text = u"\n甲乙\U0001f600\n";
+    const std::vector<std::u16string> expected{u"", u"甲乙", u"\U0001f600", u""};
+    check(wrap(measure, text, 16, 32) == expected, "A leading and trailing LF each leave an empty line");
+    const auto marked = wrapMarked(measure, text, 16, 32);
+    check(marked.size() == expected.size(), "Marked and plain wrapping produce the same display lines");
+    for (std::size_t i = 0; i < marked.size(); ++i)
+        check(marked[i].text == expected[i] && marked[i].soft == (i == 1), "Only the middle cut is soft");
+}
+
 void aCaretOnAWrapBoundaryBelongsToTheNextLineUnlessUpstream() {
     Ui ui;
     auto field = connect(ui, multi("note", std::u16string(30, u'a')));
@@ -333,6 +360,7 @@ void aCaretOnAWrapBoundaryBelongsToTheNextLineUnlessUpstream() {
     auto upstream = view;
     upstream.upstream = true;
     check(upstream.lineOf(20) == 0 && upstream.lineOf(21) == 1, "Upstream puts the wrap-point caret on the line above");
+    check(test::caretMatchesHit(laid.frame, field, 1, 20), "A click on the drawn downstream caret returns the wrap offset");
 }
 
 // ---- Cursor movement ----------------------------------------------------------------------
@@ -664,6 +692,8 @@ int main() {
         {"single-line Enter still reaches its shortcut", singleLineEnterStillReachesItsShortcut},
         {"read-only multi-line field refuses Enter", readOnlyMultilineFieldRefusesEnter},
         {"a long line wraps and the height stays fixed", aLongLineWrapsAtTheEdgeAndTheHeightStaysFixed},
+        {"a wide styled stop after a preferred break still fits", aWideStyledStopAfterAPreferredBreakStillFits},
+        {"public wrapping marks paragraphs and preserves empty lines", publicWrappingMarksParagraphsAndPreservesEmptyLines},
         {"hard breaks make lines; wrapping prefers spaces", hardBreaksMakeLinesAndWrappingPrefersSpaces},
         {"the scrollbar width is always reserved", theScrollbarWidthIsAlwaysReserved},
         {"pointer positions map to line and offset", pointerPositionsMapToLineAndOffset},

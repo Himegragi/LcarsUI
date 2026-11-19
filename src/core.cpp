@@ -2589,11 +2589,12 @@ Result detail::UiState::notify() {
 Result detail::UiState::textInput(std::u16string_view text) {
     OperationScope operation(this);
     if (menu_) return menuText(text);  // quick-key letters
-    auto committed = withoutControls(text);
-    if (committed.empty()) return {};
+    if (text.empty()) return {};
+    // Keyboard commands handle Enter and Tab. A text event is one printable insertion.
+    if (!validSingleLine(text, text.size())) return {Status::invalidValue, u"Invalid typed text"};
     Field* field = nullptr;
     if (auto result = writable(focus_, field); !result) return result;
-    return replaceSelection(focus_, *field, committed);
+    return replaceSelection(focus_, *field, text);
 }
 std::u16string pasteAsSingleLine(std::u16string_view text) {
     std::u16string result;
