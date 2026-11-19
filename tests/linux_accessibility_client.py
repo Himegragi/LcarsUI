@@ -1,0 +1,185 @@
+#!/usr/bin/env python3
+"""Run with the fixture binary in a native session with PyGObject and AT-SPI."""
+from contextlib import contextmanager
+import os
+import subprocess
+import sys
+import tempfile
+import time
+
+import gi
+
+gi.require_version("Atspi", "2.0")
+from gi.repository import Atspi, GLib
+
+
+def pump():
+    context = GLib.MainContext.default()
+    while context.pending():
+        context.iteration(False)
+
+
+def until(predicate):
+    deadline = time.monotonic() + 8
+    while time.monotonic() < deadline:
+        pump()
+        if result := predicate():
+            return result
+        time.sleep(0.03)
+    raise AssertionError("Timed out waiting for " + predicate.__name__)
+
+
+def children(node):
+    return [child for i in range(node.get_child_count())
+            if (child := node.get_child_at_index(i)) is not None]
+
+
+def windows():
+    for app in children(Atspi.get_desktop(0)):
+        if app.get_name() == "Isoduo":
+            yield from children(app)
+
+
+def window(mode):
+    return next((node for node in windows()
+                 if node.get_name() == "Isoduo Accessibility " + mode), None)
+
+
+def find(parent, identifier):
+    return next((node for node in children(parent)
+                 if node.get_accessible_id() == "fixture." + identifier), None)
+
+
+def has(node, state):
+    return node.get_state_set().contains(getattr(Atspi.StateType, state))
+
+
+def invoke(node, index=0):
+    return node.get_action_iface().do_action(index)
+
+
+@contextmanager
+def fixture(executable, mode):
+    with tempfile.TemporaryFile() as output:
+        host = subprocess.Popen([executable, mode], stdout=output, stderr=subprocess.STDOUT)
+        try:
+            yield host, lambda: os.pread(output.fileno(), 1024 * 1024, 0).decode(errors="replace")
+        finally:
+            if host.poll() is None:
+                host.terminate()
+                host.wait(timeout=8)
+            print(os.pread(output.fileno(), 1024 * 1024, 0).decode(errors="replace"), end="")
+
+
+def exercise(root, events):
+    button = find(root, "invoke")
+    assert button.get_name() == "Activate"
+    assert button.get_role() == Atspi.Role.PUSH_BUTTON
+    assert button.get_parent() == root
+    assert children(root)[button.get_index_in_parent()] == button
+
+    field = find(root, "text")
+    assert field.get_name() == "Display name"
+    assert any(relation.get_relation_type() == Atspi.RelationType.LABELLED_BY
+               and relation.get_target(0) == find(root, "label") for relation in field.get_relation_set())
+    assert Atspi.Text.get_text(field, 0, -1) == "A\U0001f642\u4e2d"
+    assert Atspi.Text.get_character_count(field) == 3
+    def character_box():
+        box = Atspi.Text.get_character_extents(field, 1, Atspi.CoordType.WINDOW)
+        return box if box.width > 0 and box.height > 0 else None
+    box = until(character_box)
+    x, y = box.x + box.width // 2, box.y + box.height // 2
+    assert Atspi.Text.get_offset_at_point(field, x, y, Atspi.CoordType.WINDOW) == 1
+    assert Atspi.Component.get_accessible_at_point(root, x, y, Atspi.CoordType.WINDOW) == field
+    screen = Atspi.Text.get_character_extents(field, 1, Atspi.CoordType.SCREEN)
+    if os.environ.get("XDG_SESSION_TYPE") == "x11":
+        assert screen.width == box.width and screen.height == box.height
+        assert Atspi.Text.get_offset_at_point(field, screen.x + screen.width // 2,
+                                              screen.y + screen.height // 2, Atspi.CoordType.SCREEN) == 1
+    else:
+        assert (screen.x, screen.y, screen.width, screen.height) == (-1, -1, 0, 0)
+    assert Atspi.Component.grab_focus(field)
+    assert Atspi.Text.set_caret_offset(field, 0)
+    assert Atspi.Text.add_selection(field, 1, 2)
+    selection = Atspi.Text.get_selection(field, 0)
+    assert (selection.start_offset, selection.end_offset) == (1, 2)
+    assert Atspi.EditableText.set_text_contents(field, "Updated \u4e2d")
+    assert Atspi.Text.get_text(field, 0, -1) == "Updated \u4e2d"
+
+    check = find(root, "check")
+    assert invoke(check)
+    until(lambda: has(check, "CHECKED"))
+    slider = find(root, "slider")
+    assert Atspi.Value.get_minimum_value(slider) == 0
+    assert Atspi.Value.get_maximum_value(slider) == 10
+    assert Atspi.Value.get_minimum_increment(slider) == 2
+    assert Atspi.Value.set_current_value(slider, 6)
+    assert Atspi.Value.get_current_value(slider) == 6
+    progress = find(root, "progress")
+    assert has(progress, "READ_ONLY") and Atspi.Value.get_current_value(progress) == 42
+
+    dropdown = find(root, "dropdown")
+    options = children(dropdown)
+    assert [option.get_accessible_id() for option in options] == ["one", "two", "disabled"]
+    assert not has(options[1], "SHOWING")
+    assert invoke(dropdown)
+    until(lambda: has(options[1], "SHOWING"))
+    hitbox = Atspi.Component.get_extents(options[1], Atspi.CoordType.WINDOW)
+    assert Atspi.Component.get_accessible_at_point(root, hitbox.x + hitbox.width // 2,
+                                                  hitbox.y + hitbox.height // 2, Atspi.CoordType.WINDOW) == options[1]
+    assert not Atspi.Component.grab_focus(options[2])
+    assert Atspi.Selection.select_child(dropdown, 1)
+    assert Atspi.Selection.get_selected_child(dropdown, 0) == options[1]
+    assert invoke(button)
+    until(lambda: root.get_name() == "\u7121\u969c\u7919")
+    until(lambda: ("object:text-changed:insert", field) in events)
+    until(lambda: ("object:text-selection-changed", field) in events)
+    until(lambda: ("object:state-changed:focused", field) in events)
+    until(lambda: ("object:state-changed:checked", check) in events)
+    until(lambda: ("object:property-change:accessible-name", root) in events)
+
+    old = find(root, "replaced")
+    assert invoke(find(root, "remove"))
+    def replacement():
+        new = find(root, "replaced")
+        return new if new is not None and new.get_name() == "Replacement" else None
+    assert until(replacement) != old
+    try:
+        assert not invoke(old)
+    except (GLib.Error, AttributeError):
+        pass
+    until(lambda: ("object:children-changed:add", root) in events)
+
+
+def main():
+    Atspi.init()
+    events = []
+    listener = Atspi.EventListener.new(lambda event: events.append((event.type, event.source)))
+    assert listener.register("object")
+    for mode in ("default", "enabled"):
+        events.clear()
+        with fixture(sys.argv[1], mode) as (host, host_log):
+            root = until(lambda: window(mode))
+            exercise(root, events)
+            assert invoke(find(root, "close"))
+            assert host.wait(timeout=8) == 0
+            assert "Model 1 6 two 1" in host_log()
+            until(lambda: root not in list(windows()))
+        print("PASS native discovery, roles, relations, geometry, Unicode text, actions, events, stale references and", mode)
+
+    with fixture(sys.argv[1], "disabled") as (host, host_log):
+        until(lambda: "Disabled host dispatched local focus, text and structure" in host_log())
+        assert not list(windows())
+        assert host.poll() is None
+    with fixture(sys.argv[1], "dual") as (host, host_log):
+        until(lambda: "Disabled host dispatched local focus, text and structure" in host_log())
+        mapped = until(lambda: window("enabled"))
+        assert list(windows()) == [mapped]
+        assert invoke(find(mapped, "invoke"))
+        until(lambda: mapped.get_name() == "\u7121\u969c\u7919")
+        assert host.poll() is None
+    print("PASS explicit disable and same-process host isolation")
+
+
+if __name__ == "__main__":
+    main()

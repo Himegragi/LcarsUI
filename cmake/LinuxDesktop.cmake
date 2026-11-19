@@ -21,7 +21,7 @@ isoduo_wayland_protocol(viewporter stable/viewporter/viewporter.xml)
 target_sources(isoduo_desktop PRIVATE src/desktop_linux.cpp src/linux_x11.cpp src/linux_wayland.cpp
   src/linux_x11_clipboard.cpp src/linux_wayland_clipboard.cpp
   src/linux_x11_ime.cpp src/linux_wayland_ime.cpp
-  src/linux_fonts.cpp src/linux_preferences.cpp src/renderer_opengl_egl.cpp)
+  src/linux_fonts.cpp src/linux_preferences.cpp src/linux_accessibility.cpp src/renderer_opengl_egl.cpp)
 target_include_directories(isoduo_desktop PRIVATE "${PROJECT_BINARY_DIR}/generated")
 target_link_libraries(isoduo_desktop PRIVATE PkgConfig::ISODUO_LINUX_DESKTOP Fontconfig::Fontconfig)
 
@@ -77,4 +77,9 @@ if(ISODUO_BUILD_TESTS)
   isoduo_target(isoduo_linux_clipboard_native)
   target_include_directories(isoduo_linux_clipboard_native PRIVATE src)
   target_link_libraries(isoduo_linux_clipboard_native PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
+
+  # Run linux_accessibility_client.py with this fixture in a native desktop session.
+  add_executable(isoduo_linux_accessibility_host tests/linux_accessibility_host.cpp)
+  isoduo_target(isoduo_linux_accessibility_host)
+  target_link_libraries(isoduo_linux_accessibility_host PRIVATE Isoduo::Desktop Isoduo::AppearanceWeb)
 endif()
