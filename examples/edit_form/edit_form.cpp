@@ -40,7 +40,9 @@ Ids defaultIds() {
     return i;
 }
 
-Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view)> resolveFont) : ids_(std::move(ids)), applied_(initialName), resolveFont_(std::move(resolveFont)), pages_(pages), ui() {
+Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view)> resolveFont,
+           std::optional<std::vector<FontFamily>> fontFamilies)
+    : ids_(std::move(ids)), applied_(initialName), resolveFont_(std::move(resolveFont)), pages_(pages), ui() {
     const auto& i = ids_;
     handles.title = ui.addLabel({.id = i.title, .value = u"編輯表單"}).value.value();
     handles.intro = ui.addLabel({.id = i.intro}).value.value();
@@ -214,22 +216,37 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             if (resolveFont_) return resolveFont_(family);
             FontResolution result; result.requested = family; result.primary = family.empty() ? u"Segoe UI" : std::u16string(family); return result;
         };
-        std::vector<OptionItem> fonts = {{{"default"}, u"\u9810\u8a2d"}};
-        for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
-            bool available = resolve(family).requestedAvailable;
-            fonts.push_back({{id}, std::u16string(family) + (available ? u"" : u"\uff08\u672a\u5b89\u88dd\uff09"), available});
+        std::vector<OptionItem> fonts;
+        auto addFont = [&](std::string id, std::u16string family, std::u16string label, bool available = true) {
+            OptionValue value{std::move(id)};
+            fonts.push_back({value, std::move(label), available});
+            fontChoices_.emplace_back(std::move(value), std::move(family));
+        };
+        addFont("default", {}, u"\u9810\u8a2d");
+        if (fontFamilies) {
+            for (const auto& family : *fontFamilies)
+                addFont("family:" + std::to_string(fontChoices_.size()), family.key, family.displayName);
+        } else {
+            for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
+                bool available = resolve(family).requestedAvailable;
+                addFont(id, family, std::u16string(family) + (available ? u"" : u"\uff08\u672a\u5b89\u88dd\uff09"), available);
+            }
         }
-        fonts.push_back({{"missing"}, u"\u4e0d\u5b58\u5728\u7684\u5b57\u578b\uff08\u6e2c\u8a66\uff09"});
+        addFont("missing", u"Missing test font", u"\u4e0d\u5b58\u5728\u7684\u5b57\u578b\uff08\u6e2c\u8a66\uff09");
         handles.font = ui.addDropdown({.id = prefix + "v04.font", .label = u"\u5b57\u578b"}, std::move(fonts)).value.value();
         handles.font.connectSource({[this] {
-            const auto& f = ui.presentation().fontFamily;
-            return std::optional<OptionValue>{{f.empty() ? "default" : f == u"Microsoft JhengHei" ? "jhenghei" : f == u"Segoe UI" ? "segoe" : f == u"MingLiU" ? "mingliu" : f == u"Consolas" ? "consolas" : "missing"}};
+            const auto family = ui.presentation().fontFamily;
+            auto choice = std::find_if(fontChoices_.begin(), fontChoices_.end(),
+                                       [&](const auto& font) { return font.second == family; });
+            return std::optional<OptionValue>{choice == fontChoices_.end() ? OptionValue{"missing"} : choice->first};
         }, [this](std::function<void()> changed) { fontChanged_ = std::move(changed); return [this] { fontChanged_ = {}; }; }});
         handles.font.connectImmediate([this](const Change<DropdownHandle>& change) {
             if (!change.value) return Result{Status::invalidValue, u"Font choice required"};
-            const auto& id = change.value->id;
+            auto choice = std::find_if(fontChoices_.begin(), fontChoices_.end(),
+                                       [&](const auto& font) { return font.first == *change.value; });
+            if (choice == fontChoices_.end()) return Result{Status::invalidValue, u"Unknown font choice"};
             auto settings = ui.presentation();
-            settings.fontFamily = id == "default" ? u"" : id == "jhenghei" ? u"Microsoft JhengHei" : id == "segoe" ? u"Segoe UI" : id == "mingliu" ? u"MingLiU" : id == "consolas" ? u"Consolas" : u"Missing test font";
+            settings.fontFamily = choice->second;
             auto result = ui.setPresentation(settings); if (result && fontChanged_) fontChanged_(); return result;
         });
         handles.fontStatus = ui.addLabel({.id = prefix + "v04.status"}).value.value();

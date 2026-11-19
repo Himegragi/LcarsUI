@@ -4,6 +4,7 @@
 #include "draw_list_fixture.hpp"
 #include "edit_form.hpp"
 #include "list_page.hpp"
+#include "presentation_matrix.hpp"
 #include "render_role_checks.hpp"
 #include "settings_demo.hpp"
 #include "utf.hpp"
@@ -331,6 +332,42 @@ void demoScenes(DesktopConfig config, const Appearance& appearance, std::string_
     }
 }
 
+bool verifyPresentationMatrix(DesktopConfig config, const Appearance& appearance, std::string_view appearanceName,
+                              const std::filesystem::path& folder) {
+    try {
+        unsigned comparisons = 0;
+        presentationMatrix::run(editForm::defaultIds(), appearance, [&](editForm::Form& form) {
+            std::shared_ptr<Desktop> desktop = openDesktop(form.ui, appearance, [&form] { return form.page(); },
+                                                          form.scroll, config);
+            if (comparisons == 0) reportContext(*desktop, std::cout);
+            return presentationMatrix::Driver{
+                [desktop](int width, int height, float scale, std::string_view reveal) {
+                    return LinuxDesktopTest::layoutFrame(*desktop, width, height, scale, reveal);
+                },
+                [desktop, &folder, appearanceName, &comparisons](int width, int height, float scale) {
+                    Frame frame;
+                    auto result = LinuxDesktopTest::compareFrame(*desktop, width, height, scale, frame);
+                    ++comparisons;
+                    if (!result) {
+                        const auto stem = (folder / (std::string(appearanceName) + "-" + std::to_string(comparisons))).string();
+                        writeImage(stem + "-cpu.pam", result.reference);
+                        writeImage(stem + "-gl.pam", result.actual);
+                        std::cerr << stem << " " << width << 'x' << height << " scale=" << scale
+                                  << " different_pixels=" << result.comparison.differentPixels
+                                  << " failed_role_mask=" << result.failedRoles << '\n';
+                    }
+                    return bool(result);
+                }};
+        }, [](bool ok, const std::string& message) { check(ok, message.c_str()); });
+        std::cout << "PASS " << appearanceName << " presentation matrix, " << comparisons
+                  << " offscreen comparisons in a native EGL context\n";
+        return true;
+    } catch (const std::exception& error) {
+        std::cerr << "FAIL " << appearanceName << " presentation matrix: " << error.what() << '\n';
+        return false;
+    }
+}
+
 void diagnostics(DesktopConfig config, bool receiver) {
     Ui ui;
     ScrollState scroll;
@@ -381,7 +418,7 @@ void diagnostics(DesktopConfig config, bool receiver) {
 
 int main(int argc, char** argv) {
     try {
-        check(argc >= 3, "Usage: isoduo_linux_render_verify <wayland|x11> <draw-list|compare|diagnostics|no-receiver> [evidence]");
+        check(argc >= 3, "Usage: isoduo_linux_render_verify <wayland|x11> <draw-list|compare|presentation-matrix|diagnostics|no-receiver> [evidence]");
         std::string_view backend = argv[1], mode = argv[2];
         check(backend == "wayland" || backend == "x11", "Specify a native desktop backend");
         DesktopConfig config;
@@ -392,6 +429,14 @@ int main(int argc, char** argv) {
         if (mode == "diagnostics" || mode == "no-receiver") {
             diagnostics(config, mode == "diagnostics");
             return 0;
+        }
+        if (mode == "presentation-matrix") {
+            check(argc == 4, "Specify the presentation matrix evidence folder");
+            const std::filesystem::path folder(argv[3]);
+            std::filesystem::create_directories(folder);
+            const bool web = verifyPresentationMatrix(config, webAppearance(), "web", folder);
+            const bool material = verifyPresentationMatrix(config, materialAppearance(), "material", folder);
+            return web && material ? 0 : 1;
         }
         check(argc == 4 && (mode == "draw-list" || mode == "compare"), "Specify comparison mode and evidence folder");
         Report report(argv[3]);

@@ -761,6 +761,33 @@ void v04FontChoiceAppliesAndReportsFallback() {
     check(form.ui.presentation() == PresentationSettings{} && h.font.draft().value.value() == OptionValue{"default"} && h.textSize.describe()->value == u"16" && h.dark.describe()->value != u"true", "Reset updates controls and settings");
 }
 
+void v04CatalogFontCanBeSelectedAndReset() {
+    auto resolve = [](std::u16string_view family) {
+        FontResolution result;
+        result.requested = family;
+        result.requestedAvailable = family.empty() || family == u"Trial Mono";
+        result.primary = family == u"Trial Mono" ? u"Trial Mono" : u"Default Sans";
+        return result;
+    };
+    editForm::Form form(ids, true, resolve, std::vector<FontFamily>{{u"Trial Mono", u"Trial Mono Display"}});
+    auto& h = form.handles;
+    check(bool(h.tabs.activate({"v04"})), "Open the presentation page");
+    const auto items = h.font.describe()->items;
+    const auto installed = std::find_if(items.begin(), items.end(), [](const auto& item) {
+        return item.label == u"Trial Mono Display";
+    });
+    check(installed != items.end() && installed->enabled, "The installed catalog font is available");
+    check(bool(h.font.select(installed->value)), "Choose the installed catalog font");
+    check(form.ui.presentation().fontFamily == u"Trial Mono" && h.font.draft().value.value() == installed->value &&
+          h.fontStatus.describe()->value.find(u"Trial Mono") != std::u16string::npos,
+          "Catalog choice, presentation and font status agree");
+    check(bool(h.font.select({"missing"})) && form.ui.presentation().fontFamily == u"Missing test font" &&
+          h.fontStatus.describe()->value.find(u"Default Sans") != std::u16string::npos,
+          "The missing font remains selectable and reports its fallback");
+    check(bool(h.resetV04.invoke()) && form.ui.presentation().fontFamily.empty() &&
+          h.font.draft().value.value() == OptionValue{"default"}, "Reset restores the default font");
+}
+
 void fontSwitchReflowsActiveComposition() {
     struct ChangingMeasure : TextMeasure {
         test::FakeMeasure base; bool wider = false;
@@ -2959,6 +2986,7 @@ int main() {
         {"V04 justify comparison", v04JustifyComparisonFollowsItsDropdowns},
         {"V04 size slider", v04SliderUpdatesGlobalTextSize},
         {"V04 font selection", v04FontChoiceAppliesAndReportsFallback},
+        {"V04 installed catalog and fallback", v04CatalogFontCanBeSelectedAndReset},
         {"N01 long field label and error", longFieldLabelAndErrorKeepTheirAssociation},
         {"N03 radio boundaries in each appearance", radioBoundariesUnderTheAppearance},
         {"N04 slider boundaries in each appearance", sliderNonDivisibleUnderTheAppearance},
