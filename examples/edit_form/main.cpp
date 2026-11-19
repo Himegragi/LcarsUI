@@ -11,10 +11,15 @@ int wmain() {
 int main() {
 #endif
     try {
-        editForm::Form form(editForm::defaultIds(), true, [](std::u16string_view family) {
+        auto resolveFont = [](std::u16string_view family) {
             isoduo::PresentationSettings settings; settings.fontFamily = family;
             return isoduo::systemFontCatalog().resolve(settings);
-        });
+        };
+#ifdef _WIN32
+        editForm::Form form(editForm::defaultIds(), true, resolveFont);
+#else
+        editForm::Form form(editForm::defaultIds(), true, resolveFont, isoduo::systemFontCatalog().families());
+#endif
 #ifdef ISODUO_APPEARANCE_material
         const auto& appearance = isoduo::materialAppearance();
 #else

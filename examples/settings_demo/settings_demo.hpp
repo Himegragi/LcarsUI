@@ -25,6 +25,7 @@ struct AboutInfo {
     std::vector<AboutLicense> licenses;
     std::vector<isoduo::FontFamily> fonts;
     std::function<isoduo::FontResolution(const isoduo::PresentationSettings&)> resolveFont;
+    std::u16string defaultFontLabel = u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09";
     std::u16string appearance, renderer, settingsPath, build;
 };
 class Demo {

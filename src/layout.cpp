@@ -685,7 +685,9 @@ struct Arranger {
         int offset = std::clamp(state.offset, 0, region.maximum);
         bool sizeChanged = state.textSize != 0 && state.textSize != ui.presentation().textSize;
         auto targetId = !reveal.empty() ? reveal : (sizeChanged ? std::string_view(ui.focused()) : std::string_view{});
-        if (sizeChanged && targetId.empty() && !state.anchorId.empty()) {
+        const auto revealTarget = targetId.empty() ? placed.end() :
+            std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == targetId; });
+        if (sizeChanged && revealTarget == placed.end() && !state.anchorId.empty()) {
             auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == state.anchorId; });
             if (it != placed.end()) {
                 Rect target = it->bounds;
@@ -697,22 +699,19 @@ struct Arranger {
                 offset = std::clamp(target.y - r.y, 0, region.maximum);
             }
         }
-        if (!targetId.empty()) {
-            auto it = std::find_if(placed.begin(), placed.end(), [&](const Placement& p) { return p.id == targetId; });
-            if (it != placed.end()) {
-                auto target = it->bounds;
-                if (detail::componentType(it->kind).hasRowCursor()) {
-                    auto s = ui.describe(it->id);
-                    if (s && s->candidate) {
-                        for (std::size_t i = 0; i < s->items.size() && i < it->options.size(); ++i)
-                            if (s->items[i].value == *s->candidate) { target = it->options[i]; break; }
-                    }
+        if (revealTarget != placed.end()) {
+            auto target = revealTarget->bounds;
+            if (detail::componentType(revealTarget->kind).hasRowCursor()) {
+                auto s = ui.describe(revealTarget->id);
+                if (s && s->candidate) {
+                    for (std::size_t i = 0; i < s->items.size() && i < revealTarget->options.size(); ++i)
+                        if (s->items[i].value == *s->candidate) { target = revealTarget->options[i]; break; }
                 }
-                int top = target.y - r.y, bottom = top + target.h;
-                if (top < offset || target.h > r.h) offset = top;
-                else if (bottom > offset + r.h) offset = bottom - r.h;
-                offset = std::clamp(offset, 0, region.maximum);
             }
+            int top = target.y - r.y, bottom = top + target.h;
+            if (top < offset || target.h > r.h) offset = top;
+            else if (bottom > offset + r.h) offset = bottom - r.h;
+            offset = std::clamp(offset, 0, region.maximum);
         }
         state.textSize = ui.presentation().textSize;
         state.anchorId.clear(); state.anchorItem.clear();
