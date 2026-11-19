@@ -3,7 +3,11 @@
 #include "isoduo/desktop.hpp"
 #include <iostream>
 
+#ifdef _WIN32
 int wmain() {
+#else
+int main() {
+#endif
     try {
         listPage::Page page;
 #ifdef ISODUO_APPEARANCE_material
