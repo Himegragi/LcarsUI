@@ -20,6 +20,24 @@ a different roaming profile root. Old settings headers, rich clipboard payloads 
 diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
 `Isoduo.RichText.1` and `ISODUODIAG 1 0`. Old menu command IDs have changed to `isoduo.*`.
 
+## Linux core build and tests
+
+With CMake 3.25 or newer, Ninja, and Clang with C++20 standard-library headers and a linker already on the Linux system, run from the checkout:
+
+```sh
+sh tools/test-linux-core.sh
+```
+
+The script configures a Release build with the desktop host and installation disabled, builds against the checked-in sources, and runs the headless CTest suite. Each run leaves a fresh directory under `${TMPDIR:-/tmp}` with `ctest-tests.json` and `ctest-results.xml`. Set `CC` and `CXX` to select different compiler executables, or `CMAKE_BUILD_PARALLEL_LEVEL` to set build parallelism.
+
+On Linux or WSL with unprivileged user and network namespaces enabled, configure, build and test without network access using:
+
+```sh
+unshare --user --map-current-user --net env -u DISPLAY -u WAYLAND_DISPLAY sh tools/test-linux-core.sh
+```
+
+`word_select` exercises the portable selection behavior. CTest reports `word_select_icu` as skipped on Linux because the system ICU integration currently uses Windows' `icu.dll`.
+
 ## S1 minimal edit form
 
 [The V01 edit form](examples/edit_form/README.md) composes labels, buttons, and a single-line field with typed handles and explicit application data connections. The same form runs with Minimal Web and Material-inspired appearances.
@@ -33,7 +51,7 @@ diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
 
 `build.ps1` runs all CTests by default. Use `-SkipTests` for a build only or `-Tests <regex>` to select CTests. It can also be launched from Git Bash; the script prioritizes Windows `tar` over Git's GNU `tar` for configure. For the foreground platform checks, use `verify-idle.ps1` on an idle desktop with the required display scales; see its parameters for selecting runs.
 
-The build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
+The Windows build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
 Applications retain the handles returned by `Ui::addTextField`, `addButton` and `addLabel`; the layout accepts those handles. Each `Ui::addX` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.addButton({.id = "profile.save"})`. A read source (`isoduo::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
 

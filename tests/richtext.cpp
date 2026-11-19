@@ -7,6 +7,7 @@
 #include "isoduo/core.hpp"
 #include "isoduo/layout.hpp"
 #include "isoduo/semantics.hpp"
+#include <cmath>
 using namespace isoduo;
 using test::check;
 
