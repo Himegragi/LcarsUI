@@ -90,12 +90,7 @@ LinuxDesktopPreferences readLinuxDesktopPreferences() {
 }
 
 struct LinuxPreferenceMonitor::Impl {
-    GMainContext* context = [] {
-        // Desktop hosts created on one UI thread share a dispatch context.
-        thread_local std::unique_ptr<GMainContext, decltype(&g_main_context_unref)> threadContext(
-            g_main_context_new(), g_main_context_unref);
-        return g_main_context_ref(threadContext.get());
-    }();
+    GMainContext* context = g_main_context_ref(LinuxPreferenceMonitor::context());
     Settings enabled{nullptr, g_object_unref}, reduced{nullptr, g_object_unref};
     Bus bus{nullptr, g_object_unref};
     guint subscription = 0;
@@ -161,7 +156,12 @@ bool LinuxPreferenceMonitor::changed() {
     return std::exchange(impl_->pending, false);
 }
 
-GMainContext* LinuxPreferenceMonitor::context() const { return impl_->context; }
+GMainContext* LinuxPreferenceMonitor::context() {
+    // Desktop hosts created on one UI thread share a dispatch context.
+    thread_local std::unique_ptr<GMainContext, decltype(&g_main_context_unref)> threadContext(
+        g_main_context_new(), g_main_context_unref);
+    return threadContext.get();
+}
 
 int LinuxPreferenceMonitor::poll(std::span<pollfd> native, int timeout) {
     auto& monitor = *impl_;
