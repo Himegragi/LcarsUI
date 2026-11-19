@@ -204,8 +204,8 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     deleteMessage_ = ui.addLabel({.id="items.delete_dialog.message"}).value.value();
     deleteCancel_ = ui.addButton({.id="items.delete_dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
     deleteConfirm_ = ui.addButton({.id="items.delete_dialog.confirm",.label=u"\u522a\u9664"}).value.value();
-    itemDialog = ui.addDialog("items.dialog", {itemTitle_,itemNameLabel_,itemName,itemNameError_,itemNoteLabel_,itemNoteBold,itemNoteItalic,itemNoteUnderline,itemNoteColor,itemNote,itemCancel_,itemOk}, itemName, itemsAdd, [](bool) {}).value.value();
-    deleteDialog = ui.addDialog("items.delete_dialog", {deleteTitle_,deleteMessage_,deleteCancel_,deleteConfirm_}, deleteCancel_, itemsAdd, [](bool) {}).value.value();
+    itemDialog = ui.addDialog("items.dialog", {itemTitle_,itemNameLabel_,itemName,itemNameError_,itemNoteLabel_,itemNoteBold,itemNoteItalic,itemNoteUnderline,itemNoteColor,itemNote,itemCancel_,itemOk}, itemName, itemsAdd, [](bool) {}, itemTitle_).value.value();
+    deleteDialog = ui.addDialog("items.delete_dialog", {deleteTitle_,deleteMessage_,deleteCancel_,deleteConfirm_}, deleteCancel_, itemsAdd, [](bool) {}, deleteTitle_).value.value();
     itemName.connectSource({[this] { return itemNameSource_; }, subscribeTo(itemNameChanged_)});
     itemNote.connectRichSource({[this] { return itemNoteSource_; }, subscribeTo(itemNoteChanged_)});
     // The style buttons act on the note's selection (or the typing style at a caret); the selection stays and the note takes the focus back.
@@ -276,7 +276,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
     closeSave = ui.addButton({.id="app.close_dialog.save",.label=u"\u5132\u5b58"}).value.value();
     closeDiscard = ui.addButton({.id="app.close_dialog.discard",.label=u"\u4e0d\u5132\u5b58"}).value.value();
     closeCancel = ui.addButton({.id="app.close_dialog.cancel",.label=u"\u53d6\u6d88"}).value.value();
-    closeDialog = ui.addDialog("app.close_dialog", {closeTitle_,closeMessage_,closeSave,closeDiscard,closeCancel}, closeSave, save_, [](bool) {}).value.value();
+    closeDialog = ui.addDialog("app.close_dialog", {closeTitle_,closeMessage_,closeSave,closeDiscard,closeCancel}, closeSave, save_, [](bool) {}, closeTitle_).value.value();
     closeCancel.bind([this] { return closeDialog.settle(false); });
     closeDiscard.bind([this] { auto result=closeDialog.settle(true); if (result && closeHandler_) closeHandler_(); return result; });
     closeSave.bind([this] { auto result=closeDialog.settle(true); if (!result) return result; result=saveDocument(); if (result && closeHandler_) closeHandler_(); return result; });

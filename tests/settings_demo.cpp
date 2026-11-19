@@ -179,11 +179,13 @@ void semanticItemsAndDialogs() {
                 contains("items.delete_dialog", "items.delete_dialog.confirm") && !contains("items.delete_dialog", "items.dialog.name"),
                 "semantic dialogs contain only their own members");
     test::check(bool(demo.nav.select({"items"})) && bool(demo.itemsAdd.invoke()), "open Items editor");
+    test::check(tree.get({"items.dialog"})->name == u"新增項目", "add dialog uses its title as the accessible name");
     test::check(!tree.get({"items.dialog"})->hidden && !tree.get({"items.dialog.name"})->hidden &&
                 tree.get({"items.delete_dialog"})->hidden && tree.get({"items.delete_dialog.confirm"})->hidden &&
                 tree.get({"items.list"})->blockedByModal, "editor semantics expose modal and hidden peer dialog");
     test::check(bool(demo.itemDialog.settle(false)) && bool(demo.itemsList.select({"T001"})) && bool(demo.itemsDelete.invoke()),
                 "open Items delete confirmation");
+    test::check(tree.get({"items.delete_dialog"})->name == u"刪除項目", "delete dialog uses its title as the accessible name");
     test::check(tree.get({"items.dialog"})->hidden && tree.get({"items.dialog.name"})->hidden &&
                 !tree.get({"items.delete_dialog"})->hidden && !tree.get({"items.delete_dialog.confirm"})->hidden,
                 "semantic visibility follows the active Items dialog");
@@ -1114,6 +1116,7 @@ void closeDialogFlow() {
     test::check(bool(demo.volume.setValue(65)), "dirty volume");
     test::check(!demo.requestClose(), "dirty close is vetoed");
     test::check(demo.closeDialog.isOpen().value == true, "close dialog opened");
+    test::check(demo.ui.semantics().get({"app.close_dialog"})->name == u"要儲存修改嗎？", "close dialog uses its title as the accessible name");
     test::check(demo.ui.semantics().get({"app.close_dialog.title"})->value == u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f", "close title text");
     test::check(demo.ui.semantics().get({"app.close_dialog.save"})->name == u"\u5132\u5b58", "close save label");
     test::check(demo.ui.semantics().get({"app.close_dialog.discard"})->name == u"\u4e0d\u5132\u5b58", "close discard label");
