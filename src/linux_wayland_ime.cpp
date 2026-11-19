@@ -1,6 +1,7 @@
 #include "linux_wayland_ime.hpp"
 #include "text-input-v3-client-protocol.h"
 #include "utf.hpp"
+#include <glib.h>
 #include <algorithm>
 #include <utility>
 
@@ -115,13 +116,16 @@ const zwp_text_input_v3_listener WaylandIme::listener_{
         auto& pending = static_cast<WaylandIme*>(data)->pending_;
         const std::string_view value = text ? text : "";
         const auto nativeCursor = end >= 0 ? end : begin;
-        const auto byte = nativeCursor < 0 ? value.size() : std::min(value.size(), static_cast<std::size_t>(nativeCursor));
+        if (!g_utf8_validate(value.data(), value.size(), nullptr)) return;
+        auto byte = nativeCursor < 0 ? value.size() : std::min(value.size(), static_cast<std::size_t>(nativeCursor));
+        while (byte < value.size() && (static_cast<unsigned char>(value[byte]) & 0xc0) == 0x80) --byte;
         pending.preedit = utf16FromUtf8(value);
         pending.cursor = static_cast<unsigned>(utf16FromUtf8(value.substr(0, byte)).size());
         pending.replacePreedit = true;
     },
     [](void* data, zwp_text_input_v3*, const char* text) {
-        static_cast<WaylandIme*>(data)->pending_.commit = utf16FromUtf8(text ? text : "");
+        if (!text || g_utf8_validate(text, -1, nullptr))
+            static_cast<WaylandIme*>(data)->pending_.commit = utf16FromUtf8(text ? text : "");
     },
     [](void* data, zwp_text_input_v3*, std::uint32_t before, std::uint32_t after) {
         auto& pending = static_cast<WaylandIme*>(data)->pending_;

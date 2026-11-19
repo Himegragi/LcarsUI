@@ -3,12 +3,13 @@
 #include <cstdint>
 #include <optional>
 #include <string>
+#include <string_view>
 
 namespace isoduo::detail {
 struct LinuxImeState {
     std::uint64_t target;
     Rect caret; // client pixels
-    std::u16string text;
+    std::u16string_view text; // borrowed for updateIme
     unsigned anchor, cursor; // UTF-16 offsets in committed text
     bool multiline;
 };

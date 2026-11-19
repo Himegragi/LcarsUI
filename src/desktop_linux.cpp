@@ -245,12 +245,11 @@ struct Desktop::Impl {
                 const auto left = utf8FromUtf16(text.substr(0, session->begin()));
                 const auto right = utf8FromUtf16(text.substr(session->end()));
                 if (edit.deleteBefore > left.size() || edit.deleteAfter > right.size()) return;
-                try {
-                    before = static_cast<unsigned>(utf16FromUtf8(std::string_view(left).substr(left.size() - edit.deleteBefore)).size());
-                    after = static_cast<unsigned>(utf16FromUtf8(std::string_view(right).substr(0, edit.deleteAfter)).size());
-                } catch (const std::range_error&) {
-                    return;
-                }
+                const auto start = left.size() - edit.deleteBefore;
+                const auto boundary = [](char byte) { return (static_cast<unsigned char>(byte) & 0xc0) != 0x80; };
+                if (!boundary(left[start]) || !boundary(right[edit.deleteAfter])) return;
+                before = static_cast<unsigned>(utf16FromUtf8(std::string_view(left).substr(start)).size());
+                after = static_cast<unsigned>(utf16FromUtf8(std::string_view(right).substr(0, edit.deleteAfter)).size());
             }
             state.compositionCommit(edit.commit, before, after);
         }
