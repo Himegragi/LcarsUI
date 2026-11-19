@@ -17,7 +17,8 @@ public:
     void bind(wl_registry*, std::uint32_t name);
     void seat(wl_seat*);
     void surface(wl_surface* surface) { surface_ = surface; }
-    void update(const std::optional<LinuxImeState>&, int scale, bool externalChange);
+    void update(const std::optional<LinuxImeState>&, Rect surfaceCaret, bool externalChange);
+    bool refreshCaret();
 
 private:
     void createInput();

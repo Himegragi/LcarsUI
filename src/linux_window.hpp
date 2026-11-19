@@ -10,6 +10,11 @@
 
 namespace isoduo::detail {
 class EglWindow;
+struct LinuxClientGeometry {
+    int width = 0, height = 0; // drawable pixels
+    float scale = 1.f;
+    bool operator==(const LinuxClientGeometry&) const = default;
+};
 struct NativeEvent {
     enum class Kind {
         redraw, close, destroyed, focus, keyDown, keyUp, motion, leave, press, release,
@@ -39,9 +44,8 @@ public:
     virtual bool prepareFrame() { return true; }
     virtual void requestFrame() {}
     virtual void discardFrame() {}
-    int width() const { return width_; }
-    int height() const { return height_; }
-    int scale() const { return scale_; }
+    virtual void pointerToClient(NativeEvent&) const {}
+    LinuxClientGeometry geometry() const { return geometry_; }
     void observePreferences(LinuxPreferenceMonitor& monitor) { preferences_ = &monitor; }
     std::vector<NativeEvent> events;
 
@@ -53,7 +57,7 @@ protected:
     void clipboardDelivered(ClipboardDelivery delivery) {
         events.emplace_back(NativeEvent::Kind::clipboard).clipboard = std::move(delivery);
     }
-    int width_ = 0, height_ = 0, scale_ = 1;
+    LinuxClientGeometry geometry_;
 
 private:
     LinuxPreferenceMonitor* preferences_ = nullptr;
