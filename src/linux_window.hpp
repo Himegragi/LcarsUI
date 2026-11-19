@@ -1,6 +1,7 @@
 #pragma once
 #include "async_clipboard.hpp"
 #include "isoduo/desktop.hpp"
+#include "linux_preferences.hpp"
 #include <memory>
 #include <string>
 #include <utility>
@@ -9,7 +10,10 @@
 namespace isoduo::detail {
 class EglWindow;
 struct NativeEvent {
-    enum class Kind { redraw, close, destroyed, focus, keyDown, keyUp, motion, leave, press, release, rightPress, rightRelease, wheel, clipboard };
+    enum class Kind {
+        redraw, close, destroyed, focus, keyDown, keyUp, motion, leave, press, release,
+        rightPress, rightRelease, wheel, horizontalWheel, captureLost, visibility, clipboard
+    };
     Kind kind;
     int x = 0, y = 0, amount = 0;
     bool active = false;
@@ -35,15 +39,21 @@ public:
     int width() const { return width_; }
     int height() const { return height_; }
     int scale() const { return scale_; }
+    void observePreferences(LinuxPreferenceMonitor& monitor) { preferences_ = &monitor; }
     std::vector<NativeEvent> events;
 
 protected:
+    int pollFileDescriptors(std::span<pollfd> descriptors, int timeout);
     void clipboardDelivered(ClipboardDelivery delivery) {
         events.emplace_back(NativeEvent::Kind::clipboard).clipboard = std::move(delivery);
     }
     int width_ = 0, height_ = 0, scale_ = 1;
+
+private:
+    LinuxPreferenceMonitor* preferences_ = nullptr;
 };
 std::unique_ptr<LinuxWindow> makeWaylandWindow(const DesktopConfig&);
 std::unique_ptr<LinuxWindow> makeX11Window(const DesktopConfig&);
 KeyPress linuxKey(unsigned symbol, bool shift, bool ctrl);
+bool linuxKeyDownAllowed(unsigned symbol, bool alt);
 }

@@ -6,6 +6,7 @@
 #include "renderer.hpp"
 #include "utf.hpp"
 #include <xkbcommon/xkbcommon-keysyms.h>
+#include <poll.h>
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -15,6 +16,21 @@
 #include <thread>
 
 namespace isoduo::detail {
+int LinuxWindow::pollFileDescriptors(std::span<pollfd> descriptors, int timeout) {
+    if (preferences_) return preferences_->poll(descriptors, timeout);
+    return ::poll(descriptors.data(), descriptors.size(), timeout);
+}
+
+bool linuxKeyDownAllowed(unsigned symbol, bool alt) {
+    switch (symbol) {
+    case XKB_KEY_Alt_L: case XKB_KEY_Alt_R: return true;
+    case XKB_KEY_Control_L: case XKB_KEY_Control_R:
+    case XKB_KEY_Shift_L: case XKB_KEY_Shift_R:
+    case XKB_KEY_Super_L: case XKB_KEY_Super_R:
+    case XKB_KEY_ISO_Level3_Shift: return false;
+    default: return !alt;
+    }
+}
 KeyPress linuxKey(unsigned symbol, bool shift, bool ctrl) {
     Key key = Key::other;
     switch (symbol) {
@@ -90,15 +106,27 @@ struct Desktop::Impl {
     Text text{systemFontFile, std::function<void(const RenderDiagnostic&)>(
         [this](const auto& event) { diagnostics.push(event); })};
     ShapedMeasure measure{text};
+    std::optional<LinuxPreferenceMonitor> preferences;
     std::unique_ptr<LinuxWindow> window;
     std::unique_ptr<Renderer> renderer;
     RendererCapabilities caps;
     std::optional<RendererFailure> failure;
     Frame frame;
     std::string reveal;
-    std::string textDrag;
+    std::optional<TextFieldHandle> textDrag;
+    std::optional<std::uint64_t> textScrollDeadline;
+    std::pair<int, int> textDragPoint{};
+    Id sliderDrag;
+    struct ThumbDrag {
+        ScrollState* state;
+        ComponentHandle component;
+        int grabOffset;
+    };
+    std::optional<ThumbDrag> thumbDrag;
+    Id spaceTextTarget;
     bool focused = false, attached = false, dirty = true, closing = false, running = false;
-    bool swallowRight = false;
+    bool leftPressed = false, rightPressed = false, hidden = false;
+    bool animationScheduled = false;
     bool painting = false, arranging = false;
     struct WorkScope {
         bool& flag;
@@ -129,10 +157,10 @@ struct Desktop::Impl {
         state.setAsyncClipboard(&window->clipboard());
         state.rendererFailed(false);
         state.bindAppearance(&appearance);
-        const auto preferences = readLinuxDesktopPreferences();
-        state.setSystemKeyboardCues(preferences.keyboardCues.value_or(false));
+        preferences.emplace();
+        window->observePreferences(*preferences);
+        refreshPreferences();
         state.animationTime(nowMs);
-        state.setSystemAnimations(preferences.animations.value_or(true));
         state.tooltipClock(nowMs);
         state.setClickClock(nowMs);
         state.onInvalidate([this] { dirty = true; });
@@ -143,6 +171,12 @@ struct Desktop::Impl {
             reveal = access(ui).focused();
             dirty = true;
         });
+    }
+    void refreshPreferences() {
+        const auto settings = readLinuxDesktopPreferences();
+        auto& state = access(ui);
+        state.setSystemKeyboardCues(settings.keyboardCues.value_or(false));
+        state.setSystemAnimations(settings.animations.value_or(true));
     }
     void release() {
         if (attached) {
@@ -155,12 +189,15 @@ struct Desktop::Impl {
             state.animationTime({});
             state.tooltipClock({});
             state.setClickClock({});
+            state.windowActive(false);
             state.cancelInput();
+            state.setWindowHidden(false);
             state.bindAppearance(nullptr);
             attached = false;
         }
         renderer.reset();
         window.reset();
+        preferences.reset();
     }
     void configureFont() {
         const auto& settings = ui.presentation();
@@ -181,15 +218,15 @@ struct Desktop::Impl {
         auto scale = window->scale();
         if (atlasScale && atlasScale != scale) text.clearAtlas();
         atlasScale = scale;
+        const auto target = std::exchange(reveal, {});
         frame = isoduo::arrange(page(), ui, appearance, measure, window->width() * scale, window->height() * scale,
-            static_cast<float>(scale), scroll, reveal);
+            static_cast<float>(scale), scroll, target);
     }
     void paint() {
         dirty = false;
         WorkScope work(painting);
         try {
             arrange();
-            reveal.clear();
             if (closing) return;
             const int width = window->width() * window->scale(), height = window->height() * window->scale();
             RecordingCanvas canvas(width, height, access(ui).effectivePalette(appearance).background);
@@ -206,70 +243,151 @@ struct Desktop::Impl {
     }
     void fail(RendererFailure error) {
         failure = std::move(error);
+        cancelPointer();
         window->discardFrame();
         access(ui).finishAnimations();
         access(ui).rendererFailed(true);
         if (!config.onRendererFailed) closing = true;
     }
+    void clearDrag() {
+        textDrag.reset();
+        textScrollDeadline.reset();
+        sliderDrag.clear();
+        thumbDrag.reset();
+    }
+    void cancelPointer() {
+        auto& state = access(ui);
+        clearDrag();
+        leftPressed = rightPressed = false;
+        state.cancelPointer();
+        state.pointerLeft();
+    }
+    bool beginThumbDrag(const Placement* hit, int x, int y) {
+        auto& state = access(ui);
+        for (auto it = frame.regions.rbegin(); it != frame.regions.rend(); ++it) {
+            if (!it->state || state.retiredComponent(it->component)) continue;
+            const bool popup = hit && hit->dropdownPanel && hit->component == it->component;
+            if ((frame.modal && !it->modalContent && !popup) || (hit && hit->dropdownPanel && !popup)) continue;
+            if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
+            const int along = it->horizontal ? x : y;
+            const int thumbStart = it->horizontal ? it->thumb.x : it->thumb.y;
+            const int grabOffset = it->thumb.contains(x, y) ? along - thumbStart : (it->horizontal ? it->thumb.w : it->thumb.h) / 2;
+            thumbDrag = ThumbDrag{it->state, it->component, grabOffset};
+            state.hoverCapture({});
+            if (frame.scrollTo(ui, *it, it->offsetForThumb(along - grabOffset))) dirty = true;
+            return true;
+        }
+        return false;
+    }
+    void dragText(int x, int y) {
+        textDragPoint = {x, y};
+        if (dirty) arrange();
+        const auto* field = textDrag ? frame.find(*textDrag) : nullptr;
+        if (!field || access(ui).focused() != field->id) { textScrollDeadline.reset(); return; }
+        const auto& view = field->view;
+        const bool scrollAbove = y < view.text.y && view.first > 0;
+        const bool scrollBelow = y >= view.text.y + view.text.h && view.first + view.visible < view.lines.size();
+        if (field->multiline && (scrollAbove || scrollBelow)) textScrollDeadline = nowMs() + 60;
+        else textScrollDeadline.reset();
+        if (frame.selectTo(ui, *textDrag, x, y)) dirty = true;
+    }
     void pointer(const NativeEvent& event) {
         using Kind = NativeEvent::Kind;
         auto& state = access(ui);
         if (event.kind == Kind::leave) {
-            state.pointerLeft();
+            if (!textDrag && !thumbDrag && sliderDrag.empty()) state.pointerLeft();
             return;
         }
         if (dirty) arrange();
-        if (event.kind == Kind::rightPress) {
-            state.pointerPressed();
-            swallowRight = state.menuOpen() && !frame.menuContains(event.x, event.y);
-            if (swallowRight) state.closeMenu();
+        if (event.kind == Kind::wheel || event.kind == Kind::horizontalWheel) {
+            const bool scrolled = event.kind == Kind::wheel
+                ? frame.wheel(ui, event.x, event.y, event.amount, event.active)
+                : !state.menuOpen() && frame.hwheel(ui, event.x, event.y, event.amount);
+            if (scrolled) dirty = true;
             return;
         }
-        if (event.kind == Kind::rightRelease && std::exchange(swallowRight, false)) return;
+        if (event.kind == Kind::rightPress) {
+            state.pointerPressed();
+            rightPressed = true;
+            if (state.menuOpen() && !frame.menuContains(event.x, event.y)) {
+                state.closeMenu();
+                rightPressed = false;
+            }
+            return;
+        }
+        if (event.kind == Kind::rightRelease && !std::exchange(rightPressed, false)) return;
+        if (event.kind == Kind::press) {
+            leftPressed = true;
+            state.pointerPressed();
+        }
+        if (event.kind == Kind::release && !std::exchange(leftPressed, false)) return;
         if (state.menuOpen()) {
             auto row = frame.menuItemAt(event.x, event.y);
             if (event.kind == Kind::motion && row) state.menuHighlight(*row);
             if (event.kind == Kind::press) {
-                state.pointerPressed();
-                if (!frame.menuContains(event.x, event.y)) state.closeMenu();
-                else if (row) state.menuPointerDown(*row);
+                if (!frame.menuContains(event.x, event.y)) {
+                    leftPressed = false;
+                    state.closeMenu();
+                } else if (row) state.menuPointerDown(*row);
             }
             if (event.kind == Kind::release) state.menuPointerUp(row ? *row : std::string{});
             if (event.kind == Kind::rightRelease && row) {
                 state.menuPointerDown(*row);
                 state.menuPointerUp(*row);
             }
-            if (event.kind == Kind::wheel) frame.wheel(ui, event.x, event.y, event.amount, event.active);
             return;
         }
         const auto* hit = frame.hit(event.x, event.y);
         const auto option = hit ? frame.optionAt(*hit, event.x, event.y) : std::nullopt;
         const Id id = hit ? hit->id : Id{};
         const bool selectsText = hit && componentType(hit->kind).selectsText();
-        state.pointerOver(frame, event.x, event.y);
+        if (event.kind == Kind::motion || event.kind == Kind::press)
+            state.pointerOver(frame, event.x, event.y);
         if (event.kind == Kind::rightRelease) {
             if (!hit || !hit->dropdownPanel) state.closePopup();
             if (!hit || hit->dropdownPanel || hit->tooltip) return;
             std::optional<unsigned> offset;
             if (selectsText) offset = placementTextHit(frame, id, event.x, event.y).offset;
             state.menuPointerOpen(id, option, offset, {event.x, event.y});
-        } else if (event.kind == Kind::motion && !textDrag.empty()) {
-            state.textPointerDrag(textDrag, placementTextHit(frame, textDrag, event.x, event.y),
-                placementTextCell(frame, textDrag, event.x, event.y));
+        } else if (event.kind == Kind::motion) {
+            if (textDrag) dragText(event.x, event.y);
+            else if (!sliderDrag.empty()) state.sliderPointer(sliderDrag, event.x);
+            else if (thumbDrag) {
+                auto region = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const ScrollRegion& item) {
+                    return item.state == thumbDrag->state && item.component == thumbDrag->component;
+                });
+                if (region != frame.regions.end()) {
+                    const int along = region->horizontal ? event.x : event.y;
+                    if (frame.scrollTo(ui, *region, region->offsetForThumb(along - thumbDrag->grabOffset))) dirty = true;
+                }
+            }
         } else if (event.kind == Kind::press) {
-            state.pointerPressed();
-            if (!state.pointerDown(id, option) || !selectsText) return;
-            auto caret = placementTextHit(frame, id, event.x, event.y);
-            auto cell = placementTextCell(frame, id, event.x, event.y);
-            if (state.textPointerDown(id, caret, cell, event.x, event.y, event.active))
-                textDrag = id;
+            if (!hit || !hit->dropdownPanel) state.closePopup();
+            if (beginThumbDrag(hit, event.x, event.y) || !hit) return;
+            const auto& type = componentType(hit->kind);
+            if (!type.acceptsPointer() || !state.pointerDown(id, option)) return;
+            if (type.hasRowCursor()) reveal.clear(); // the pressed row is already visible
+            const auto* placed = findPlacement(frame, id);
+            if (!placed) return;
+            if (selectsText) {
+                auto handle = state.layoutHandle(id);
+                auto* field = std::get_if<TextFieldHandle>(&handle);
+                auto caret = placementTextHit(frame, id, event.x, event.y);
+                auto cell = placementTextCell(frame, id, event.x, event.y);
+                if (field && state.textPointerDown(id, caret, cell, event.x, event.y, event.active)) {
+                    textDrag = *field;
+                    state.hoverCapture(id);
+                }
+            } else if (type.beginValueDrag(state, *placed, event.x, static_cast<float>(window->scale()))) sliderDrag = id;
         } else if (event.kind == Kind::release) {
-            if (!textDrag.empty()) state.endTextDrag();
-            textDrag.clear();
-            state.pointerUp(id, option);
-        } else if (event.kind == Kind::wheel) {
-            frame.wheel(ui, event.x, event.y, event.amount, event.active);
-            dirty = true;
+            if (!sliderDrag.empty()) {
+                state.sliderPointer(sliderDrag, event.x);
+                state.pointerUp(sliderDrag);
+            } else if (!textDrag && !thumbDrag && !id.empty()) state.pointerUp(id, option);
+            state.cancelPointer();
+            clearDrag();
+            state.hoverRelease();
+            state.pointerOver(frame, event.x, event.y);
         }
     }
     void dispatch(NativeEvent& event, Desktop& desktop) {
@@ -283,7 +401,23 @@ struct Desktop::Impl {
             return;
         case Kind::focus:
             focused = event.active;
-            if (!focused) { state.cancelInput(); textDrag.clear(); swallowRight = false; }
+            state.windowActive(focused && !hidden);
+            if (!focused) {
+                state.closePopup();
+                state.cancelInput();
+                spaceTextTarget.clear();
+                cancelPointer();
+            }
+            dirty = true;
+            return;
+        case Kind::captureLost:
+            cancelPointer();
+            return;
+        case Kind::visibility:
+            hidden = !event.active;
+            state.setWindowHidden(hidden);
+            state.windowActive(focused && !hidden);
+            if (hidden) cancelPointer();
             dirty = true;
             return;
         case Kind::clipboard:
@@ -296,19 +430,36 @@ struct Desktop::Impl {
         if (event.kind == Kind::keyDown) {
             if (dirty) arrange();
             auto previous = state.focused();
+            const bool menu = state.menuOpen();
+            if (event.key.key == Key::space && !event.key.repeat) {
+                const auto* component = state.find(previous);
+                spaceTextTarget = !menu && component && componentType(component->kind).selectsText() ? previous : Id{};
+            }
             state.keyDown(event.key);
-            if (!closing && previous == state.focused() && !event.text.empty() && event.text.front() >= u' ' &&
+            if (const auto* component = state.find(state.focused()); component && componentType(component->kind).hasRowCursor()) {
+                switch (event.key.key) {
+                case Key::up: case Key::down: case Key::left: case Key::right: case Key::home: case Key::end:
+                    reveal = component->id;
+                    dirty = true;
+                    break;
+                default: break;
+                }
+            }
+            const bool typingSpace = event.key.key != Key::space || (!spaceTextTarget.empty() && spaceTextTarget == previous);
+            if (!closing && typingSpace && previous == state.focused() && !event.text.empty() && event.text.front() >= u' ' &&
                 event.text.front() != u'\x7f') state.textInput(event.text);
-        } else if (event.kind == Kind::keyUp) state.keyUp(event.key.key);
-        else pointer(event);
+        } else if (event.kind == Kind::keyUp) {
+            if (event.key.key == Key::space) spaceTextTarget.clear();
+            state.keyUp(event.key.key);
+        } else pointer(event);
     }
     int delay() {
         if (failure) return -1;
-        int timeout = access(ui).animationRunning() ? 16 : -1;
-        if (auto deadline = access(ui).tooltipDeadline()) {
-            auto now = nowMs();
-            int tooltip = *deadline <= now ? 0 : static_cast<int>(std::min<std::uint64_t>(*deadline - now, INT_MAX));
-            timeout = timeout < 0 ? tooltip : std::min(timeout, tooltip);
+        int timeout = animationScheduled || access(ui).animationRunning() ? 16 : -1;
+        const auto now = nowMs();
+        for (auto deadline : {access(ui).tooltipDeadline(), textScrollDeadline}) if (deadline) {
+            int wait = *deadline <= now ? 0 : static_cast<int>(std::min<std::uint64_t>(*deadline - now, INT_MAX));
+            timeout = timeout < 0 ? wait : std::min(timeout, wait);
         }
         return timeout;
     }
@@ -347,7 +498,7 @@ RunResult Desktop::run() {
         ~RunScope() { host.release(); host.running = false; }
     } run{host};
     while (!host.closing) {
-        if (host.dirty && !host.failure && host.window->prepareFrame()) {
+        if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
             host.paint();
             if (host.failure && host.config.onRendererFailed) {
                 const auto error = *host.failure;
@@ -357,9 +508,10 @@ RunResult Desktop::run() {
         host.diagnostics.drain();
         host.ui.semantics().dispatchEvents();
         if (host.closing) break;
-        if (host.dirty && !host.failure && host.window->prepareFrame()) {
+        if (host.dirty && !host.hidden && !host.failure && host.window->prepareFrame()) {
             if (!host.window->poll(0)) return {Status::failed, {}, {}};
         } else if (!host.window->poll(host.delay())) return {Status::failed, {}, {}};
+        if (host.preferences->changed()) host.refreshPreferences();
         auto events = std::exchange(host.window->events, {});
         for (auto& event : events) {
             host.dispatch(event, *this);
@@ -369,7 +521,12 @@ RunResult Desktop::run() {
             auto& state = access(host.ui);
             const auto deadline = state.tooltipDeadline();
             if (deadline && *deadline <= nowMs()) state.refreshTooltips();
-            if (state.animationRunning()) host.dirty = true;
+            if (host.textScrollDeadline && *host.textScrollDeadline <= nowMs())
+                host.dragText(host.textDragPoint.first, host.textDragPoint.second);
+            const bool animating = state.animationRunning();
+            // A timer that outlives the transition still paints the terminal frame.
+            if (host.animationScheduled || animating) host.dirty = true;
+            host.animationScheduled = animating;
         }
     }
     host.window->handoffClipboard();

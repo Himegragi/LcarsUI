@@ -274,6 +274,7 @@ public:
     Result pointerUp(std::string_view id, std::optional<std::size_t> option = std::nullopt);
     // Native capture loss or window deactivation: drop every pending press.
     void cancelInput();
+    void cancelPointer();
     // C03 text field operations. Keyboard, pointer and these semantic calls share admission rules.
     // Offsets are UTF-16 and never split a surrogate pair. Each successful edit is one undo entry.
     Result textInput(std::u16string_view text);  // committed characters for the focused field

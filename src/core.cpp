@@ -3291,7 +3291,20 @@ Result detail::UiState::pointerUp(std::string_view id, std::optional<std::size_t
     return componentType(find(armed)->kind).pointerUp(*this, {armed, pressedOption, option, pressedValue});
 }
 void detail::UiState::cancelInput() {
-    OperationScope operation(this); pendingClipboard_.reset(); endTextDrag(); keyArmed_.clear(); pointerArmed_.clear(); pointerOption_.reset(); pointerOptionValue_.reset(); endSliderDrag(false); }
+    OperationScope operation(this);
+    pendingClipboard_.reset();
+    keyArmed_.clear();
+    cancelPointer();
+}
+void detail::UiState::cancelPointer() {
+    OperationScope operation(this);
+    endTextDrag();
+    pointerArmed_.clear();
+    pointerOption_.reset();
+    pointerOptionValue_.reset();
+    endSliderDrag(false);
+    if (menu_) menu_->pressed.clear();
+}
 Result detail::UiState::setError(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);

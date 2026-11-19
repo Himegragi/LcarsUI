@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <chrono>
+#include <cmath>
 #include <cstring>
 #include <map>
 #include <utility>
@@ -82,6 +83,11 @@ public:
     bool poll(int timeoutMs) override {
         if (wl_display_dispatch_pending(display_) < 0) return false;
         if (!events.empty()) timeoutMs = 0;
+        if (repeat_) {
+            const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(repeat_->next - Clock::now()).count();
+            const int wait = static_cast<int>(std::max<std::int64_t>(0, remaining));
+            if (timeoutMs < 0 || wait < timeoutMs) timeoutMs = wait;
+        }
         while (wl_display_prepare_read(display_) != 0)
             if (wl_display_dispatch_pending(display_) < 0) return false;
         auto cancel = [this] { wl_display_cancel_read(display_); };
@@ -92,13 +98,17 @@ public:
         }
         std::vector<pollfd> fds{{wl_display_get_fd(display_), flags, 0}};
         clipboard_->preparePoll(fds, timeoutMs);
-        int ready = ::poll(fds.data(), fds.size(), timeoutMs);
+        int ready = pollFileDescriptors(fds, timeoutMs);
         if (ready < 0) { cancel(); return errno == EINTR; }
         if (fds.front().revents & (POLLERR | POLLHUP | POLLNVAL)) { cancel(); return false; }
         if (fds.front().revents & POLLIN) {
             if (wl_display_read_events(display_) < 0) return false;
         } else cancel();
         if (wl_display_dispatch_pending(display_) < 0) return false;
+        if (repeat_ && Clock::now() >= repeat_->next) {
+            emitKey(repeat_->code, true, std::nullopt);
+            repeat_->next = Clock::now() + std::chrono::milliseconds(std::max(1, 1000 / repeatRate_));
+        }
         clipboard_->dispatchIo();
         return true;
     }
@@ -160,6 +170,24 @@ private:
         event.y = y_ * scale_;
         return event;
     }
+    struct PointerAxis {
+        double delta = 0, remainder = 0;
+        std::optional<int> ticks;
+    };
+    PointerAxis& axis(uint32_t kind) {
+        return kind == WL_POINTER_AXIS_VERTICAL_SCROLL ? verticalAxis_ : horizontalAxis_;
+    }
+    void emitWheel(PointerAxis& axis, bool horizontal) {
+        const double delta = axis.ticks ? *axis.ticks * (48.0 / 120.0) : axis.delta;
+        const double pixels = (horizontal ? delta : -delta) * scale_ + axis.remainder;
+        const auto amount = static_cast<int>(std::lround(pixels));
+        axis = {.delta = 0, .remainder = pixels - amount, .ticks = {}};
+        if (!amount) return;
+        using Kind = NativeEvent::Kind;
+        auto& event = pointerEvent(horizontal ? Kind::horizontalWheel : Kind::wheel);
+        event.amount = amount;
+        event.active = modifier(XKB_MOD_NAME_SHIFT);
+    }
     bool modifier(const char* name) const {
         return keyState_ && xkb_state_mod_name_is_active(keyState_, name, XKB_STATE_MODS_EFFECTIVE) > 0;
     }
@@ -173,6 +201,7 @@ private:
             size - 1, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS) : nullptr;
         munmap(data, size);
         if (!map) return;
+        repeat_.reset();
         auto* state = xkb_state_new(map);
         xkb_keymap_unref(map);
         if (keyState_) xkb_state_unref(keyState_);
@@ -180,18 +209,31 @@ private:
     }
     void key(uint32_t serial, uint32_t code, bool pressed) {
         if (!keyState_) return;
+        if (!emitKey(code, pressed, serial)) return;
         const auto key = code + 8;
+        if (pressed && repeatRate_ > 0 && xkb_keymap_key_repeats(xkb_state_get_keymap(keyState_), key))
+            repeat_ = RepeatedKey{code, Clock::now() + std::chrono::milliseconds(repeatDelay_)};
+        else if (!pressed && repeat_ && repeat_->code == code)
+            repeat_.reset();
+    }
+    bool emitKey(uint32_t code, bool pressed, std::optional<uint32_t> serial) {
+        const auto key = code + 8;
+        const auto symbol = xkb_state_key_get_one_sym(keyState_, key);
+        const bool alt = modifier(XKB_MOD_NAME_ALT);
+        if (pressed && !linuxKeyDownAllowed(symbol, alt)) return false;
         auto& event = events.emplace_back(pressed ? NativeEvent::Kind::keyDown : NativeEvent::Kind::keyUp);
         event.inputSerial = serial;
-        event.key = linuxKey(xkb_state_key_get_one_sym(keyState_, key), modifier(XKB_MOD_NAME_SHIFT),
-            modifier(XKB_MOD_NAME_CTRL));
-        if (pressed && !event.key.ctrl && !modifier(XKB_MOD_NAME_ALT)) {
+        event.key = linuxKey(symbol, modifier(XKB_MOD_NAME_SHIFT), modifier(XKB_MOD_NAME_CTRL));
+        event.key.repeat = !serial;
+        if (pressed && !event.key.ctrl && !alt) {
             char text[16]{};
             int size = xkb_state_key_get_utf8(keyState_, key, text, sizeof(text));
             if (size > 0 && size < static_cast<int>(sizeof(text))) event.text = utf16FromUtf8({text, static_cast<std::size_t>(size)});
         }
+        return true;
     }
     void keyboardFocus(bool active) {
+        if (!active) repeat_.reset();
         events.emplace_back(NativeEvent::Kind::focus).active = active;
         clipboard_->focused(active);
     }
@@ -210,7 +252,8 @@ private:
         } else if (!(caps & WL_SEAT_CAPABILITY_POINTER) && pointer_) {
             wl_pointer_release(pointer_);
             pointer_ = nullptr;
-            events.emplace_back(NativeEvent::Kind::leave);
+            verticalAxis_ = horizontalAxis_ = {};
+            events.emplace_back(NativeEvent::Kind::captureLost);
         }
     }
     static const wl_registry_listener registryListener_;
@@ -238,12 +281,17 @@ private:
     wl_keyboard* keyboard_ = nullptr;
     xkb_context* keyContext_ = nullptr;
     xkb_state* keyState_ = nullptr;
+    using Clock = std::chrono::steady_clock;
+    struct RepeatedKey { uint32_t code; Clock::time_point next; };
+    std::optional<RepeatedKey> repeat_;
+    int repeatRate_ = 0, repeatDelay_ = 0;
     wl_egl_window* eglWindow_ = nullptr;
     std::unique_ptr<EglWindow> egl_;
     std::unique_ptr<WaylandClipboard> clipboard_;
     NativeWindow reference_{};
     int pendingWidth_ = 0, pendingHeight_ = 0, preferredScale_ = 0, x_ = 0, y_ = 0;
-    bool configured_ = false;
+    PointerAxis verticalAxis_, horizontalAxis_;
+    bool configured_ = false, suspended_ = false, pendingSuspended_ = false;
 };
 
 const wl_registry_listener WaylandWindow::registryListener_{
@@ -252,12 +300,14 @@ const wl_registry_listener WaylandWindow::registryListener_{
             if (!std::strcmp(interface, wl_compositor_interface.name))
                 w.compositor_ = static_cast<wl_compositor*>(wl_registry_bind(registry, id, &wl_compositor_interface, std::min(version, 6u)));
             else if (!std::strcmp(interface, xdg_wm_base_interface.name)) {
-                w.shell_ = static_cast<xdg_wm_base*>(wl_registry_bind(registry, id, &xdg_wm_base_interface, 1));
+                w.shell_ = static_cast<xdg_wm_base*>(wl_registry_bind(registry, id, &xdg_wm_base_interface,
+                    std::min({version, static_cast<uint32_t>(xdg_wm_base_interface.version), 6u})));
                 xdg_wm_base_add_listener(w.shell_, &shellListener_, &w);
             } else if (!std::strcmp(interface, wl_data_device_manager_interface.name)) {
                 w.clipboard_->bind(registry, id, version);
             } else if (!std::strcmp(interface, wl_seat_interface.name) && version >= 5 && !w.seat_) {
-                w.seat_ = static_cast<wl_seat*>(wl_registry_bind(registry, id, &wl_seat_interface, 5));
+                w.seat_ = static_cast<wl_seat*>(wl_registry_bind(registry, id, &wl_seat_interface,
+                    std::min(version, static_cast<uint32_t>(WL_POINTER_AXIS_VALUE120_SINCE_VERSION))));
                 wl_seat_add_listener(w.seat_, &seatListener_, &w);
                 w.clipboard_->seat(w.seat_);
             } else if (!std::strcmp(interface, wl_output_interface.name) && version >= 2) {
@@ -287,18 +337,32 @@ const xdg_surface_listener WaylandWindow::shellSurfaceListener_{
             w.configured_ = true;
             w.width_ = w.pendingWidth_;
             w.height_ = w.pendingHeight_;
+            if (w.suspended_ != w.pendingSuspended_) {
+                w.suspended_ = w.pendingSuspended_;
+                if (w.suspended_) w.discardFrame();
+                w.events.emplace_back(NativeEvent::Kind::visibility).active = !w.suspended_;
+            }
             w.resize();
         }
 };
 
 const xdg_toplevel_listener WaylandWindow::toplevelListener_{
-        [](void* data, xdg_toplevel*, int32_t width, int32_t height, wl_array*) {
+        [](void* data, xdg_toplevel*, int32_t width, int32_t height, wl_array* states) {
             auto& w = self(data);
             w.pendingWidth_ = width > 0 ? width : w.width_;
             w.pendingHeight_ = height > 0 ? height : w.height_;
+#ifdef XDG_TOPLEVEL_STATE_SUSPENDED_SINCE_VERSION
+            const auto* begin = static_cast<const uint32_t*>(states->data);
+            w.pendingSuspended_ = false;
+            for (size_t i = 0; i < states->size / sizeof(*begin); ++i)
+                w.pendingSuspended_ |= begin[i] == XDG_TOPLEVEL_STATE_SUSPENDED;
+#else
+            (void)states;
+#endif
         },
         [](void* data, xdg_toplevel*) { self(data).events.emplace_back(NativeEvent::Kind::close); },
-        nullptr, nullptr
+        [](void*, xdg_toplevel*, int32_t, int32_t) {},
+        [](void*, xdg_toplevel*, wl_array*) {}
 };
 
 const wl_callback_listener WaylandWindow::frameListener_{
@@ -351,12 +415,21 @@ const wl_keyboard_listener WaylandWindow::keyboardListener_{
         [](void* data, wl_keyboard*, uint32_t, uint32_t depressed, uint32_t latched, uint32_t locked, uint32_t group) {
             if (auto* state = self(data).keyState_) xkb_state_update_mask(state, depressed, latched, locked, 0, 0, group);
         },
-        [](void*, wl_keyboard*, int32_t, int32_t) {}
+        [](void* data, wl_keyboard*, int32_t rate, int32_t delay) {
+            auto& w = self(data);
+            w.repeat_.reset();
+            w.repeatRate_ = rate;
+            w.repeatDelay_ = std::max(0, delay);
+        }
 };
 
 const wl_pointer_listener WaylandWindow::pointerListener_{
         [](void* data, wl_pointer*, uint32_t, wl_surface*, wl_fixed_t x, wl_fixed_t y) { self(data).inputPosition(x, y); },
-        [](void* data, wl_pointer*, uint32_t, wl_surface*) { self(data).events.emplace_back(NativeEvent::Kind::leave); },
+        [](void* data, wl_pointer*, uint32_t, wl_surface*) {
+            auto& w = self(data);
+            w.verticalAxis_ = w.horizontalAxis_ = {};
+            w.events.emplace_back(NativeEvent::Kind::leave);
+        },
         [](void* data, wl_pointer*, uint32_t, wl_fixed_t x, wl_fixed_t y) { self(data).inputPosition(x, y); },
         [](void* data, wl_pointer*, uint32_t serial, uint32_t, uint32_t button, uint32_t state) {
             if (button != BTN_LEFT && button != BTN_RIGHT) return;
@@ -370,17 +443,24 @@ const wl_pointer_listener WaylandWindow::pointerListener_{
             event.inputSerial = serial;
         },
         [](void* data, wl_pointer*, uint32_t, uint32_t axis, wl_fixed_t value) {
-            if (axis != WL_POINTER_AXIS_VERTICAL_SCROLL || !value) return;
-            auto& w = self(data);
-            auto& event = w.pointerEvent(NativeEvent::Kind::wheel);
-            event.amount = value < 0 ? 120 : -120;
-            event.active = w.modifier(XKB_MOD_NAME_SHIFT);
+            self(data).axis(axis).delta += wl_fixed_to_double(value);
         },
-        [](void*, wl_pointer*) {},
+        [](void* data, wl_pointer*) {
+            auto& w = self(data);
+            w.emitWheel(w.verticalAxis_, false);
+            w.emitWheel(w.horizontalAxis_, true);
+        },
         [](void*, wl_pointer*, uint32_t) {},
         [](void*, wl_pointer*, uint32_t, uint32_t) {},
-        [](void*, wl_pointer*, uint32_t, int32_t) {},
-        nullptr, nullptr
+        [](void* data, wl_pointer*, uint32_t axis, int32_t steps) {
+            auto& input = self(data).axis(axis);
+            input.ticks = input.ticks.value_or(0) + steps * 120;
+        },
+        [](void* data, wl_pointer*, uint32_t axis, int32_t ticks) {
+            auto& input = self(data).axis(axis);
+            input.ticks = input.ticks.value_or(0) + ticks;
+        },
+        nullptr
 };
 }
 

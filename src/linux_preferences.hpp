@@ -1,5 +1,9 @@
 #pragma once
+#include <memory>
 #include <optional>
+#include <span>
+
+struct pollfd;
 
 namespace isoduo::detail {
 struct LinuxDesktopPreferences {
@@ -9,4 +13,17 @@ struct LinuxDesktopPreferences {
 
 // Missing values leave the shared UI's normal motion and focus rules in effect.
 LinuxDesktopPreferences readLinuxDesktopPreferences();
+
+// Owns the desktop preference subscriptions on the UI thread. Its sources
+// wake the native poll alongside the display socket, even when the UI is idle.
+class LinuxPreferenceMonitor {
+public:
+    LinuxPreferenceMonitor();
+    ~LinuxPreferenceMonitor();
+    bool changed();
+    int poll(std::span<pollfd> native, int timeout);
+private:
+    struct Impl;
+    std::unique_ptr<Impl> impl_;
+};
 }
