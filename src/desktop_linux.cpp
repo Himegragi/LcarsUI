@@ -533,7 +533,8 @@ struct Desktop::Impl {
             focused = event.active;
             state.windowActive(focused && !hidden);
             if (!focused) {
-                state.closePopup();
+                // A recovery prompt can take focus while the last frame is frozen.
+                if (!failure) state.closePopup();
                 state.cancelInput();
                 spaceTextTarget.clear();
                 cancelPointer();

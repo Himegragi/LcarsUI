@@ -47,6 +47,7 @@ from `wayland-protocols` 1.31 or newer. On Ubuntu these packages are `libegl-dev
 `libx11-dev`, `libx11-xcb-dev`, `libxcb1-dev`, `libwayland-dev`,
 `libwayland-bin`, `wayland-protocols`, `libxkbcommon-dev`,
 `libfontconfig-dev`, `libglib2.0-dev`, and `libpango1.0-dev`.
+Install `zenity` to use the Linux settings demo's renderer recovery dialogs.
 
 The Linux host reads the desktop's animation preference at creation. GNOME
 provides enable-animations and reduced-motion settings. Xfce can provide the

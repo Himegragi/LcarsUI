@@ -13,6 +13,7 @@
 #include <windows.h>
 #include <shlobj.h>
 #else
+#include "linux_failure_prompt.hpp"
 #include <cstdlib>
 #include <pwd.h>
 #include <unistd.h>
@@ -133,8 +134,14 @@ int main(int argc, char** argv) {
             closeController.failure(desktop, failure, prompt);
         };
 #else
-        options.onCloseRequested = [&](isoduo::Desktop&) {
-            return demo.requestClose() ? isoduo::CloseDecision::close : isoduo::CloseDecision::keepOpen;
+        settingsDemo::LinuxFailurePrompt prompt(demo);
+        options.onCloseRequested = [&](isoduo::Desktop& desktop) { return prompt.requestClose(desktop); };
+        options.onRendererFailed = [&](isoduo::Desktop& desktop, const isoduo::RendererFailure& failure) {
+#ifdef ISODUO_DEMO_DIAGNOSTICS
+            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure));
+            exportDiagnostics();
+#endif
+            prompt.show(desktop, failure.message);
         };
 #endif
         auto creation = isoduo::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
@@ -168,9 +175,6 @@ int main(int argc, char** argv) {
 #else
         if (result.failure) {
             std::cerr << "Renderer failed: " << isoduo::detail::utf8FromUtf16(result.failure->message) << '\n';
-#ifdef ISODUO_DEMO_DIAGNOSTICS
-            diagnostics.recordFailure(settingsDemo::failureDiagnostic(*result.failure));
-#endif
         }
 #endif
 #ifdef ISODUO_DEMO_DIAGNOSTICS

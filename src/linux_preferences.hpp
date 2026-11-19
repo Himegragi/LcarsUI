@@ -22,7 +22,8 @@ public:
     LinuxPreferenceMonitor();
     ~LinuxPreferenceMonitor();
     bool changed();
-    GMainContext* context() const;
+    // Sources attached here run on the desktop's owner thread after native input dispatch.
+    static GMainContext* context();
     int poll(std::span<pollfd> native, int timeout);
 private:
     struct Impl;
