@@ -1,7 +1,9 @@
 #include "isoduo/desktop.hpp"
 #include "isoduo/semantics.hpp"
+#include "desktop_linux_test.hpp"
 #include "linux_accessibility.hpp"
 #include "linux_window.hpp"
+#include "renderer.hpp"
 #include <glib.h>
 #include <iostream>
 #include <stdexcept>
@@ -52,11 +54,13 @@ int runTextFixture(bool headless) {
 
 int runFixture(std::string mode) {
     const bool enabled = mode != "disabled";
+    const bool injectFailure = mode == "renderer-failure";
     const std::string prefix = enabled ? "fixture." : "private.";
     const auto id = [&](std::string_view suffix) { return prefix + std::string(suffix); };
     Ui ui;
     ScrollState scroll;
     Desktop* host = nullptr;
+    detail::RendererTestHooks hooks;
     auto button = ui.addButton({.id = id("invoke"), .label = u"Activate"}).value.value();
     auto text = ui.addTextField({.id = id("text"), .label = u"Name"}).value.value();
     auto label = ui.addLabel({.id = id("label"), .value = u"Display name",
@@ -70,7 +74,7 @@ int runFixture(std::string mode) {
     auto dropdown = ui.addDropdown({.id = id("dropdown"), .label = u"Option"},
         {{{"one"}, u"One"}, {{"two"}, u"Two"}, {{"disabled"}, u"Disabled", false}}).value.value();
     const auto subscribe = [](auto) { return [] {}; };
-    std::u16string saved = u"A\U0001F642\u4e2d";
+    std::u16string saved = injectFailure ? u"Retained draft" : u"A\U0001F642\u4e2d";
     bool checked = false;
     int volume = 2;
     std::optional<OptionValue> choice{{"one"}};
@@ -85,6 +89,12 @@ int runFixture(std::string mode) {
         !dropdown.connectImmediate([&](const auto& change) { choice = change.value; return Result{}; }))
         return 1;
     button.bind([&] {
+        if (injectFailure) {
+            hooks.contextLostAtFrame = 1;
+            auto settings = ui.presentation();
+            settings.textSize = 18;
+            return ui.setPresentation(settings);
+        }
         const auto status = host->setTitle(u"\u7121\u969c\u7919");
         std::osyncstream(std::cout) << "Invoked " << bool(status) << std::endl;
         return status;
@@ -126,17 +136,20 @@ int runFixture(std::string mode) {
     config.title = u"Isoduo Accessibility ";
     config.title.append(mode.begin(), mode.end());
     if (mode != "default") config.platformAccessibilityEnabled = enabled;
+    if (injectFailure) config.onRendererFailed = [](Desktop&, const RendererFailure& failure) {
+        if (failure.kind == RendererFailureKind::deviceReset) std::cout << "Renderer failed: device reset" << std::endl;
+    };
     config.onCloseRequested = [&](Desktop&) {
         std::osyncstream(std::cout) << "Native close " << mode << ' '
             << (saved.find(u'z') != std::u16string::npos) << std::endl;
         return CloseDecision::close;
     };
-    auto created = Desktop::create(ui, webAppearance(), [&] {
+    auto created = detail::LinuxDesktopTest::create(ui, webAppearance(), [&] {
         return layout::column({layout::component(button), layout::component(label), layout::component(text),
             layout::component(check), layout::component(slider), layout::component(progress),
             layout::component(dropdown), layout::component(remove), layout::component(replaced),
             layout::component(close)});
-    }, scroll, config);
+    }, scroll, config, injectFailure ? &hooks : nullptr);
     if (!created.desktop) return 2;
     host = created.desktop.get();
     if (host->setTitle(u"Invalid\nTitle").status != Status::invalidValue) return 3;
