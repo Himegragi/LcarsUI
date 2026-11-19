@@ -1,6 +1,14 @@
 # Settings demo
 
-The web and material executables share navigation, settings persistence, undo and redo, About information, semantic and UIA access, and renderer recovery. Clipboard, IME and DPI checks require an idle desktop.
+The web and material executables share navigation, settings persistence, undo and redo, About information and semantic access. Windows also provides UIA access and the native renderer recovery prompts. Clipboard, IME and DPI checks require an idle desktop.
+
+## Running on Linux
+
+Build with the [Linux native desktop configuration](../../README.md#linux-native-desktop-build), then launch `isoduo_settings_demo_web` or `isoduo_settings_demo_material` from its build directory in a Wayland or X11 session. Both appearances use `$XDG_CONFIG_HOME/Isoduo/SettingsDemo/settings.json`. If `XDG_CONFIG_HOME` is empty, unset or relative, the root is `$HOME/.config`.
+
+Use `--settings-dir "path with spaces"` to read and save settings in a separate directory. About displays the selected file. A missing file starts with defaults. A malformed file is moved to `settings.json.bad` when possible. If a save fails, the dialog shows the reason and you can retry with your edits intact.
+
+To copy a legacy Linux settings directory, run `python3 tools/migrate-settings.py` from the source root. It copies `LcarsUI/SettingsDemo` to `Isoduo/SettingsDemo` under the same XDG configuration root, including nested and hidden backups. The source is retained. Use `--config-root <directory>` to select a separate configuration root. Migration refuses an existing destination and leaves backup-only inputs as backups. The Windows migration command remains `tools/migrate-settings.ps1`.
 
 
 The appearance page has an accent-color dropdown (`appearance.accent`: default, green, orange). Each choice is a palette override list (`Ui::setPaletteOverrides`) that sets `accent`, `on_accent` and `selection` for both appearances in light and dark; every choice passes the contrast rules. The choice is saved as `presentation.accent` in `settings.json`; files without that field load as the default, and "reset appearance" resets it too.
