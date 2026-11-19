@@ -641,7 +641,7 @@ private:
     Id retiring_;
     bool removalPending(std::string_view id) const;
     unsigned operationDepth_ = 0;
-    std::map<std::size_t, std::function<void(const SemanticEvent&)>> semanticSubscribers_;
+    std::map<std::size_t, std::shared_ptr<std::function<void(const SemanticEvent&)>>> semanticSubscribers_;
     std::size_t nextSemanticSubscriber_ = 0;
     std::vector<SemanticEvent> semanticPending_;
     std::vector<NodeSnapshot> semanticBefore_;

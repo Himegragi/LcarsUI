@@ -239,7 +239,7 @@ static_assert(std::same_as<decltype(std::declval<const isoduo::Appearance&>().ar
               std::same_as<decltype(std::declval<const isoduo::Appearance&>().arrangeTextField(240, isoduo::TextFieldHeights{}, 1.f, isoduo::Density::compact)), isoduo::TextFieldLayout>);
 // The desktop module (when the package has it): creation parameters are a Config, creation hands back a Result, and a
 // diagnostic says which kind of problem it is.
-#if __has_include("isoduo/desktop.hpp")
+#if !defined(ISODUO_CONSUMER_CORE_ONLY) && __has_include("isoduo/desktop.hpp")
 #include "isoduo/desktop.hpp"
 static_assert(std::same_as<decltype(isoduo::Desktop::create), isoduo::CreateResult(isoduo::Ui&, const isoduo::Appearance&, std::function<isoduo::layout::Node()>,
                                                                                  isoduo::ScrollState&, isoduo::DesktopConfig)>);

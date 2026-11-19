@@ -481,7 +481,9 @@ void configurationRequiresUiThread() {
         connect = label.connectSource([] { return std::u16string(u"wrong"); }).status;
     });
     worker.join();
-    check(reset == Status::wrongThread && connect == Status::wrongThread, "Configuration rejects another thread");
+    check(reset == Status::wrongThread && connect == Status::wrongThread &&
+          field.describe()->value == u"source" && label.describe()->value.empty(),
+          "Configuration rejects another thread without changing displayed values");
     auto fault = ui.addButton({.id = "thread.fault"}).value.value();
     fault.bind([]() -> Result { throw std::runtime_error("failure"); });
     check(fault.invoke().status == Status::failed && field.resetToSource().status == Status::failed &&
@@ -553,7 +555,11 @@ void sourceConflictKeepsDraftUntilCancelled() {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     auto confirm = ui.addButton({.id = "conflict.apply"}).value.value();
-    ui.connectConfirmation(confirm, {field}, [](const std::vector<ConfirmFieldChange>&) { return ConfirmationResult{}; });
+    std::optional<Change<TextFieldHandle>> submitted;
+    ui.connectConfirmation(confirm, {field}, [&](const std::vector<ConfirmFieldChange>& changes) {
+        submitted = std::get<Change<TextFieldHandle>>(changes.at(0));
+        return ConfirmationResult{{Status::invalidValue, u"Conflict"}, {{field, u"Conflict"}}};
+    });
     field.setValue(u"draft");
     model = u"newest";
     changed();
@@ -562,8 +568,17 @@ void sourceConflictKeepsDraftUntilCancelled() {
     field.enable(false);
     check(field.describe()->sourceConflict, "Conflict remains visible in disabled semantics");
     field.enable(true);
+    check(confirm.invoke().status == Status::invalidValue && submitted && submitted->field == field &&
+          submitted->value == u"draft" && submitted->origin == u"original",
+          "A conflicted submission retains the draft and its original starting value");
     check(bool(field.useLatest()) && field.describe()->value == u"newest" && !field.sourceConflict().value.value_or(false),
           "Choosing the latest value discards the draft and clears the conflict");
+    check(bool(field.setValue(u"second draft")), "edit again from the latest value");
+    model = u"another source value";
+    changed();
+    check(field.describe()->sourceConflict && bool(field.resetToSource()) &&
+          field.describe()->value == u"another source value" && !field.describe()->sourceConflict,
+          "Reset also returns a conflicted field to its current source");
 }
 
 void confirmationSubmitsDraftAndOriginAndKeepsHistory() {
@@ -1067,8 +1082,10 @@ void dropdownOptionChangesDoNotRecurseIntoNotifications() {
     field.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; });
     int calls = 0; Status nested = Status::ok;
     ui.onChange([&] { if (++calls == 1) nested = field.setItems({}).status; });
-    field.setItems({{{"north"}, u"North"}, {{"south"}, u"South"}});
-    check(calls == 1 && nested == Status::busy && field.describe()->items.size() == 2,
+    const auto result = field.setItems({{{"north"}, u"North"}, {{"south"}, u"South"}});
+    const auto snapshot = field.describe();
+    check(result && calls == 1 && nested == Status::busy && snapshot && snapshot->items.size() == 2 &&
+          snapshot->items[0].value == OptionValue{"north"} && snapshot->items[1].value == OptionValue{"south"},
           "An option update during a notification is refused without recursion or mutation");
 }
 
@@ -1580,11 +1597,18 @@ void throwingReadWhileConnecting() {
         std::function<void()> notifyA;
         Ui ui;
         auto probe = kind.make(ui);
+        auto throwingRead = []() -> int { throw std::runtime_error("read failed"); };
+        auto noUpdates = [](std::function<void()>) { return [] {}; };
+        {
+            Ui fresh;
+            auto first = kind.make(fresh).connect(throwingRead, noUpdates);
+            expect(first.status == Status::failed && !first.message.empty(), "A throwing first read fails the connection");
+        }
         probe.connect([] { return 0; }, subscribedInto(notifyA));
         const auto showsA = probe.shown();
         Result result; bool escaped = false;
         try {
-            result = probe.connect([]() -> int { throw std::runtime_error("read failed"); }, [](std::function<void()>) { return [] {}; });
+            result = probe.connect(throwingRead, noUpdates);
         } catch (...) { escaped = true; }
         expect(!escaped && result.status == Status::failed && !result.message.empty(), "A throwing read fails the call and does not escape");
         if (kind.firstRead == FirstRead::beforeReplacing)
