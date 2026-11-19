@@ -20,6 +20,7 @@
 #include <set>
 #include <mutex>
 #include <atomic>
+#include <limits>
 namespace isoduo::detail {
 namespace {
 std::string pathUtf8(const std::filesystem::path& path) {
@@ -145,25 +146,23 @@ struct Font {
 };
 }
 struct Text::Impl {
-#ifdef _WIN32
-    static constexpr std::array<std::u16string_view,10> names={u"Segoe UI",u"Microsoft JhengHei",u"MingLiU",u"MingLiU-ExtB",u"Microsoft YaHei",u"SimSun",u"Yu Gothic",u"Malgun Gothic",u"Segoe UI Symbol",u"Segoe UI Emoji"};
-#else
-    static constexpr std::array<std::u16string_view,10> names={u"sans-serif",u"sans-serif:lang=zh-tw",
-        u"sans-serif:lang=zh-cn",u"sans-serif:lang=ja",u"sans-serif:lang=ko",u"DejaVu Sans",
-        u"Noto Sans Symbols",u"Noto Sans Symbols 2",u"Unifont",u"emoji"};
-#endif
-    // Font ids: 0..9 index `names` (the built-in fallback families; 9 is the emoji family), primaryFont is the application's
-    // own family (setPrimaryFamily), noFont means no family has the character.
-    static constexpr unsigned emojiFont=9, primaryFont=10, noFont=11;
+    static constexpr unsigned noFont = std::numeric_limits<unsigned>::max();
+    struct Face {
+        std::unique_ptr<Font> font;
+        std::uint64_t id = 0;
+        bool attempted = false;
+    };
+    struct Family {
+        std::u16string name;
+        std::array<Face, 4> faces{}; // slot bit 0 is bold, bit 1 italic
+    };
     FT_Library library=nullptr;
     GlyphAtlas atlas;
     unsigned rasterizations=0;
-    std::array<std::array<std::unique_ptr<Font>,11>,4> fonts;  // [slot][font]: slot bit 0 bold, bit 1 italic
-    std::array<std::array<bool,11>,4> attempted{};
-    std::array<std::array<std::uint64_t,11>,4> faceIds{};
+    std::vector<Family> families;
+    unsigned emojiFont = noFont, primaryFont = noFont;
     std::function<FontFile(std::u16string_view,bool,bool)> styledLookup;
     static std::uint64_t nextFaceId() { static std::atomic<std::uint64_t> next{1}; return next.fetch_add(1, std::memory_order_relaxed); }
-    std::u16string primary;
     std::set<unsigned> missing;
     int bitmapMode=-1;
     std::function<FontFile(std::u16string_view)> lookup;
@@ -177,10 +176,16 @@ struct Text::Impl {
     Impl(std::function<FontFile(std::u16string_view)> find, std::function<void(const RenderDiagnostic&)> emit)
         : lookup(std::move(find)), receiver(std::move(emit)) {
         if(FT_Init_FreeType(&library)) library=nullptr;
-        for (auto family : {names[0], names[1]})
+#ifdef _WIN32
+        for (auto name : {u"Segoe UI", u"Microsoft JhengHei", u"MingLiU", u"MingLiU-ExtB", u"Microsoft YaHei",
+                          u"SimSun", u"Yu Gothic", u"Malgun Gothic", u"Segoe UI Symbol", u"Segoe UI Emoji"})
+            families.push_back({name});
+        emojiFont = static_cast<unsigned>(families.size() - 1);
+        for (auto family : {u"Segoe UI", u"Microsoft JhengHei"})
             if (lookup(family).path.empty()) report("font.default_missing", utf8FromUtf16(family));
+#endif
     }
-    ~Impl(){for(auto& slot:fonts)for(auto& font:slot)font.reset();if(library)FT_Done_FreeType(library);}
+    ~Impl(){families.clear();if(library)FT_Done_FreeType(library);}
     TextLayout shapeDirected(std::u16string_view text,int size,hb_direction_t direction,FontStyle style={},bool ligatures=true);
     struct Look { Font* font=nullptr; unsigned slot=0, synth=0; };
     // The face for a bold/italic request: the real file of that look, else the nearest real file plus the looks it
@@ -196,25 +201,68 @@ struct Text::Impl {
         return {font(id,0),0,want};
     }
     Font* font(unsigned id,unsigned slot=0) {
-        if(id>=fonts[0].size() || slot>=fonts.size()) return nullptr;
-        if(!attempted[slot][id]) {
-            attempted[slot][id]=true;
-            const auto family=id==primaryFont?std::u16string_view(primary):names[id];
-            auto file=slot==0?lookup(family):styledLookup?styledLookup(family,slot&1,(slot&2)!=0):FontFile{};
-            if(!file.path.empty()) { fonts[slot][id]=std::make_unique<Font>(library,file); if(!fonts[slot][id]->face && firstUnreadableFile(file.path)) report("font.file_unreadable",pathUtf8(file.path),fonts[slot][id]->error); }
+        if (id >= families.size() || slot >= families[id].faces.size()) return nullptr;
+        auto& family = families[id];
+        auto& face = family.faces[slot];
+        if (family.name.empty()) return nullptr;
+        if (!face.attempted) {
+            face.attempted = true;
+            auto file = slot == 0 ? lookup(family.name) :
+                styledLookup ? styledLookup(family.name, slot & 1, (slot & 2) != 0) : FontFile{};
+            if (!file.path.empty()) {
+                face.font = std::make_unique<Font>(library, file);
+                if (!face.font->face && firstUnreadableFile(file.path))
+                    report("font.file_unreadable", pathUtf8(file.path), face.font->error);
+            }
         }
-        if (fonts[slot][id] && fonts[slot][id]->face && !faceIds[slot][id]) faceIds[slot][id] = nextFaceId();
-        return fonts[slot][id] && fonts[slot][id]->face ? fonts[slot][id].get():nullptr;
+        if (!face.font || !face.font->face) return nullptr;
+        if (!face.id) face.id = nextFaceId();
+        return face.font.get();
+    }
+    Font* glyphFont(const Glyph& glyph) {
+        auto* loaded = font(glyph.font, glyph.slot);
+        return loaded && (!glyph.faceId || families[glyph.font].faces[glyph.slot].id == glyph.faceId) ? loaded : nullptr;
     }
 };
-Text::Text():Text(systemFontFile,diagnostic){ impl_->styledLookup=systemStyledFontFile; }
+Text::Text():Text(systemFontFile,diagnostic) {
+    impl_->styledLookup=systemStyledFontFile;
+#ifndef _WIN32
+    setFontResolution(systemFontCatalog().resolve({}), systemEmojiFamily());
+#endif
+}
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(std::string_view)> report)
     :Text(std::move(lookup),std::function<void(const RenderDiagnostic&)>([report=std::move(report)](const auto& event) { report(event.code); })){}
 Text::Text(std::function<FontFile(std::u16string_view)> lookup,std::function<void(const RenderDiagnostic&)> report)
     :impl_(std::make_unique<Impl>(std::move(lookup),std::move(report))){}
 Text::~Text()=default;
 void Text::testBitmapMode(int mode) { if (impl_->bitmapMode!=mode) { impl_->bitmapMode=mode; impl_->atlas.clear(); } }
-void Text::setPrimaryFamily(std::u16string family, bool newGeneration) { if (impl_->primary==family && !newGeneration) return; impl_->atlas.clear(); for(auto& ids:impl_->faceIds) ids.fill(0); impl_->primary=std::move(family); for(unsigned slot=0;slot<4;++slot) { impl_->fonts[slot][10].reset(); impl_->attempted[slot][10]=false; } }
+void Text::setPrimaryFamily(std::u16string family, bool newGeneration) {
+    auto& e = *impl_;
+    if (e.primaryFont == Impl::noFont) {
+        if (family.empty() && !newGeneration) return;
+        e.primaryFont = static_cast<unsigned>(e.families.size());
+        e.families.emplace_back();
+    }
+    auto& primary = e.families[e.primaryFont];
+    if (primary.name == family && !newGeneration) return;
+    e.atlas.clear();
+    for (auto& entry : e.families)
+        for (auto& face : entry.faces) face.id = 0;
+    primary = {std::move(family)};
+}
+void Text::setFontResolution(const FontResolution& resolution, std::u16string_view emojiFamily) {
+    auto& e = *impl_;
+    e.atlas.clear();
+    e.families.clear();
+    e.primaryFont = e.emojiFont = Impl::noFont;
+    auto append = [&](const std::u16string& name) {
+        if (name.empty()) return;
+        if (name == emojiFamily) e.emojiFont = static_cast<unsigned>(e.families.size());
+        e.families.push_back({name});
+    };
+    append(resolution.primary);
+    for (const auto& name : resolution.fallback) append(name);
+}
 std::optional<float> Text::testAxisCoordinate(unsigned id,std::uint32_t t) {
     auto font=impl_->font(id); if(!font) return {};
     FT_MM_Var* variations=nullptr; if(FT_Get_MM_Var(font->face,&variations) || !variations) return {};
@@ -256,8 +304,8 @@ TextLayout Text::Impl::shapeDirected(std::u16string_view text,int size,hb_direct
         bool emoji=(cp>=0x1f000&&cp<=0x1faff) || (i<text.size() && text[i]==0xfe0f);
         auto supports=[&](unsigned n) {auto f=e.font(n);return f && f->size(size) && FT_Get_Char_Index(f->face,cp);};
         if(emoji && supports(emojiFont)) selected=emojiFont;
-        else if(!e.primary.empty() && supports(primaryFont)) selected=primaryFont;
-        else for(unsigned n=0;n<names.size();++n) if(supports(n)){selected=n;break;}
+        else if(supports(primaryFont)) selected=primaryFont;
+        else for(unsigned n=0;n<families.size();++n) if(n!=primaryFont && supports(n)){selected=n;break;}
         if(script==HB_SCRIPT_COMMON||script==HB_SCRIPT_INHERITED)script=runs.empty()?HB_SCRIPT_LATIN:runs.back().script;
         if(selected!=noFont && !runs.empty()&&runs.back().font==selected&&runs.back().script==script)runs.back().end=i;
         else runs.push_back({begin,i,selected,script});
@@ -283,7 +331,7 @@ TextLayout Text::Impl::shapeDirected(std::u16string_view text,int size,hb_direct
         for(unsigned i=0;i<count;++i){
             float advance=(direction==HB_DIRECTION_TTB?-pos[i].y_advance/64.f:pos[i].x_advance/64.f)+heavier;
             result.carets.try_emplace(info[i].cluster,result.width);
-            result.glyphs.push_back({run.font,info[i].codepoint,info[i].cluster,result.width,pos[i].x_offset/64.f,pos[i].y_offset/64.f,advance,e.faceIds[look.slot][run.font],GlyphTransform{},static_cast<unsigned char>(look.slot),static_cast<unsigned char>(look.synth)});
+            result.glyphs.push_back({run.font,info[i].codepoint,info[i].cluster,result.width,pos[i].x_offset/64.f,pos[i].y_offset/64.f,advance,e.families[run.font].faces[look.slot].id,GlyphTransform{},static_cast<unsigned char>(look.slot),static_cast<unsigned char>(look.synth)});
             result.width+=advance;result.missing+=info[i].codepoint==0;
         }
         hb_buffer_destroy(buffer);
@@ -343,8 +391,7 @@ void Text::draw(Canvas& canvas,const TextLayout& layout,int x,int baseline,Color
             canvas.fill({left,baseline-height,line,height},color); canvas.fill({left+width-line,baseline-height,line,height},color);
         };
         if (!glyph.id) {box();continue;}
-        auto font=impl_->font(glyph.font,glyph.slot);
-        if (glyph.faceId && impl_->faceIds[glyph.slot][glyph.font] != glyph.faceId) font = nullptr;
+        auto font=impl_->glyphFont(glyph);
         auto error=font?font->rasterize(glyph.id,layout.size,glyph.transform,glyph.synth):FT_Err_Invalid_Face_Handle;
         if(error) {
             impl_->report("text.glyph_load_failed", "face " + (font?pathUtf8(font->path):std::string{}) + " glyph " + std::to_string(glyph.id),error);box();continue;
@@ -422,7 +469,7 @@ TextLayout Text::shapeVertical(std::u16string_view value,VerticalForm form,int s
     }
     case VerticalForm::upright: case VerticalForm::bracket: {
         auto h=shape(value,size);
-        bool emoji=std::any_of(h.glyphs.begin(),h.glyphs.end(),[](const Glyph& g) { return g.font==Impl::emojiFont && g.id; });
+        bool emoji=std::any_of(h.glyphs.begin(),h.glyphs.end(),[this](const Glyph& g) { return g.font==impl_->emojiFont && g.id; });
         if(emoji) {
             // Segoe UI Emoji has no vertical metrics and is wider than a cell: scale it into the cell and center it.
             auto parts=horizontalParts(h,{});
@@ -486,8 +533,7 @@ void Text::draw(RecordingCanvas& canvas,const TextLayout& layout,int x,int basel
                         if(y<line || y>=h-line || x<line || x>=w-line) result.pixels[static_cast<std::size_t>(y)*w+x]=255;
                     return result;
                 };
-                auto font=impl_->font(glyph.font,glyph.slot);
-                if (glyph.faceId && impl_->faceIds[glyph.slot][glyph.font] != glyph.faceId) font = nullptr;
+                auto font=impl_->glyphFont(glyph);
                 auto error=font?font->rasterize(glyph.id,size,glyph.transform,glyph.synth):FT_Err_Invalid_Face_Handle;
                 if(error) {
                     impl_->report("text.glyph_load_failed", "face " + (font?pathUtf8(font->path):std::string{}) + " glyph " + std::to_string(glyph.id),error);
