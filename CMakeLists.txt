@@ -75,6 +75,13 @@ target_include_directories(isoduo_settings_demo PUBLIC "${PROJECT_SOURCE_DIR}/ex
 target_link_libraries(isoduo_settings_demo PUBLIC isoduo_core)
 if(ISODUO_BUILD_TESTS)
   enable_testing()
+  # Run the same public contract as the installed consumer without needing an install or a desktop host.
+  add_executable(isoduo_public_core_contract_tests examples/consumer/main.cpp)
+  isoduo_target(isoduo_public_core_contract_tests)
+  target_compile_definitions(isoduo_public_core_contract_tests PRIVATE
+    ISODUO_CONSUMER_CORE_ONLY ISODUO_PACKAGE_VERSION=u"${PROJECT_VERSION}")
+  target_link_libraries(isoduo_public_core_contract_tests PRIVATE Isoduo::Core Isoduo::AppearanceMaterial)
+  add_test(NAME public_core_contract COMMAND isoduo_public_core_contract_tests)
   if(WIN32)
     add_test(NAME public_names COMMAND powershell -NoProfile -File "${PROJECT_SOURCE_DIR}/tests/public_names_test.ps1")
   endif()

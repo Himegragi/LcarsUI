@@ -8,6 +8,7 @@
 #include "isoduo/core.hpp"
 #include "isoduo/semantics.hpp"
 #include <algorithm>
+#include <thread>
 using namespace isoduo;
 using test::check;
 using test::inside;
@@ -746,6 +747,33 @@ void semanticEventsAnnounceOpeningFocusAndClosing() {
     check(has(SemanticEventKind::menuClosed, {menuId}), "closing is announced");
     check(has(SemanticEventKind::focusChanged, {"note"}), "and focus returns to the field");
 }
+
+void rapidMenuTransitionsReachOneSubscriberInOrder() {
+    Ui ui;
+    auto field = addField(ui, "note", u"hello");
+    check(bool(field.handle.focus()), "focus the menu owner");
+    auto& tree = ui.semantics();
+    const auto owner = std::this_thread::get_id();
+    std::vector<std::pair<SemanticEventKind, int>> transitions;
+    bool onOwnerThread = true;
+    auto subscription = tree.subscribe([&, menuId = menuNodeId("note"), sequence = 0](const SemanticEvent& event) mutable {
+        if (event.ref.id != menuId || (event.kind != SemanticEventKind::menuOpened && event.kind != SemanticEventKind::menuClosed)) return;
+        onOwnerThread &= std::this_thread::get_id() == owner;
+        transitions.emplace_back(event.kind, ++sequence);
+    });
+    for (int round = 0; round < 2; ++round) {
+        check(bool(ui.openContextMenu(field.handle)), "open the context menu");
+        check(bool(ui.closeContextMenu()), "close the context menu");
+    }
+    std::thread worker([&] { tree.dispatchEvents(); });
+    worker.join();
+    check(transitions.empty(), "events wait for dispatch on the owner thread");
+    tree.dispatchEvents();
+    using Kind = SemanticEventKind;
+    check(onOwnerThread && transitions == std::vector<std::pair<Kind, int>>{
+              {Kind::menuOpened, 1}, {Kind::menuClosed, 2}, {Kind::menuOpened, 3}, {Kind::menuClosed, 4}},
+          "one subscriber receives each queued transition in order and retains its callback state");
+}
 }
 
 int main() {
@@ -764,6 +792,7 @@ int main() {
         {"multi-line field menu hangs from the caret line", multiLineFieldMenuHangsFromTheCaretLine},
         {"semantic tree shows menu and items while open", semanticTreeShowsMenuAndItemsWhileOpen},
         {"semantic events announce opening, focus and closing", semanticEventsAnnounceOpeningFocusAndClosing},
+        {"rapid menu transitions reach one subscriber in order", rapidMenuTransitionsReachOneSubscriberInOrder},
         {"text field menu has the Windows edit items", textFieldMenuHasTheWindowsEditItems},
         {"items are unavailable when they cannot act", itemsAreUnavailableWhenTheyCannotAct},
         {"read-only field only copies and selects", readOnlyFieldOnlyCopiesAndSelects},

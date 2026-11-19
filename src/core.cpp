@@ -3728,7 +3728,8 @@ void detail::UiState::semanticDiff() {
 }
 Subscription SemanticTree::subscribe(std::function<void(const SemanticEvent&)> callback) {
     if (std::this_thread::get_id() != state_->owner_ || !callback) return Subscription{};
-    auto id = ++state_->nextSemanticSubscriber_; state_->semanticSubscribers_.emplace(id, std::move(callback));
+    auto id = ++state_->nextSemanticSubscriber_;
+    state_->semanticSubscribers_.emplace(id, std::make_shared<std::function<void(const SemanticEvent&)>>(std::move(callback)));
     std::weak_ptr<void> lifetime = state_->lifetime_; auto state = state_;
     return Subscription([state, lifetime, id] { if (!lifetime.expired()) state->semanticSubscribers_.erase(id); });
 }
@@ -3739,9 +3740,10 @@ void SemanticTree::dispatchEvents() {
     for (unsigned round = 0; round < 64 && !u.semanticPending_.empty(); ++round) {
         auto batch = std::exchange(u.semanticPending_, {});
         for (const auto& event : batch) {
+            // Keep callbacks alive through unsubscription without copying their state.
             auto subscribers = u.semanticSubscribers_;
             for (const auto& [id, callback] : subscribers) if (u.semanticSubscribers_.contains(id)) {
-                try { callback(event); } catch (...) { u.stopped_ = true; }
+                try { (*callback)(event); } catch (...) { u.stopped_ = true; }
             }
         }
         u.commitRemovals();
