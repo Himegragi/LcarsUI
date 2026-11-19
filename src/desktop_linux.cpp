@@ -487,6 +487,23 @@ CreateResult LinuxDesktopTest::create(Ui& ui, const Appearance& appearance, std:
         return {Status::failed, StartupFailure{StartupFailureKind::resource, {}, {}, utf16FromUtf8(error.what()), backend}, {}};
     }
 }
+GpuComparison LinuxDesktopTest::compareDrawList(Desktop& desktop, const DrawList& list, int width, int height) {
+    return detail::compareDrawList(*desktop.impl_->renderer, list, width, height);
+}
+Frame LinuxDesktopTest::layoutFrame(Desktop& desktop, int width, int height, float scale, std::string_view reveal) {
+    auto& host = *desktop.impl_;
+    Desktop::Impl::WorkScope work(host.arranging);
+    return isoduo::arrange(host.page(), host.ui, host.appearance, host.measure, width, height, scale,
+                           host.scroll, reveal.empty() ? std::string_view(host.reveal) : reveal);
+}
+GpuComparison LinuxDesktopTest::compareFrame(Desktop& desktop, int width, int height, float scale, Frame& frame,
+                                             int fault, std::string_view reveal) {
+    auto& host = *desktop.impl_;
+    frame = layoutFrame(desktop, width, height, scale, reveal);
+    RecordingCanvas canvas(width, height, access(host.ui).effectivePalette(host.appearance).background);
+    paintDesktop(canvas, frame, scale, true, host.ui, host.appearance, host.text, host.measure);
+    return detail::compareDrawList(*host.renderer, canvas.list, width, height, fault);
+}
 RunResult Desktop::run() {
     auto& host = *impl_;
     if (host.owner != std::this_thread::get_id()) return {Status::wrongThread, {}, {}};

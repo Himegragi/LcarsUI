@@ -1,19 +1,40 @@
 #include "diagnostic_queue.hpp"
-#include <stdexcept>
+#include "check.hpp"
+
 using namespace isoduo;
 using namespace isoduo::detail;
-static void check(bool v) { if (!v) throw std::runtime_error("diagnostic queue"); }
+
 int main() {
-    std::size_t count=0, omitted=0; bool nested=false;
-    DiagnosticQueue* ptr=nullptr;
-    DiagnosticQueue queue([&](const RenderDiagnostic& e) { ++count; omitted+=e.omittedBefore; if (!nested) { nested=true; ptr->drain(); } }, nullptr);
-    ptr=&queue;
-    for (int i=0;i<1000;++i) queue.push({});
-    queue.drain(); check(count==256 && omitted==744);
-    int lines=0; DiagnosticQueue output({},nullptr); output.setOutput([&](const std::wstring&) { ++lines; }); output.push({}); output.drain();
+    std::size_t delivered = 0, omitted = 0;
+    bool receivedFollowUp = false;
+    DiagnosticQueue* active = nullptr;
+    DiagnosticQueue queue([&](const RenderDiagnostic& event) {
+        ++delivered;
+        omitted += event.omittedBefore;
+        if (delivered == 1) {
+            RenderDiagnostic followUp;
+            followUp.code = "follow-up";
+            active->push(std::move(followUp));
+            active->drain();
+        }
+        if (event.code == "follow-up") receivedFollowUp = true;
+    }, nullptr);
+    active = &queue;
+    for (int i = 0; i < 1000; ++i) queue.push({});
+    queue.drain();
+    test::check(delivered == 256 && omitted == 744, "Bound the queue and report all omitted diagnostics");
+    test::check(!receivedFollowUp, "Callback dispatch cannot reenter");
+    queue.drain();
+    test::check(delivered == 257 && receivedFollowUp, "Deliver callback-enqueued diagnostics on the next drain");
+
+    int lines = 0;
+    DiagnosticQueue output({}, nullptr);
+    output.setOutput([&](const std::wstring&) { ++lines; });
+    output.push({});
+    output.drain();
 #ifdef NDEBUG
-    check(lines==0);
+    test::check(lines == 0, "Release stays quiet without a receiver");
 #else
-    check(lines==1);
+    test::check(lines == 1, "Debug reports to the developer sink without a receiver");
 #endif
 }
