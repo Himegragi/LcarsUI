@@ -1,6 +1,7 @@
 #pragma once
 #include "async_clipboard.hpp"
 #include "isoduo/desktop.hpp"
+#include "linux_ime.hpp"
 #include "linux_preferences.hpp"
 #include <memory>
 #include <string>
@@ -12,7 +13,7 @@ class EglWindow;
 struct NativeEvent {
     enum class Kind {
         redraw, close, destroyed, focus, keyDown, keyUp, motion, leave, press, release,
-        rightPress, rightRelease, wheel, horizontalWheel, captureLost, visibility, clipboard
+        rightPress, rightRelease, wheel, horizontalWheel, captureLost, visibility, clipboard, imeEdit
     };
     Kind kind;
     int x = 0, y = 0, amount = 0;
@@ -21,6 +22,7 @@ struct NativeEvent {
     std::u16string text;
     std::optional<std::uint32_t> inputSerial;
     std::optional<ClipboardDelivery> clipboard;
+    std::optional<LinuxImeEdit> ime;
     explicit NativeEvent(Kind value) : kind(value) {}
 };
 class LinuxWindow {
@@ -33,6 +35,7 @@ public:
     virtual AsyncClipboard& clipboard() = 0;
     virtual void clipboardSerial(std::uint32_t) {}
     virtual void handoffClipboard() {}
+    virtual void updateIme(const std::optional<LinuxImeState>&, bool) {}
     virtual bool prepareFrame() { return true; }
     virtual void requestFrame() {}
     virtual void discardFrame() {}
@@ -44,6 +47,9 @@ public:
 
 protected:
     int pollFileDescriptors(std::span<pollfd> descriptors, int timeout);
+    void imeEdited(LinuxImeEdit edit) {
+        events.emplace_back(NativeEvent::Kind::imeEdit).ime = std::move(edit);
+    }
     void clipboardDelivered(ClipboardDelivery delivery) {
         events.emplace_back(NativeEvent::Kind::clipboard).clipboard = std::move(delivery);
     }

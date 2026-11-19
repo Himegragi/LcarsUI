@@ -293,7 +293,7 @@ public:
     // E01 default: focus leaving commits leftover preedit once, as Microsoft Bopomofo does on blur.
     // Hosts finalize with the IME first, so the IME and core never both commit.
     Result compositionUpdate(std::u16string preedit, unsigned caret);
-    Result compositionCommit(std::u16string_view text);
+    Result compositionCommit(std::u16string_view text, unsigned before = 0, unsigned after = 0);
     Result compositionCancel();
     // Horizontal display offset of a field in DIP. View state owned here so owner resets clear it.
     float textOffset(std::string_view id) const;

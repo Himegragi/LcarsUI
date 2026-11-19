@@ -3004,7 +3004,7 @@ Result detail::UiState::compositionUpdate(std::u16string preedit, unsigned caret
     edits_.at(composing_).session.updateComposition(std::move(preedit), caret);
     return {};
 }
-Result detail::UiState::compositionCommit(std::u16string_view text) {
+Result detail::UiState::compositionCommit(std::u16string_view text, unsigned before, unsigned after) {
     OperationScope operation(this);
     auto target = composing_.empty() ? focus_ : composing_;
     if (auto result = available(target); !result) return result;
@@ -3013,8 +3013,11 @@ Result detail::UiState::compositionCommit(std::u16string_view text) {
     auto committed = withoutControls(text);
     Field* field = nullptr;
     if (auto result = writable(target, field); !result) return result;
-    if (committed.empty()) return {};
-    return replaceSelection(target, *field, committed);
+    const auto& session = field->session;
+    if (before > session.begin() || after > session.text.size() - session.end())
+        return {Status::invalidValue, u"Input method replacement exceeds the surrounding text"};
+    if (committed.empty() && !before && !after) return {};
+    return replaceRange(target, *field, session.begin() - before, session.end() + after, committed, nullptr);
 }
 Result detail::UiState::compositionCancel() {
     OperationScope operation(this);
