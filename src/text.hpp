@@ -3,6 +3,7 @@
 #include "render.hpp"
 #include "isoduo/layout.hpp"
 #include "isoduo/diagnostics.hpp"
+#include "isoduo/fonts.hpp"
 #include <map>
 #include <cstdint>
 #include <memory>
@@ -82,6 +83,7 @@ public:
     void label(Canvas& canvas,std::u16string_view value,Rect rect,int size,Color color);
     void testBitmapMode(int mode); // -1 uses the rasterizer's pixel mode
     void setPrimaryFamily(std::u16string family, bool newGeneration = false);
+    void setFontResolution(const FontResolution&, std::u16string_view emojiFamily);
     std::optional<float> testAxisCoordinate(unsigned font, std::uint32_t dwriteTag);
 private:
     struct Impl;

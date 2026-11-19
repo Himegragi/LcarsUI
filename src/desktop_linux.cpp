@@ -1,4 +1,5 @@
 #include "linux_window.hpp"
+#include "linux_preferences.hpp"
 #include "desktop_linux_test.hpp"
 #include "desktop_paint.hpp"
 #include "diagnostic_queue.hpp"
@@ -9,6 +10,7 @@
 #include <chrono>
 #include <cstdlib>
 #include <climits>
+#include <set>
 #include <utility>
 #include <thread>
 
@@ -105,6 +107,7 @@ struct Desktop::Impl {
     int atlasScale = 0;
     int textSize = 0;
     std::u16string fontFamily;
+    std::set<std::u16string> unavailableFamilies;
 
     Impl(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll,
          DesktopConfig config, RendererTestHooks* hooks)
@@ -124,9 +127,10 @@ struct Desktop::Impl {
         attached = true;
         state.rendererFailed(false);
         state.bindAppearance(&appearance);
-        state.setSystemKeyboardCues(false);
+        const auto preferences = readLinuxDesktopPreferences();
+        state.setSystemKeyboardCues(preferences.keyboardCues.value_or(false));
         state.animationTime(nowMs);
-        state.setSystemAnimations(true);
+        state.setSystemAnimations(preferences.animations.value_or(true));
         state.tooltipClock(nowMs);
         state.setClickClock(nowMs);
         state.onInvalidate([this] { dirty = true; });
@@ -158,9 +162,14 @@ struct Desktop::Impl {
     void configureFont() {
         const auto& settings = ui.presentation();
         if (settings.textSize == textSize && settings.fontFamily == fontFamily) return;
-        auto resolution = systemFontCatalog().resolve(settings);
-        enqueueFontDiagnostics(diagnostics, textSize ? 0 : systemFontCatalogError(), resolution);
-        text.setPrimaryFamily(!settings.fontFamily.empty() && resolution.requestedAvailable ? resolution.primary : std::u16string{}, true);
+        if (!textSize || settings.fontFamily != fontFamily) {
+            const auto resolution = systemFontCatalog().resolve(settings);
+            if (resolution.requestedAvailable || unavailableFamilies.insert(resolution.requested).second)
+                enqueueFontDiagnostics(diagnostics, textSize ? 0 : systemFontCatalogError(), resolution);
+            text.setFontResolution(resolution, systemEmojiFamily());
+        } else {
+            text.clearAtlas();
+        }
         textSize = settings.textSize;
         fontFamily = settings.fontFamily;
     }

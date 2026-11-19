@@ -41,12 +41,18 @@ unshare --user --map-current-user --net env -u DISPLAY -u WAYLAND_DISPLAY sh too
 ## Linux native desktop build
 
 Install CMake, Ninja, Clang or GCC with C++20 support, pkg-config, and development
-packages for EGL 1.5, X11, X11-XCB, XCB, Wayland 1.22 or newer, xkbcommon and
-Fontconfig. The build also needs `wayland-scanner` and the stable xdg-shell XML
+packages for EGL 1.5, X11, X11-XCB, XCB, Wayland 1.22 or newer, xkbcommon,
+Fontconfig and GIO. The build also needs `wayland-scanner` and the stable xdg-shell XML
 from `wayland-protocols`. On Ubuntu these packages are `libegl-dev`,
 `libx11-dev`, `libx11-xcb-dev`, `libxcb1-dev`, `libwayland-dev`,
-`libwayland-bin`, `wayland-protocols`, `libxkbcommon-dev`, and
-`libfontconfig-dev`.
+`libwayland-bin`, `wayland-protocols`, `libxkbcommon-dev`,
+`libfontconfig-dev`, and `libglib2.0-dev`.
+
+The Linux host reads the desktop's animation preference at creation. GNOME
+provides enable-animations and reduced-motion settings. Xfce can provide the
+optional `Gtk/EnableAnimations` setting through Xfconf. When the preference is
+unavailable, animations stay enabled. Focus indicators follow Isoduo's automatic
+rules unless the application sets a different focus indicator mode.
 
 ```sh
 cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DISODUO_BUILD_DESKTOP=ON
@@ -77,6 +83,13 @@ using the corresponding `wayland` or `x11` argument as `BACKEND`.
   failures, optional context capabilities, wrong-thread close and explicit
   renderer rebuild. Use a Wayland client trace for the surface commit and
   `xprop -id XID` for the X11 window.
+
+After changes to system font layout or desktop preference acquisition, check
+both native sessions with an installed family that has real bold and italic
+faces and a regular-only font in the user's font directory. Check mixed-script
+fallback, missing-family and missing-glyph diagnostics, and the session's
+animation setting or its enabled default. The headless `linux_fonts` and
+`linux_preferences` tests cover the shared font and settings fixtures.
 
 ## S1 minimal edit form
 
