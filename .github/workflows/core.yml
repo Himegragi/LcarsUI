@@ -2,7 +2,7 @@ name: Core
 on: [push, pull_request]
 jobs:
   core:
-    runs-on: windows-latest
+    runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
       - name: Build, test and install Release core

@@ -3,7 +3,7 @@ name: UIA trial
 on: [push, pull_request]
 jobs:
   uia:
-    runs-on: windows-latest
+    runs-on: windows-2022
     timeout-minutes: 60
     env:
       MESA_URL: https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
