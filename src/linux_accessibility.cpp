@@ -105,6 +105,7 @@ bool hasVerb(const NodeSnapshot& node, Verb verb) {
 }
 std::vector<Action> actions(const NodeSnapshot& node) {
     auto result = primaryActions(node);
+    std::erase_if(result, [&](const Action& action) { return !hasVerb(node, action.verb); });
     if (hasVerb(node, Verb::contextMenu)) result.push_back({Verb::contextMenu, "show-menu"});
     return result;
 }
@@ -256,7 +257,8 @@ struct LinuxAccessibility::Impl {
         if (id == app) result.push_back("Application");
         if (id == window || node) result.push_back("Component");
         if (node) {
-            if (!actions(*node).empty()) result.push_back("Action");
+            // Keep the role's interface stable when its actions become unavailable.
+            if (!primaryActions(*node).empty() || hasVerb(*node, Verb::contextMenu)) result.push_back("Action");
             if (selectionContainer(node->role)) result.push_back("Selection");
             if (node->range || node->role == Role::progress) result.push_back("Value");
             if (node->role == Role::textField) {
