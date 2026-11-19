@@ -10,6 +10,10 @@ AboutInfo desktopAboutInfo(const isoduo::Appearance& appearance) {
     AboutInfo about;
     about.fonts = isoduo::systemFontCatalog().families();
     about.resolveFont = [](const isoduo::PresentationSettings& settings) { return isoduo::systemFontCatalog().resolve(settings); };
+#ifdef __linux__
+    const auto primary = about.resolveFont({}).primary;
+    about.defaultFontLabel = primary.empty() ? u"\u9810\u8a2d" : u"\u9810\u8a2d\uff08" + primary + u"\uff09";
+#endif
     about.appearance = std::u16string(name.begin(), name.end());
     std::string configuration = ISODUO_DEMO_CONFIGURATION;
     about.build = std::u16string(ISODUO_DEMO_REVISION) + u"、" + std::u16string(configuration.begin(), configuration.end());

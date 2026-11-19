@@ -1153,11 +1153,15 @@ void appearanceToggleReset() {
 }
 void appearanceFontHistory() {
     settingsDemo::AboutInfo info;
+    info.defaultFontLabel = u"\u9810\u8a2d\uff08Trial Sans\uff09";
     info.fonts = {{u"Consolas", u"Consolas"}};
     for (int i=0; i<149; ++i) { auto n=std::to_string(i); auto key=u"Font" + std::u16string(n.begin(),n.end()); info.fonts.push_back({key,key}); }
     settingsDemo::Demo demo(info); demo.nav.select({"appearance"});
     auto& tree=demo.ui.semantics();
     auto options=tree.children({"appearance.font"});
+    auto defaultFont = tree.get({"appearance.font", OptionValue{"default"}});
+    test::check(defaultFont && defaultFont->name == info.defaultFontLabel && defaultFont->selected,
+                "The default choice displays the desktop's label");
     test::check(options && options->size()==151, "default and all 150 families remain semantic options");
     test::check(bool(tree.perform({"appearance.font", OptionValue{"family:Consolas"}}, Verb::select)), "select font");
     test::check(demo.ui.presentation().fontFamily == u"Consolas", "font applies");

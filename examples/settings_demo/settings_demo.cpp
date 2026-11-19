@@ -49,7 +49,7 @@ Demo::Demo(AboutInfo about) : about_(std::move(about)) {
         {.id="items.edit", .label=u"\u7de8\u8f2f(E)", .enabled=false, .accessKey=u'E', .shortcutHint=u"Enter", .action=[this](const MenuContext&) { return itemsEdit.invoke(); }},
         {.id="items.delete", .label=u"\u522a\u9664(D)", .enabled=false, .accessKey=u'D', .shortcutHint=u"Del", .action=[this](const MenuContext&) { return itemsDelete.invoke(); }},
     }).value.value();
-    font = ui.addDropdown({.id="appearance.font",.label=u"\u5b57\u578b"}, {{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}}).value.value();
+    font = ui.addDropdown({.id="appearance.font",.label=u"\u5b57\u578b"}, {{{"default"},about_.defaultFontLabel}}).value.value();
     fontStatus_ = ui.addLabel({.id="appearance.font.status"}).value.value();
     nav.addMember({"appearance"}, font); nav.addMember({"appearance"}, fontStatus_);
     refreshFonts();
@@ -357,7 +357,7 @@ int Demo::focusRadiusStart() const {
     return appearance ? appearance->radius() : 6;
 }
 void Demo::refreshFonts() {
-    std::vector<OptionItem> options{{{"default"},u"\u9810\u8a2d\uff08Segoe UI\uff0b\u5fae\u8edf\u6b63\u9ed1\u9ad4\uff09"}};
+    std::vector<OptionItem> options{{{"default"},about_.defaultFontLabel}};
     auto key = ui.presentation().fontFamily;
     bool found = key.empty();
     for (const auto& family : about_.fonts) {
