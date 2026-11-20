@@ -554,6 +554,8 @@ GVariant* LinuxAccessibility::Impl::accessible(unsigned id, const NodeSnapshot* 
             g_variant_builder_add(&values, "{ss}", "id", wireString(node->ref.id).c_str());
             if (node->ref.item)
                 g_variant_builder_add(&values, "{ss}", "item-id", wireString(node->ref.item->id).c_str());
+            if (node->selectionRequired)
+                g_variant_builder_add(&values, "{ss}", "selection-required", "true");
             if (!node->error.empty())
                 g_variant_builder_add(&values, "{ss}", "error", wireText(node->error).c_str());
         }
