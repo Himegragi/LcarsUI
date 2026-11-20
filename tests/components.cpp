@@ -956,6 +956,28 @@ void unconnectedSelectionControlsDoNotAdvertiseWrites() {
           "Connected editable controls advertise their available modifications");
 }
 
+void semanticFieldWritesRequestAFrameWithoutSourceNotifications() {
+    Ui ui;
+    bool checked = false;
+    int volume = 2;
+    auto box = ui.addCheckbox({.id = "box"}).value.value();
+    auto slider = ui.addSlider({.id = "volume"}, {0, 10, 2}).value.value();
+    const auto subscribe = [](std::function<void()>) { return [] {}; };
+    box.connectSource({[&] { return checked; }, subscribe});
+    box.connectImmediate([&](const Change<CheckboxHandle>& change) { checked = change.value; return Result{}; });
+    slider.connectSource({[&] { return volume; }, subscribe});
+    slider.connectImmediate([&](const Change<SliderHandle>& change) { volume = change.value; return Result{}; });
+
+    bool frameRequested = false;
+    detail::access(ui).onInvalidate([&] { frameRequested = true; });
+    auto& tree = ui.semantics();
+    check(bool(tree.perform({"box"}, Verb::toggle)) && checked && frameRequested,
+          "An external checkbox action changes the model and requests a frame");
+    frameRequested = false;
+    check(bool(tree.perform({"volume"}, Verb::setValue, 6)) && volume == 6 && frameRequested,
+          "An external slider action changes the model and requests a frame");
+}
+
 void sliderConnectedDraftIsConfirmedAsANumber() {
     int model = 40;
     Ui ui;
@@ -1702,6 +1724,7 @@ int main() {
         {"N04 non-divisible steps and keys", sliderNonDivisibleRangeAndKeyboard},
         {"N04 invalid slider ranges", sliderRejectsInvalidRanges},
         {"C07 numeric draft and confirmation", sliderConnectedDraftIsConfirmedAsANumber},
+        {"Semantic field writes request a frame", semanticFieldWritesRequestAFrameWithoutSourceNotifications},
         {"G04 selection operations reflect write admission", unconnectedSelectionControlsDoNotAdvertiseWrites},
         {"G10 standalone typed confirmations", standaloneBooleanAndOptionConfirmation},
         {"G11 radio conflict and latest", radioSourceConflictCanBeResolved},

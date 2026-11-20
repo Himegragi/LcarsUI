@@ -157,6 +157,7 @@ template <class Handle> Result detail::UiState::confirmField(const Handle& handl
 }
 // An edit of the value: an immediate write runs now (unless one is already running); otherwise the change is only announced.
 template <class FieldType> Result detail::UiState::writeImmediately(const Id& id, FieldType& field, const typename FieldType::Change& change) {
+    if (invalidate_) invalidate_();
     if (!field.immediate || field.submitting) return notify();
     field.submitting = true;
     Result result;
