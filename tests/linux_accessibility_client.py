@@ -4,7 +4,7 @@
 Use --text-boundaries for targeted range checks or run --text-boundaries-headless
 under dbus-run-session to exercise the same bridge without a display.
 Use --renderer-failure to check action discovery after a native device reset.
-Use --queued-events to check text and menu changes before the host dispatches them.
+Use --queued-events to check batched text changes, replacement and menu transitions.
 """
 from contextlib import contextmanager
 import os
@@ -277,6 +277,18 @@ def exercise_queued_events(executable, modes):
                 assert edits() == [("delete", 2, 1, "中"), ("insert", 2, 1, "界"),
                                    ("delete", 2, 1, "界"), ("insert", 2, 1, "中")], edits()
                 assert Atspi.Text.get_text(field, 0, -1) == "A\U0001f642中"
+            elif mode == "queued-replacement":
+                def replacement():
+                    candidate = find(root, "text")
+                    return candidate if candidate is not None and candidate != field else None
+                current = until(replacement)
+                def edits():
+                    return [(kind.rsplit(":", 1)[-1], offset, length, value)
+                            for kind, source, offset, length, value in events
+                            if source == current and kind.startswith("object:text-changed:")]
+                until(lambda: any(value == "!" for _, _, _, value in edits()))
+                assert edits() == [("insert", 3, 1, "!")], edits()
+                assert Atspi.Text.get_text(current, 0, -1) == "New!"
             else:
                 def showing():
                     return [(source, value) for kind, source, value, _, _ in events
@@ -292,7 +304,8 @@ def exercise_queued_events(executable, modes):
 
 def main():
     Atspi.init()
-    queued = {"--queued-events": ("queued-text", "queued-menu"),
+    queued = {"--queued-events": ("queued-text", "queued-menu", "queued-replacement"),
+              "--queued-replacement": ("queued-replacement",),
               "--queued-text": ("queued-text",), "--queued-menu": ("queued-menu",)}
     if len(sys.argv) == 3 and sys.argv[2] in queued:
         exercise_queued_events(sys.argv[1], queued[sys.argv[2]])

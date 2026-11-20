@@ -3711,9 +3711,11 @@ void detail::UiState::semanticDiff() {
     const bool wasEmpty = semanticPending_.empty();
     auto after = semanticSnapshot();
     std::vector<SemanticEvent> changes;
-    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}, std::optional<bool> hidden = {}) {
+    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}, std::optional<bool> hidden = {},
+                    std::optional<std::uint64_t> instance = {}) {
         auto same = [&](const SemanticEvent& e) { return e.kind == kind && e.ref == ref && e.property == property; };
-        if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property), hidden});
+        if (std::none_of(changes.begin(), changes.end(), same))
+            changes.push_back({kind, std::move(ref), std::move(property), hidden, {}, instance});
     };
     auto find = [](const auto& nodes, const NodeRef& ref) -> const NodeSnapshot* {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
@@ -3730,7 +3732,7 @@ void detail::UiState::semanticDiff() {
     const auto previousFocus = deepestFocus(semanticBefore_);
     const auto nextFocus = deepestFocus(after);
     if (nextFocus && (!previousFocus || previousFocus->ref != nextFocus->ref || previousFocus->instance != nextFocus->instance))
-        emit(SemanticEventKind::focusChanged, nextFocus->ref);
+        emit(SemanticEventKind::focusChanged, nextFocus->ref, {}, {}, nextFocus->instance);
     // A menu's structure changes belong to the component that owns it.
     auto ownerOf = [](const NodeRef& ref) -> NodeRef {
         if (auto target = menuTargetId(ref.id)) return NodeRef{*target};
@@ -3740,7 +3742,7 @@ void detail::UiState::semanticDiff() {
         const auto* current = find(after, old.ref);
         if (old.role == Role::menu && (!current || old.instance != current->instance))
             changes.push_back({.kind = SemanticEventKind::menuClosed, .ref = old.ref,
-                               .property = {}, .hidden = {}, .menuInstance = old.instance});
+                               .property = {}, .hidden = {}, .instance = old.instance});
         if (!current) emit(SemanticEventKind::structureChanged, ownerOf(old.ref));
     }
     for (const auto& node : after) if (!node.ref.item) {
@@ -3751,20 +3753,22 @@ void detail::UiState::semanticDiff() {
     }
     for (const auto& node : after) {
         auto old = find(semanticBefore_, node.ref);
-        const bool newMenu = node.role == Role::menu && (!old || node.instance != old->instance);
-        if (newMenu)
+        const bool added = !old || node.instance != old->instance;
+        if (added && node.role == Role::menu)
             changes.push_back({.kind = SemanticEventKind::menuOpened, .ref = node.ref,
-                               .property = {}, .hidden = {}, .menuInstance = node.instance});
-        if (!old || newMenu) {
+                               .property = {}, .hidden = {}, .instance = node.instance});
+        if (added) {
             emit(SemanticEventKind::structureChanged, node.role == Role::menu ? ownerOf(node.ref) : node.ref.item ? NodeRef{node.ref.id} : NodeRef{});
             continue;
         }
         if (node.hidden != old->hidden) {
             if (node.role == Role::dialog || node.role == Role::tooltip)
-                emit(SemanticEventKind::propertyChanged, node.ref, "hidden", node.hidden);
+                emit(SemanticEventKind::propertyChanged, node.ref, "hidden", node.hidden, node.instance);
             emit(SemanticEventKind::structureChanged, {});
         }
-        auto property = [&](bool changed, const char* name) { if (changed) emit(SemanticEventKind::propertyChanged, node.ref, name); };
+        auto property = [&](bool changed, const char* name) {
+            if (changed) emit(SemanticEventKind::propertyChanged, node.ref, name, {}, node.instance);
+        };
         property(node.name != old->name, "name"); property(node.value != old->value, "value");
         property(node.enabled != old->enabled, "enabled"); property(node.readOnly != old->readOnly, "readOnly");
         property(node.checked != old->checked, "checked"); property(node.selected != old->selected, "selected");
@@ -3783,9 +3787,10 @@ void detail::UiState::semanticDiff() {
         property(node.writingMode != old->writingMode, "writingMode"); property(node.verticalDigits != old->verticalDigits, "verticalDigits");
         if (node.role == Role::textField && node.value != old->value)
             changes.push_back({.kind = SemanticEventKind::textChanged, .ref = node.ref,
-                               .property = {}, .hidden = {}, .textChange = SemanticTextChange{old->value, node.value}});
+                               .property = {}, .hidden = {}, .textChange = SemanticTextChange{old->value, node.value},
+                               .instance = node.instance});
         if (node.textSelection && old->textSelection && (node.textSelection->anchor != old->textSelection->anchor || node.textSelection->caret != old->textSelection->caret))
-            emit(SemanticEventKind::textSelectionChanged, node.ref);
+            emit(SemanticEventKind::textSelectionChanged, node.ref, {}, {}, node.instance);
         if (node.bounds != old->bounds) emit(SemanticEventKind::layoutChanged, {});
     }
     semanticBefore_.clear();

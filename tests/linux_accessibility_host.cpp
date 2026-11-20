@@ -76,6 +76,7 @@ int runFixture(std::string mode) {
         {{{"one"}, u"One"}, {{"two"}, u"Two"}, {{"disabled"}, u"Disabled", false}}).value.value();
     const auto subscribe = [](auto) { return [] {}; };
     std::u16string saved = injectFailure ? u"Retained draft" : u"A\U0001F642\u4e2d";
+    std::u16string replacementValue = u"New";
     bool checked = false;
     int volume = 2;
     std::optional<OptionValue> choice{{"one"}};
@@ -90,6 +91,20 @@ int runFixture(std::string mode) {
         !dropdown.connectImmediate([&](const auto& change) { choice = change.value; return Result{}; }))
         return 1;
     auto queuedChanges = [&]() -> Result {
+        if (mode == "queued-replacement") {
+            if (auto changed = text.setValue(u"Old edit"); !changed) return changed;
+            if (auto removed = text.remove(); !removed) return removed;
+            auto replacement = ui.addTextField({.id = id("text"), .label = u"Replacement", .value = replacementValue});
+            if (!replacement) return {replacement.status, replacement.message};
+            text = *replacement;
+            if (auto connected = text.connectSource({[&] { return replacementValue; }, subscribe}); !connected)
+                return connected;
+            if (auto connected = text.connectImmediate([&](const auto& change) {
+                replacementValue = change.value;
+                return Result{};
+            }); !connected) return connected;
+            return text.setValue(u"New!");
+        }
         if (mode == "queued-text") {
             const auto before = ui.semantics().text(id("text"));
             auto changed = text.setValue(u"A\U0001F642\u754c");
@@ -105,7 +120,7 @@ int runFixture(std::string mode) {
     };
     std::unique_ptr<GSource, decltype(&g_source_unref)> queuedSource(nullptr, g_source_unref);
     button.bind([&] {
-        if (mode == "queued-text" || mode == "queued-menu") {
+        if (mode == "queued-text" || mode == "queued-menu" || mode == "queued-replacement") {
             if (queuedSource) return Result{Status::busy, {}};
             // Run separate UI operations in one GLib dispatch, outside the
             // button action's outer operation, before the host delivers events.

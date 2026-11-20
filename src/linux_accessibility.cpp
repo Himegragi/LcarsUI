@@ -759,13 +759,14 @@ void LinuxAccessibility::Impl::observe(const SemanticEvent& event) {
         layoutPending = true;
         return;
     }
-    if (event.menuInstance) {
-        const auto id = idOf(NodeKey{event.ref, *event.menuInstance});
+    if (event.kind == SemanticEventKind::menuOpened || event.kind == SemanticEventKind::menuClosed) {
+        if (!event.instance) return;
+        const auto id = idOf(NodeKey{event.ref, *event.instance});
         state(id, "showing", event.kind == SemanticEventKind::menuOpened);
         return;
     }
     auto node = ui.semantics().get(event.ref);
-    if (!node) return;
+    if (!node || node->instance != event.instance) return;
     const auto id = std::optional{idOf(*node)};
     switch (event.kind) {
     case SemanticEventKind::focusChanged:

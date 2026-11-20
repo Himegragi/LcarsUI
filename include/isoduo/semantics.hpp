@@ -27,10 +27,11 @@ struct SemanticEvent {
     SemanticEventKind kind; NodeRef ref; std::string property;
     // Overlay visibility is captured at the transition, not at delivery time.
     std::optional<bool> hidden;
-    // Queued text and menu events keep their transition data even when the
-    // current snapshot has changed again or the menu has already closed.
+    // Text edits retain their before and after values until dispatch.
     std::optional<SemanticTextChange> textChange = {};
-    std::optional<std::uint64_t> menuInstance = {};
+    // The originating node for queued events. Structure and layout changes
+    // instead ask listeners to refresh the current tree.
+    std::optional<std::uint64_t> instance = {};
 };
 class Subscription {
 public:

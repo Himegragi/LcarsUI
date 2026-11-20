@@ -54,8 +54,11 @@ from `wayland-protocols` 1.31 or newer. On Ubuntu these packages are `libegl-dev
 `libx11-dev`, `libx11-xcb-dev`, `libxcb1-dev`, `libwayland-dev`,
 `libwayland-bin`, `wayland-protocols`, `libxkbcommon-dev`,
 `libfontconfig-dev`, `libglib2.0-dev`, and `libpango1.0-dev`.
-The Linux settings demo also needs GTK 3 development files (`libgtk-3-dev`).
-It uses Zenity when available and opens a GTK recovery dialog if Zenity fails.
+The Linux settings demo uses Zenity for renderer recovery. When GTK 3 development
+files (`libgtk-3-dev` on Ubuntu) are available at configure time, the build also
+produces `isoduo_settings_recovery_dialog`. Keep this optional executable beside
+the demo so it can open the recovery dialog if Zenity is unavailable or fails.
+A dirty draft stays open if neither prompt can run.
 
 The Linux host reads the desktop's animation preference at creation. GNOME
 provides enable-animations and reduced-motion settings. Xfce can provide the
@@ -122,7 +125,9 @@ Set `BACKEND=wayland` in GNOME Wayland or `BACKEND=x11` in Xfce Xorg.
   the selection and dropdown reports. Use Ctrl+Q to close and restore the
   original desktop scale.
 - **AT-SPI and renderer recovery.** With PyGObject and the AT-SPI typelib
-  installed, run the queued-event and recovery probes in each native session.
+  installed and the GTK helper built, run the queued-event and recovery probes in
+  each native session. The queued-event probe includes replacement of a text field
+  before AT-SPI receives its pending edits.
 
   ```sh
   /usr/bin/python3 tests/linux_accessibility_client.py build-linux/isoduo_linux_accessibility_host --queued-events

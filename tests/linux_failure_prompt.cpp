@@ -7,7 +7,6 @@ using namespace isoduo;
 using test::check;
 
 int main(int argc, char** argv) {
-    if (auto status = settingsDemo::runLinuxFailurePromptFallback(argc, argv)) return *status;
     const bool failSave = argc == 2 && std::string_view(argv[1]) == "save-error";
     try {
         const auto& appearance = webAppearance();

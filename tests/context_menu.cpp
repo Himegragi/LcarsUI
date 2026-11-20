@@ -761,7 +761,7 @@ void rapidMenuTransitionsReachOneSubscriberInOrder() {
         if (event.ref.id != menuId || (event.kind != SemanticEventKind::menuOpened && event.kind != SemanticEventKind::menuClosed)) return;
         onOwnerThread &= std::this_thread::get_id() == owner;
         transitions.emplace_back(event.kind, ++sequence);
-        instances.push_back(event.menuInstance.value_or(0));
+        instances.push_back(event.instance.value_or(0));
     });
     for (int round = 0; round < 2; ++round) {
         check(bool(ui.openContextMenu(field.handle)), "open the context menu");
@@ -801,6 +801,27 @@ void queuedTextEventsRetainBothEdits() {
     const auto current = tree.get({"note"});
     check(current->value == original && current->textRevision > revision, "restoring text still invalidates the old revision");
 }
+
+void queuedTextEventsIdentifyOriginalFields() {
+    Ui ui;
+    auto original = addField(ui, "note", u"Original");
+    auto& tree = ui.semantics();
+    const auto first = tree.get({"note"})->instance;
+    std::vector<std::optional<std::uint64_t>> instances;
+    auto subscription = tree.subscribe([&](const SemanticEvent& event) {
+        if (event.kind == SemanticEventKind::textChanged && event.ref.id == "note")
+            instances.push_back(event.instance);
+    });
+    check(bool(original.handle.setValue(u"Old edit")), "queue an edit to the original field");
+    check(bool(original.handle.remove()), "remove the original field");
+    auto replacement = addField(ui, "note", u"New");
+    const auto second = tree.get({"note"})->instance;
+    check(first != second, "the replacement has its own instance");
+    check(bool(replacement.handle.setValue(u"New!")), "queue an edit to the replacement field");
+    tree.dispatchEvents();
+    check(instances == std::vector<std::optional<std::uint64_t>>{first, second},
+          "each pending edit identifies the field that generated it");
+}
 }
 
 int main() {
@@ -821,6 +842,7 @@ int main() {
         {"semantic events announce opening, focus and closing", semanticEventsAnnounceOpeningFocusAndClosing},
         {"rapid menu transitions reach one subscriber in order", rapidMenuTransitionsReachOneSubscriberInOrder},
         {"queued text events retain both edits", queuedTextEventsRetainBothEdits},
+        {"queued text events identify original fields", queuedTextEventsIdentifyOriginalFields},
         {"text field menu has the Windows edit items", textFieldMenuHasTheWindowsEditItems},
         {"items are unavailable when they cannot act", itemsAreUnavailableWhenTheyCannotAct},
         {"read-only field only copies and selects", readOnlyFieldOnlyCopiesAndSelects},
