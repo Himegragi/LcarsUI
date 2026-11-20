@@ -66,7 +66,9 @@ public:
     // The one member any thread may call. Queues work to run once on the desktop thread inside run(), after
     // the native input already read, in the order posted; it wakes an idle host. Returns notFound once the
     // host has closed: work that has not run by then is destroyed without running. The caller keeps the
-    // Desktop alive while it posts.
+    // Desktop alive while it posts. On Windows the work runs from the window procedure, so it can also run inside
+    // a nested native message loop on the desktop thread, such as a modal dialog the application shows; on Linux
+    // it runs only from run()'s own loop.
     Result post(std::function<void()> work);
     bool rendererFailed() const;
     RendererCapabilities capabilities() const;

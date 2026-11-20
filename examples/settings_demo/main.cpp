@@ -146,6 +146,14 @@ int main(int argc, char** argv) {
 #endif
         auto creation = isoduo::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
         if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
+#ifndef _WIN32
+        // Declared after creation, so it stops the prompt before the Desktop is destroyed on every exit path,
+        // including an exception from run(): the prompt's worker must not post to a destroyed Desktop.
+        struct StopPrompt {
+            settingsDemo::LinuxFailurePrompt& prompt;
+            ~StopPrompt() { prompt.stop(); }
+        } stopPrompt{prompt};
+#endif
         demo.onClose([&] { creation.desktop->close(); });
         demo.onDirtyChanged([&](bool dirty) { creation.desktop->setTitle((dirty ? u"*" : u"") + options.title); });
         if (loaded.kind == settingsDemo::LoadKind::corrupt || loaded.kind == settingsDemo::LoadKind::unreadable) {

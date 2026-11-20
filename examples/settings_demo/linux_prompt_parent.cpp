@@ -1,45 +1,38 @@
 #include "linux_prompt_parent.hpp"
-#include <X11/Xatom.h>
-#include <X11/Xlib.h>
-#include <X11/Xutil.h>
+#include <xcb/xcb.h>
+#include <xcb/xproto.h>
 #include <sys/wait.h>
 #include <cerrno>
 #include <chrono>
+#include <cstdint>
+#include <cstdlib>
+#include <cstring>
 #include <memory>
 #include <thread>
 #include <vector>
 
+// Uses XCB rather than Xlib: an X error, such as a listed window closing before its properties are read, comes
+// back with that one reply instead of reaching Xlib's process-wide error handler, which exits the process.
 namespace settingsDemo {
 namespace {
-std::vector<Window> managedWindows(Display* display) {
-    const Atom list = XInternAtom(display, "_NET_CLIENT_LIST", True);
-    std::vector<Window> windows;
-    if (list == None) return windows;
-    Atom type = None;
-    int format = 0;
-    unsigned long count = 0, remaining = 0;
-    unsigned char* data = nullptr;
-    if (XGetWindowProperty(display, DefaultRootWindow(display), list, 0, 4096, False, XA_WINDOW, &type, &format,
-                           &count, &remaining, &data) == Success && data && type == XA_WINDOW && format == 32) {
-        const auto* ids = reinterpret_cast<const unsigned long*>(data);
-        windows.assign(ids, ids + count);
-    }
-    if (data) XFree(data);
-    return windows;
+using Connection = std::unique_ptr<xcb_connection_t, decltype(&xcb_disconnect)>;
+template <class T> using Reply = std::unique_ptr<T, decltype(&std::free)>;
+
+xcb_atom_t existingAtom(xcb_connection_t* connection, const char* name) {
+    const auto cookie = xcb_intern_atom(connection, true, static_cast<std::uint16_t>(std::strlen(name)), name);
+    Reply<xcb_intern_atom_reply_t> reply(xcb_intern_atom_reply(connection, cookie, nullptr), std::free);
+    return reply ? reply->atom : XCB_ATOM_NONE;
 }
-bool ownedBy(Display* display, Window window, pid_t child) {
-    const Atom pid = XInternAtom(display, "_NET_WM_PID", True);
-    if (pid == None) return false;
-    Atom type = None;
-    int format = 0;
-    unsigned long count = 0, remaining = 0;
-    unsigned char* data = nullptr;
-    bool match = false;
-    if (XGetWindowProperty(display, window, pid, 0, 1, False, XA_CARDINAL, &type, &format, &count, &remaining,
-                           &data) == Success && data && type == XA_CARDINAL && format == 32 && count == 1)
-        match = static_cast<pid_t>(*reinterpret_cast<const unsigned long*>(data)) == child;
-    if (data) XFree(data);
-    return match;
+// An empty result when the property is missing, has another shape, or the window is gone.
+std::vector<std::uint32_t> cardinals(xcb_connection_t* connection, xcb_window_t window, xcb_atom_t property,
+                                     xcb_atom_t type, std::uint32_t maxCount) {
+    const auto cookie = xcb_get_property(connection, false, window, property, type, 0, maxCount);
+    xcb_generic_error_t* rawError = nullptr;
+    Reply<xcb_get_property_reply_t> reply(xcb_get_property_reply(connection, cookie, &rawError), std::free);
+    Reply<xcb_generic_error_t> error(rawError, std::free);
+    if (error || !reply || reply->type != type || reply->format != 32) return {};
+    const auto* values = static_cast<const std::uint32_t*>(xcb_get_property_value(reply.get()));
+    return {values, values + xcb_get_property_value_length(reply.get()) / 4};
 }
 // True while the child runs. The child is not reaped here (WNOWAIT); ECHILD means GLib already reaped it.
 bool running(pid_t child) {
@@ -50,15 +43,28 @@ bool running(pid_t child) {
 }
 
 bool attachPromptToParent(pid_t child, unsigned long parent, int timeoutMs) {
-    std::unique_ptr<Display, decltype(&XCloseDisplay)> display(XOpenDisplay(nullptr), XCloseDisplay);
-    if (!display || !parent) return false;
+    int screenNumber = 0;
+    Connection connection(xcb_connect(nullptr, &screenNumber), xcb_disconnect);
+    if (!parent || xcb_connection_has_error(connection.get())) return false;
+    auto screens = xcb_setup_roots_iterator(xcb_get_setup(connection.get()));
+    for (int i = 0; i < screenNumber && screens.rem; ++i) xcb_screen_next(&screens);
+    if (!screens.rem) return false;
+    const auto root = screens.data->root;
+    const auto clientList = existingAtom(connection.get(), "_NET_CLIENT_LIST");
+    const auto pidAtom = existingAtom(connection.get(), "_NET_WM_PID");
+    if (clientList == XCB_ATOM_NONE || pidAtom == XCB_ATOM_NONE) return false;
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
     while (std::chrono::steady_clock::now() < deadline && running(child)) {
-        for (auto window : managedWindows(display.get())) {
-            if (!ownedBy(display.get(), window, child)) continue;
-            XSetTransientForHint(display.get(), window, static_cast<Window>(parent));
-            XSync(display.get(), False);
-            return true;
+        if (xcb_connection_has_error(connection.get())) return false;
+        for (auto window : cardinals(connection.get(), root, clientList, XCB_ATOM_WINDOW, 4096)) {
+            const auto pid = cardinals(connection.get(), window, pidAtom, XCB_ATOM_CARDINAL, 1);
+            if (pid.size() != 1 || static_cast<pid_t>(pid[0]) != child) continue;
+            const auto owner = static_cast<xcb_window_t>(parent);
+            const auto cookie = xcb_change_property_checked(connection.get(), XCB_PROP_MODE_REPLACE, window,
+                                                            XCB_ATOM_WM_TRANSIENT_FOR, XCB_ATOM_WINDOW, 32, 1, &owner);
+            // The prompt may close between the lookup and this request; then there is nothing left to attach.
+            Reply<xcb_generic_error_t> error(xcb_request_check(connection.get(), cookie), std::free);
+            return !error;
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(40));
     }

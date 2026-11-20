@@ -35,7 +35,7 @@ std::optional<PointerMenuTarget> pointerMenuTarget(UiState& ui, const Frame& fra
     const auto* hit = frame.hit(x, y);
     std::optional<PointerMenuTarget> target;
     if (hit && !hit->dropdownPanel && !hit->tooltip) target = PointerMenuTarget{hit->id, hit->kind, frame.optionAt(*hit, x, y)};
-    // Closing a popup can arrange the frame again, so hit is not used past this point.
+    // Copy what the menu needs before closing the popup, so the target does not depend on frame storage.
     if (!hit || !hit->dropdownPanel) ui.closePopup();
     return target;
 }
