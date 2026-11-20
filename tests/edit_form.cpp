@@ -1443,7 +1443,10 @@ void pagesKeepIndependentDraftsHistoryAndScroll() {
     test::FakeMeasure measure;
     h.name.setValue(u"a very long draft that needs horizontal scrolling in a narrow field");
     h.name.focus(); h.name.select(66, 66);
-    h.longText.invoke();
+    bool frameRequested = false;
+    detail::access(form.ui).onInvalidate([&] { frameRequested = true; });
+    check(bool(h.longText.invoke()) && frameRequested, "Expanding the introduction requests a frame");
+    detail::access(form.ui).onInvalidate({});
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll, ids.name);
     auto offset = frame.find(h.name)->offset;
     form.scroll.offset = frame.maximum;

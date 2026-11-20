@@ -95,9 +95,12 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
     handles.title.connectSource([this, titleId, titleText] {
         return clipPaddingId_ == titleId ? clipPaddingText_ : titleText;
     });
-    handles.intro.connectSource([this] {
+    handles.intro.connectSource({[this] {
         return clipPaddingId_ == ids_.intro ? clipPaddingText_ : (longIntro_ ? longIntro : shortIntro);
-    });
+    }, [this](std::function<void()> changed) {
+        introChanged_ = std::move(changed);
+        return [this] { introChanged_ = {}; };
+    }});
     handles.state.connectSource([this] {
         std::u16string state = mode_ == Mode::readOnly ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
         if (handles.name.describe()->invalid) state += u"\u30fb\u540d\u7a31\u6709\u932f\u8aa4";
@@ -138,7 +141,11 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         regionEmpty_ = !regionEmpty_;
         return handles.region.setItems(regionEmpty_ ? std::vector<OptionItem>{} : regions());
     });
-    bindAction(handles.longText, [this] { longIntro_ = !longIntro_; return Result{}; });
+    bindAction(handles.longText, [this] {
+        longIntro_ = !longIntro_;
+        if (introChanged_) introChanged_();
+        return Result{};
+    });
     bindAction(handles.reset, [this] { return reset(); });
     bindAction(handles.noticesLatest, [this] { auto result = handles.notices.useLatest(); refreshConflict(); return result; });
     bindAction(handles.modeLatest, [this] { auto result = handles.mode.useLatest(); refreshConflict(); return result; });
@@ -365,10 +372,15 @@ Result Form::setClipPadding(LabelHandle label, std::u16string text) {
     if (id != handles.title.describe()->id && id != handles.intro.describe()->id &&
         (!pages_ || (id != handles.v03Title.describe()->id && id != handles.dialogResult.describe()->id && id != handles.v04Title.describe()->id)))
         return {Status::invalidValue, u"Unknown clipping fixture label"};
-    clipPaddingId_ = std::move(id); clipPaddingText_ = std::move(text); return {};
+    const bool affectsIntro = clipPaddingId_ == ids_.intro || id == ids_.intro;
+    clipPaddingId_ = std::move(id); clipPaddingText_ = std::move(text);
+    if (affectsIntro && introChanged_) introChanged_();
+    return {};
 }
 void Form::clearClipPadding() {
+    const bool affectsIntro = clipPaddingId_ == ids_.intro;
     clipPaddingId_.clear(); clipPaddingText_.clear();
+    if (affectsIntro && introChanged_) introChanged_();
     if (list) list->clearClipPadding();
 }
 
@@ -454,6 +466,7 @@ void Form::setMode(Mode mode) {
 Result Form::reset() {
     setMode(Mode::normal);
     longIntro_ = false;
+    if (introChanged_) introChanged_();
     updateSource(initialName);
     noticesApplied_ = true; modeApplied_ = OptionValue{"normal"}; regionApplied_ = OptionValue{"north"}; volumeApplied_ = 40;
     regionEmpty_ = false; handles.region.setItems(regions());

@@ -47,6 +47,7 @@ private:
     std::vector<std::pair<isoduo::OptionValue, std::u16string>> fontChoices_;
     bool pages_ = false;
     std::array<int, 4> pageOffsets_{};
+    std::function<void()> introChanged_;
     std::function<void()> sourceChanged_, noticesChanged_, modeChanged_, volumeChanged_, regionChanged_, progressChanged_, fontChanged_, textSizeChanged_, darkChanged_, compactChanged_, justifyAlignChanged_, justifyMethodChanged_;
 public:
     explicit Form(Ids ids = defaultIds(), bool pages = false,
