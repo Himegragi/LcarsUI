@@ -25,6 +25,16 @@ constexpr unsigned app = 0, window = 1;
 constexpr auto objectEvents = "org.a11y.atspi.Event.Object";
 constexpr auto windowEvents = "org.a11y.atspi.Event.Window";
 
+std::string justification(TextAlign align, bool asLeft) {
+    switch (align) {
+    case TextAlign::left: return "left";
+    case TextAlign::center: return "center";
+    case TextAlign::right: return "right";
+    case TextAlign::justify: case TextAlign::distribute: return asLeft ? "left" : "fill";
+    }
+    return "left";
+}
+
 struct ContextScope {
     GMainContext* context;
     explicit ContextScope(GMainContext* c) : context(c) { g_main_context_push_thread_default(context); }
@@ -554,6 +564,9 @@ GVariant* LinuxAccessibility::Impl::accessible(unsigned id, const NodeSnapshot* 
             g_variant_builder_add(&values, "{ss}", "id", wireString(node->ref.id).c_str());
             if (node->ref.item)
                 g_variant_builder_add(&values, "{ss}", "item-id", wireString(node->ref.item->id).c_str());
+            if (node->role == Role::label)
+                g_variant_builder_add(&values, "{ss}", "justification",
+                    justification(node->textAlign, ui.presentation().justifyAsLeft).c_str());
             if (node->selectionRequired)
                 g_variant_builder_add(&values, "{ss}", "selection-required", "true");
             if (!node->error.empty())
@@ -1020,15 +1033,6 @@ GVariant* attributes(const TextAttributes& values) {
     g_variant_builder_init(&result, G_VARIANT_TYPE("a{ss}"));
     for (auto& [name, value] : values) g_variant_builder_add(&result, "{ss}", name.c_str(), value.c_str());
     return g_variant_builder_end(&result);
-}
-std::string justification(TextAlign align, bool asLeft) {
-    switch (align) {
-    case TextAlign::left: return "left";
-    case TextAlign::center: return "center";
-    case TextAlign::right: return "right";
-    case TextAlign::justify: case TextAlign::distribute: return asLeft ? "left" : "fill";
-    }
-    return "left";
 }
 }
 
