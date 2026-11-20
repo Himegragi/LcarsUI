@@ -1,5 +1,6 @@
 #include "isoduo/desktop.hpp"
 #include "isoduo/semantics.hpp"
+#include "core_internal.hpp"
 #include "desktop_linux_test.hpp"
 #include "linux_accessibility.hpp"
 #include "linux_window.hpp"
@@ -88,7 +89,35 @@ int runFixture(std::string mode) {
         !dropdown.connectSource({[&] { return choice; }, subscribe}) ||
         !dropdown.connectImmediate([&](const auto& change) { choice = change.value; return Result{}; }))
         return 1;
+    auto queuedChanges = [&]() -> Result {
+        if (mode == "queued-text") {
+            const auto before = ui.semantics().text(id("text"));
+            auto changed = text.setValue(u"A\U0001F642\u754c");
+            return changed ? text.setValue(*before) : changed;
+        }
+        if (mode == "queued-menu") {
+            for (int round = 0; round < 2; ++round) {
+                if (auto opened = ui.openContextMenu(text); !opened) return opened;
+                if (auto closed = detail::access(ui).keyDown({.key = Key::escape}); !closed) return closed;
+            }
+        }
+        return {};
+    };
+    std::unique_ptr<GSource, decltype(&g_source_unref)> queuedSource(nullptr, g_source_unref);
     button.bind([&] {
+        if (mode == "queued-text" || mode == "queued-menu") {
+            if (queuedSource) return Result{Status::busy, {}};
+            // Run separate UI operations in one GLib dispatch, outside the
+            // button action's outer operation, before the host delivers events.
+            queuedSource.reset(g_idle_source_new());
+            g_source_set_callback(queuedSource.get(), [](gpointer data) -> gboolean {
+                if (!(*static_cast<decltype(queuedChanges)*>(data))())
+                    std::cerr << "Queued fixture operation failed\n";
+                return G_SOURCE_REMOVE;
+            }, &queuedChanges, nullptr);
+            g_source_attach(queuedSource.get(), detail::LinuxPreferenceMonitor::context());
+            return Result{};
+        }
         if (injectFailure) {
             hooks.contextLostAtFrame = 1;
             auto settings = ui.presentation();
@@ -163,7 +192,9 @@ int runFixture(std::string mode) {
             ui.semantics().text(id("text")).value != u"Local") return 5;
     }
     std::osyncstream(std::cout) << "Ready " << mode << std::endl;
-    return host->run().status == Status::ok ? 0 : 6;
+    auto result = host->run();
+    if (queuedSource) g_source_destroy(queuedSource.get());
+    return result.status == Status::ok ? 0 : 6;
 }
 }
 

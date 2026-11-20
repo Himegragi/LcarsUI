@@ -234,6 +234,14 @@ public:
 Result commandKeyDown(UiState& ui, KeyPress key);
 void commandPointerDown(UiState& ui);
 const ComponentType& componentType(ComponentKind kind);
+inline bool revealsRowCursor(ComponentKind kind, Key key) {
+    switch (key) {
+    case Key::up: case Key::down: case Key::left: case Key::right: case Key::home: case Key::end:
+        return componentType(kind).hasRowCursor();
+    default:
+        return false;
+    }
+}
 // The enabled option keyboard input acts on inside a component, whether or not it currently has focus.
 std::optional<OptionValue> focusOption(const ComponentSnapshot& snapshot);
 // The same, or null for a ComponentKind no type is registered for (the one place a stray ComponentKind value is tolerated).

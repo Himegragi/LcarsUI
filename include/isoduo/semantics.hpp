@@ -19,10 +19,18 @@ inline std::optional<std::string> menuTargetId(std::string_view node) {
     if (node.size() <= suffix.size() || node.substr(node.size() - suffix.size()) != suffix) return std::nullopt;
     return std::string(node.substr(0, node.size() - suffix.size()));
 }
+struct SemanticTextChange {
+    std::u16string before, after;
+    bool operator==(const SemanticTextChange&) const = default;
+};
 struct SemanticEvent {
     SemanticEventKind kind; NodeRef ref; std::string property;
     // Overlay visibility is captured at the transition, not at delivery time.
     std::optional<bool> hidden;
+    // Queued text and menu events keep their transition data even when the
+    // current snapshot has changed again or the menu has already closed.
+    std::optional<SemanticTextChange> textChange = {};
+    std::optional<std::uint64_t> menuInstance = {};
 };
 class Subscription {
 public:

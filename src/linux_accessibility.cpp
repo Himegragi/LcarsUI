@@ -168,7 +168,6 @@ struct LinuxAccessibility::Impl {
     std::map<unsigned, NodeKey> nodes;
     std::map<unsigned, std::vector<unsigned>> tree;
     std::map<unsigned, unsigned> parents;
-    std::map<unsigned, std::u16string> priorText;
     struct GeometryState {
         std::optional<Rect> bounds;
         bool focusable = false;
@@ -224,12 +223,12 @@ struct LinuxAccessibility::Impl {
             child != "n" + std::to_string(id)) return {};
         return id;
     }
-    unsigned idOf(const NodeSnapshot& node) {
-        NodeKey key{node.ref, node.instance};
+    unsigned idOf(NodeKey key) {
         const auto [where, inserted] = ids.try_emplace(key, nextId);
         if (inserted) nodes.emplace(nextId++, std::move(key));
         return where->second;
     }
+    unsigned idOf(const NodeSnapshot& node) { return idOf(NodeKey{node.ref, node.instance}); }
     Query<NodeSnapshot> snapshot(unsigned id) {
         auto entry = nodes.find(id);
         if (entry == nodes.end()) return {Status::notFound, {}, {}};
@@ -396,7 +395,7 @@ struct LinuxAccessibility::Impl {
               std::map<unsigned, unsigned>& owners);
     void refreshTree(bool notify);
     void observe(const SemanticEvent&);
-    void observeText(unsigned id, std::u16string_view value);
+    void observeText(unsigned id, const SemanticTextChange& change);
     void flushLayout();
     void focus(std::optional<unsigned> id);
     void signal(unsigned id, const char* iface, const char* member, const char* detail = "",
@@ -706,7 +705,6 @@ void LinuxAccessibility::Impl::walk(unsigned id, const NodeRef& ref,
         const auto childId = idOf(*node);
         if (!owners.emplace(childId, id).second) continue;
         next[id].push_back(childId);
-        if (node->role == Role::textField) priorText.try_emplace(childId, node->value);
         if (!child.item) walk(childId, child, next, owners);
     }
 }
@@ -761,24 +759,20 @@ void LinuxAccessibility::Impl::observe(const SemanticEvent& event) {
         layoutPending = true;
         return;
     }
-    auto node = ui.semantics().get(event.ref);
-    auto id = node ? std::optional{idOf(*node)} : std::nullopt;
-    if (!id && event.kind == SemanticEventKind::menuClosed) {
-        for (auto it = nodes.rbegin(); it != nodes.rend(); ++it)
-            if (it->second.ref == event.ref) { id = it->first; break; }
-        if (id) state(*id, "showing", false);
+    if (event.menuInstance) {
+        const auto id = idOf(NodeKey{event.ref, *event.menuInstance});
+        state(id, "showing", event.kind == SemanticEventKind::menuOpened);
         return;
     }
-    if (!id) return;
+    auto node = ui.semantics().get(event.ref);
+    if (!node) return;
+    const auto id = std::optional{idOf(*node)};
     switch (event.kind) {
     case SemanticEventKind::focusChanged:
         focus(id);
         break;
-    case SemanticEventKind::menuOpened:
-        state(*id, "showing", true);
-        break;
     case SemanticEventKind::textChanged:
-        observeText(*id, node->value);
+        if (event.textChange) observeText(*id, *event.textChange);
         break;
     case SemanticEventKind::textSelectionChanged: {
         signal(*id, objectEvents, "TextSelectionChanged");
@@ -850,7 +844,6 @@ void LinuxAccessibility::Impl::flushLayout() {
         const auto node = snapshot(id);
         if (!node) {
             ids.erase(it->second);
-            priorText.erase(id);
             priorGeometry.erase(id);
             it = nodes.erase(it);
             continue;
@@ -1036,8 +1029,8 @@ GVariant* attributes(const TextAttributes& values) {
 }
 }
 
-void LinuxAccessibility::Impl::observeText(unsigned id, std::u16string_view value) {
-    auto& old = priorText[id];
+void LinuxAccessibility::Impl::observeText(unsigned id, const SemanticTextChange& edit) {
+    const auto& [old, value] = edit;
     const TextOffsets before(old), after(value);
     auto scalar = [](std::u16string_view text, const TextOffsets& offsets, int index) {
         return text.substr(offsets.units(index), offsets.units(index + 1) - offsets.units(index));
@@ -1058,7 +1051,6 @@ void LinuxAccessibility::Impl::observeText(unsigned id, std::u16string_view valu
     };
     change("delete", old, before, lastBefore);
     change("insert", value, after, lastAfter);
-    old = value;
 }
 
 GVariant* LinuxAccessibility::Impl::text(const NodeSnapshot& node, unsigned id, std::string_view name, GVariant* args) {

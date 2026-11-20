@@ -3736,9 +3736,12 @@ void detail::UiState::semanticDiff() {
         if (auto target = menuTargetId(ref.id)) return NodeRef{*target};
         return ref.item ? NodeRef{ref.id} : NodeRef{};
     };
-    for (const auto& old : semanticBefore_) if (!find(after, old.ref)) {
-        if (old.role == Role::menu) emit(SemanticEventKind::menuClosed, old.ref);
-        emit(SemanticEventKind::structureChanged, ownerOf(old.ref));
+    for (const auto& old : semanticBefore_) {
+        const auto* current = find(after, old.ref);
+        if (old.role == Role::menu && (!current || old.instance != current->instance))
+            changes.push_back({.kind = SemanticEventKind::menuClosed, .ref = old.ref,
+                               .property = {}, .hidden = {}, .menuInstance = old.instance});
+        if (!current) emit(SemanticEventKind::structureChanged, ownerOf(old.ref));
     }
     for (const auto& node : after) if (!node.ref.item) {
         std::vector<NodeRef> beforeItems, afterItems;
@@ -3748,8 +3751,11 @@ void detail::UiState::semanticDiff() {
     }
     for (const auto& node : after) {
         auto old = find(semanticBefore_, node.ref);
-        if (!old) {
-            if (node.role == Role::menu) emit(SemanticEventKind::menuOpened, node.ref);
+        const bool newMenu = node.role == Role::menu && (!old || node.instance != old->instance);
+        if (newMenu)
+            changes.push_back({.kind = SemanticEventKind::menuOpened, .ref = node.ref,
+                               .property = {}, .hidden = {}, .menuInstance = node.instance});
+        if (!old || newMenu) {
             emit(SemanticEventKind::structureChanged, node.role == Role::menu ? ownerOf(node.ref) : node.ref.item ? NodeRef{node.ref.id} : NodeRef{});
             continue;
         }
@@ -3775,7 +3781,9 @@ void detail::UiState::semanticDiff() {
             property(node.scroll->visibleLines != old->scroll->visibleLines, "visibleLines");
         }
         property(node.writingMode != old->writingMode, "writingMode"); property(node.verticalDigits != old->verticalDigits, "verticalDigits");
-        if (node.role == Role::textField && node.value != old->value) emit(SemanticEventKind::textChanged, node.ref);
+        if (node.role == Role::textField && node.value != old->value)
+            changes.push_back({.kind = SemanticEventKind::textChanged, .ref = node.ref,
+                               .property = {}, .hidden = {}, .textChange = SemanticTextChange{old->value, node.value}});
         if (node.textSelection && old->textSelection && (node.textSelection->anchor != old->textSelection->anchor || node.textSelection->caret != old->textSelection->caret))
             emit(SemanticEventKind::textSelectionChanged, node.ref);
         if (node.bounds != old->bounds) emit(SemanticEventKind::layoutChanged, {});

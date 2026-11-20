@@ -54,7 +54,8 @@ from `wayland-protocols` 1.31 or newer. On Ubuntu these packages are `libegl-dev
 `libx11-dev`, `libx11-xcb-dev`, `libxcb1-dev`, `libwayland-dev`,
 `libwayland-bin`, `wayland-protocols`, `libxkbcommon-dev`,
 `libfontconfig-dev`, `libglib2.0-dev`, and `libpango1.0-dev`.
-Install `zenity` to use the Linux settings demo's renderer recovery dialogs.
+The Linux settings demo also needs GTK 3 development files (`libgtk-3-dev`).
+It uses Zenity when available and opens a GTK recovery dialog if Zenity fails.
 
 The Linux host reads the desktop's animation preference at creation. GNOME
 provides enable-animations and reduced-motion settings. Xfce can provide the
@@ -91,6 +92,42 @@ using the corresponding `wayland` or `x11` argument as `BACKEND`.
   failures, optional context capabilities, wrong-thread close and explicit
   renderer rebuild. Use a Wayland client trace for the surface commit and
   `xprop -id XID` for the X11 window.
+
+Run the following with `ISODUO_BUILD_TESTS=ON` from the repository root.
+Set `BACKEND=wayland` in GNOME Wayland or `BACKEND=x11` in Xfce Xorg.
+
+- **Clipboard.** Run `./build-linux/isoduo_linux_clipboard_native source` and
+  `./build-linux/isoduo_linux_clipboard_native target` in separate terminals.
+  Select all and copy in the source, then select all and paste in the target.
+  Compare the target's logged text and style span. Repeat with `plain` as the
+  target to check text-only paste, and with `large` as the source to check a
+  large transfer. Copy and paste in both directions with a desktop text editor
+  as the peer. The `richtext` CTest exercises delayed completion and stale
+  paste and cut admission.
+- **IME.** Run `./build-linux/isoduo_linux_text_geometry "$BACKEND" input`.
+  With the session's input method active, compose in the single-line field
+  and check candidate placement at the caret. Commit Traditional Chinese text
+  and use Ctrl+G to record the value and selection. Repeat with Escape during
+  composition and with a focus change before commit. Sample the original and
+  destination fields to check that cancellation preserves committed text and
+  that a commit applies once to the field that owns the composition. Repeat
+  in the multiline and styled fields.
+- **Scale and resize.** Run
+  `./build-linux/isoduo_linux_text_geometry "$BACKEND" input 640 720`.
+  At the session's original scale, click a character in the single-line field
+  and use Ctrl+G to record the caret. Use Ctrl+D to open the dropdown and
+  click an option. Repeat after resizing and at a different desktop scale,
+  moving the window between outputs if available. Compare the logged
+  `Frame` dimensions, effective scale, scroll bounds and hit positions with
+  the selection and dropdown reports. Use Ctrl+Q to close and restore the
+  original desktop scale.
+- **AT-SPI and renderer recovery.** With PyGObject and the AT-SPI typelib
+  installed, run the queued-event and recovery probes in each native session.
+
+  ```sh
+  /usr/bin/python3 tests/linux_accessibility_client.py build-linux/isoduo_linux_accessibility_host --queued-events
+  /usr/bin/python3 tests/linux_failure_prompt_client.py build-linux/isoduo_linux_failure_prompt
+  ```
 
 After changes to system font layout or desktop preference acquisition, check
 both native sessions with an installed family that has real bold and italic

@@ -986,8 +986,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         // Space runs a menu item; the character it also produces must not then type into the field.
         if (key.key == Key::space && detail::access(ui_).menuOpen()) dropSpaceChar_ = true;
         detail::access(ui_).keyDown(key);
-        if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && detail::componentType(focused->kind).hasRowCursor() &&
-            (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end))
+        if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused());
+            focused && detail::revealsRowCursor(focused->kind, key.key))
             reveal_ = focused->id;
         afterInput(before);
         return 0;

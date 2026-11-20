@@ -22,7 +22,7 @@ struct NativeEvent {
     };
     Kind kind;
     int x = 0, y = 0, amount = 0;
-    bool active = false;
+    bool focused = false, visible = false, shift = false;
     KeyPress key;
     std::u16string text;
     std::optional<std::uint32_t> inputSerial;

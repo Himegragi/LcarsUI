@@ -254,7 +254,7 @@ private:
         using Kind = NativeEvent::Kind;
         auto& event = pointerEvent(horizontal ? Kind::horizontalWheel : Kind::wheel);
         event.amount = amount;
-        event.active = modifier(XKB_MOD_NAME_SHIFT);
+        event.shift = modifier(XKB_MOD_NAME_SHIFT);
     }
     bool modifier(const char* name) const {
         return keyState_ && xkb_state_mod_name_is_active(keyState_, name, XKB_STATE_MODS_EFFECTIVE) > 0;
@@ -302,7 +302,7 @@ private:
     }
     void keyboardFocus(bool active) {
         if (!active) repeat_.reset();
-        events.emplace_back(NativeEvent::Kind::focus).active = active;
+        events.emplace_back(NativeEvent::Kind::focus).focused = active;
         clipboard_->focused(active);
     }
     void changeSeat(uint32_t caps) {
@@ -427,7 +427,7 @@ const xdg_surface_listener WaylandWindow::shellSurfaceListener_{
             if (w.suspended_ != w.pendingSuspended_) {
                 w.suspended_ = w.pendingSuspended_;
                 if (w.suspended_) w.discardFrame();
-                w.events.emplace_back(NativeEvent::Kind::visibility).active = !w.suspended_;
+                w.events.emplace_back(NativeEvent::Kind::visibility).visible = !w.suspended_;
             }
             w.updateGeometry();
         }
@@ -543,7 +543,7 @@ const wl_pointer_listener WaylandWindow::pointerListener_{
             const auto kind = button == BTN_LEFT ? (pressed ? Kind::press : Kind::release)
                                                  : (pressed ? Kind::rightPress : Kind::rightRelease);
             auto& event = w.pointerEvent(kind);
-            event.active = w.modifier(XKB_MOD_NAME_SHIFT);
+            event.shift = w.modifier(XKB_MOD_NAME_SHIFT);
             event.inputSerial = serial;
         },
         [](void* data, wl_pointer*, uint32_t, uint32_t axis, wl_fixed_t value) {

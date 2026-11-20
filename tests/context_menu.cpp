@@ -755,15 +755,17 @@ void rapidMenuTransitionsReachOneSubscriberInOrder() {
     auto& tree = ui.semantics();
     const auto owner = std::this_thread::get_id();
     std::vector<std::pair<SemanticEventKind, int>> transitions;
+    std::vector<std::uint64_t> instances;
     bool onOwnerThread = true;
     auto subscription = tree.subscribe([&, menuId = menuNodeId("note"), sequence = 0](const SemanticEvent& event) mutable {
         if (event.ref.id != menuId || (event.kind != SemanticEventKind::menuOpened && event.kind != SemanticEventKind::menuClosed)) return;
         onOwnerThread &= std::this_thread::get_id() == owner;
         transitions.emplace_back(event.kind, ++sequence);
+        instances.push_back(event.menuInstance.value_or(0));
     });
     for (int round = 0; round < 2; ++round) {
         check(bool(ui.openContextMenu(field.handle)), "open the context menu");
-        check(bool(ui.closeContextMenu()), "close the context menu");
+        check(bool(press(ui, Key::escape)), "close the context menu with Escape");
     }
     std::thread worker([&] { tree.dispatchEvents(); });
     worker.join();
@@ -773,6 +775,31 @@ void rapidMenuTransitionsReachOneSubscriberInOrder() {
     check(onOwnerThread && transitions == std::vector<std::pair<Kind, int>>{
               {Kind::menuOpened, 1}, {Kind::menuClosed, 2}, {Kind::menuOpened, 3}, {Kind::menuClosed, 4}},
           "one subscriber receives each queued transition in order and retains its callback state");
+    check(instances.size() == 4 && instances[0] && instances[2] &&
+          instances[0] == instances[1] && instances[2] == instances[3] && instances[0] != instances[2],
+          "opening and closing identify the same menu instance across dispatch");
+}
+
+void queuedTextEventsRetainBothEdits() {
+    Ui ui;
+    constexpr auto original = u"A\U0001F642\u4e2d";
+    constexpr auto changed = u"A\U0001F642\u754c";
+    auto field = addField(ui, "note", original);
+    auto& tree = ui.semantics();
+    tree.dispatchEvents();
+    const auto revision = tree.get({"note"})->textRevision;
+    std::vector<SemanticTextChange> edits;
+    auto subscription = tree.subscribe([&](const SemanticEvent& event) {
+        if (event.kind == SemanticEventKind::textChanged && event.ref.id == "note" && event.textChange)
+            edits.push_back(*event.textChange);
+    });
+    check(bool(field.handle.setValue(changed)) && bool(field.handle.setValue(original)), "replace and restore text");
+    check(edits.empty(), "text events are queued");
+    tree.dispatchEvents();
+    check(edits == std::vector<SemanticTextChange>{{original, changed}, {changed, original}},
+          "queued events describe both edits in order");
+    const auto current = tree.get({"note"});
+    check(current->value == original && current->textRevision > revision, "restoring text still invalidates the old revision");
 }
 }
 
@@ -793,6 +820,7 @@ int main() {
         {"semantic tree shows menu and items while open", semanticTreeShowsMenuAndItemsWhileOpen},
         {"semantic events announce opening, focus and closing", semanticEventsAnnounceOpeningFocusAndClosing},
         {"rapid menu transitions reach one subscriber in order", rapidMenuTransitionsReachOneSubscriberInOrder},
+        {"queued text events retain both edits", queuedTextEventsRetainBothEdits},
         {"text field menu has the Windows edit items", textFieldMenuHasTheWindowsEditItems},
         {"items are unavailable when they cannot act", itemsAreUnavailableWhenTheyCannotAct},
         {"read-only field only copies and selects", readOnlyFieldOnlyCopiesAndSelects},

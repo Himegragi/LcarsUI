@@ -213,10 +213,10 @@ private:
             [[fallthrough]];
         case UnmapNotify:
             mapped_ = event.type == MapNotify;
-            events.emplace_back(Kind::visibility).active = mapped_;
+            events.emplace_back(Kind::visibility).visible = mapped_;
             break;
         case VisibilityNotify:
-            events.emplace_back(Kind::visibility).active = event.xvisibility.state != VisibilityFullyObscured;
+            events.emplace_back(Kind::visibility).visible = event.xvisibility.state != VisibilityFullyObscured;
             break;
         case ClientMessage:
             if (event.xclient.message_type == protocols_ && event.xclient.format == 32 &&
@@ -224,7 +224,7 @@ private:
             break;
         case FocusIn:
         case FocusOut:
-            events.emplace_back(Kind::focus).active = event.type == FocusIn;
+            events.emplace_back(Kind::focus).focused = event.type == FocusIn;
             readFocusKeymap_ = event.type == FocusIn;
             if (!readFocusKeymap_) down_.fill(false);
             break;
@@ -260,7 +260,7 @@ private:
                 auto& input = events.emplace_back(kind);
                 input.x = button.x;
                 input.y = button.y;
-                input.active = (button.state & ShiftMask) != 0;
+                input.shift = (button.state & ShiftMask) != 0;
             } else if (event.type == ButtonPress && button.button >= 4 && button.button <= 7) {
                 const bool horizontal = button.button >= 6;
                 auto& wheel = events.emplace_back(horizontal ? Kind::horizontalWheel : Kind::wheel);
@@ -268,7 +268,7 @@ private:
                 wheel.y = button.y;
                 const int step = static_cast<int>(std::lround(48 * geometry_.scale));
                 wheel.amount = button.button == 4 || button.button == 7 ? step : -step;
-                wheel.active = (button.state & ShiftMask) != 0;
+                wheel.shift = (button.state & ShiftMask) != 0;
             }
             break;
         }

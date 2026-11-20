@@ -52,6 +52,10 @@ int main(int argc, char** argv) {
         if (event.kind == SemanticEventKind::menuOpened) std::cout << "Menu opened" << std::endl;
     });
     DesktopConfig desktop{.title = u"Isoduo Clipboard", .width = 480, .height = 320};
+    desktop.onDiagnostic = [](const RenderDiagnostic& event) {
+        if (event.code == "clipboard.transfer_failed")
+            std::cout << event.code << ": " << event.nativeMessage << std::endl;
+    };
     auto created = Desktop::create(ui, webAppearance(), [&] { return layout::column({layout::component(field)}); }, scroll, desktop);
     if (!created.desktop) {
         if (created.failure) std::cerr << utf8FromUtf16(created.failure->message) << '\n';

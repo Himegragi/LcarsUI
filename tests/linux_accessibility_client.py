@@ -4,6 +4,7 @@
 Use --text-boundaries for targeted range checks or run --text-boundaries-headless
 under dbus-run-session to exercise the same bridge without a display.
 Use --renderer-failure to check action discovery after a native device reset.
+Use --queued-events to check text and menu changes before the host dispatches them.
 """
 from contextlib import contextmanager
 import os
@@ -254,8 +255,48 @@ def exercise_renderer_failure(root, host_log):
     print("PASS renderer failure retains readable values and rejects cached action invocations")
 
 
+def exercise_queued_events(executable, modes):
+    events = []
+    listener = Atspi.EventListener.new(lambda event: events.append(
+        (event.type, event.source, event.detail1, event.detail2, event.any_data)))
+    assert listener.register("object:text-changed")
+    assert listener.register("object:state-changed:showing")
+    for mode in modes:
+        with fixture(executable, mode):
+            root = until(lambda: window(mode))
+            button, field = find(root, "invoke"), find(root, "text")
+            until(lambda: has(button, "SHOWING"))
+            pump()
+            events.clear()
+            assert invoke(button)
+            if mode == "queued-text":
+                def edits():
+                    return [(kind.rsplit(":", 1)[-1], offset, length, value)
+                            for kind, source, offset, length, value in events if source == field]
+                until(lambda: len(edits()) >= 4)
+                assert edits() == [("delete", 2, 1, "中"), ("insert", 2, 1, "界"),
+                                   ("delete", 2, 1, "界"), ("insert", 2, 1, "中")], edits()
+                assert Atspi.Text.get_text(field, 0, -1) == "A\U0001f642中"
+            else:
+                def showing():
+                    return [(source, value) for kind, source, value, _, _ in events
+                            if kind == "object:state-changed:showing" and source.get_application() == root.get_application()]
+                until(lambda: len(showing()) >= 4)
+                transitions = showing()
+                assert [value for _, value in transitions] == [1, 0, 1, 0], transitions
+                first, first_closed, second, second_closed = [source for source, _ in transitions]
+                assert first == first_closed and second == second_closed and first != second
+                assert children(field) == []
+        print("PASS", mode)
+
+
 def main():
     Atspi.init()
+    queued = {"--queued-events": ("queued-text", "queued-menu"),
+              "--queued-text": ("queued-text",), "--queued-menu": ("queued-menu",)}
+    if len(sys.argv) == 3 and sys.argv[2] in queued:
+        exercise_queued_events(sys.argv[1], queued[sys.argv[2]])
+        return
     if sys.argv[2:] == ["--renderer-failure"]:
         with fixture(sys.argv[1], "renderer-failure") as (host, host_log):
             exercise_renderer_failure(

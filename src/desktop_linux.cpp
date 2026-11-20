@@ -423,7 +423,7 @@ struct Desktop::Impl {
         arrangeIfNeeded();
         if (event.kind == Kind::wheel || event.kind == Kind::horizontalWheel) {
             const bool scrolled = event.kind == Kind::wheel
-                ? frame.wheel(ui, event.x, event.y, event.amount, event.active)
+                ? frame.wheel(ui, event.x, event.y, event.amount, event.shift)
                 : !state.menuOpen() && frame.hwheel(ui, event.x, event.y, event.amount);
             if (scrolled) invalidateFrame();
             return;
@@ -496,7 +496,7 @@ struct Desktop::Impl {
                 auto* field = std::get_if<TextFieldHandle>(&handle);
                 auto caret = placementTextHit(frame, id, event.x, event.y);
                 auto cell = placementTextCell(frame, id, event.x, event.y);
-                if (field && state.textPointerDown(id, caret, cell, event.x, event.y, event.active)) {
+                if (field && state.textPointerDown(id, caret, cell, event.x, event.y, event.shift)) {
                     textDrag = *field;
                     state.hoverCapture(id);
                 }
@@ -526,11 +526,11 @@ struct Desktop::Impl {
             if (!config.onCloseRequested || config.onCloseRequested(desktop) == CloseDecision::close) closing = true;
             return;
         case Kind::focus:
-            if (!event.active) {
+            if (!event.focused) {
                 finishIme();
                 stopIme();
             }
-            focused = event.active;
+            focused = event.focused;
             state.windowActive(focused && !hidden);
             if (!focused) {
                 // A recovery prompt can take focus while the last frame is frozen.
@@ -545,7 +545,7 @@ struct Desktop::Impl {
             cancelPointer();
             return;
         case Kind::visibility:
-            hidden = !event.active;
+            hidden = !event.visible;
             state.setWindowHidden(hidden);
             state.windowActive(focused && !hidden);
             if (hidden) cancelPointer();
@@ -554,9 +554,16 @@ struct Desktop::Impl {
         case Kind::leftOutputs:
             state.finishAnimations();
             return;
-        case Kind::clipboard:
-            state.completeClipboard(std::move(*event.clipboard));
+        case Kind::clipboard: {
+            const bool transferFailed = event.clipboard->result.status == Status::failed;
+            const auto result = state.completeClipboard(std::move(*event.clipboard));
+            if (transferFailed && result.status == Status::failed) {
+                diagnostics.push({.backend = config.backend == DesktopBackend::wayland ? u"Wayland" : u"X11",
+                                  .severity = DiagnosticSeverity::error, .code = "clipboard.transfer_failed",
+                                  .nativeMessage = utf8FromUtf16(result.message)});
+            }
             return;
+        }
         default: break;
         }
         if (failure) return;
@@ -590,14 +597,8 @@ struct Desktop::Impl {
             // Keyboard navigation can change retained viewport offsets or the
             // selection without an invalidation from the component.
             invalidateFrame();
-            if (const auto* component = state.find(state.focused()); component && componentType(component->kind).hasRowCursor()) {
-                switch (event.key.key) {
-                case Key::up: case Key::down: case Key::left: case Key::right: case Key::home: case Key::end:
-                    reveal = component->id;
-                    break;
-                default: break;
-                }
-            }
+            if (const auto* component = state.find(state.focused());
+                component && revealsRowCursor(component->kind, event.key.key)) reveal = component->id;
             const bool typingSpace = event.key.key != Key::space || (!spaceTextTarget.empty() && spaceTextTarget == previous);
             if (!closing && typingSpace && previous == state.focused() && !event.text.empty() && event.text.front() >= u' ' &&
                 event.text.front() != u'\x7f') state.textInput(event.text);
