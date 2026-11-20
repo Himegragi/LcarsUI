@@ -551,6 +551,9 @@ struct Desktop::Impl {
             if (hidden) cancelPointer();
             invalidateFrame();
             return;
+        case Kind::leftOutputs:
+            state.finishAnimations();
+            return;
         case Kind::clipboard:
             state.completeClipboard(std::move(*event.clipboard));
             return;

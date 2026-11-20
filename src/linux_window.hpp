@@ -18,7 +18,7 @@ struct LinuxClientGeometry {
 struct NativeEvent {
     enum class Kind {
         redraw, close, destroyed, focus, keyDown, keyUp, motion, leave, press, release,
-        rightPress, rightRelease, wheel, horizontalWheel, captureLost, visibility, clipboard, imeEdit
+        rightPress, rightRelease, wheel, horizontalWheel, captureLost, visibility, leftOutputs, clipboard, imeEdit
     };
     Kind kind;
     int x = 0, y = 0, amount = 0;

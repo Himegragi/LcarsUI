@@ -115,7 +115,7 @@ public:
     }
     bool poll(int timeoutMs) override {
         if (wl_display_dispatch_pending(display_) < 0) return false;
-        if (!events.empty()) timeoutMs = 0;
+        if (!events.empty() || outputLeft_) timeoutMs = 0;
         if (repeat_) {
             const auto remaining = std::chrono::ceil<std::chrono::milliseconds>(repeat_->next - Clock::now()).count();
             const int wait = static_cast<int>(std::max<std::int64_t>(0, remaining));
@@ -138,6 +138,13 @@ public:
             if (wl_display_read_events(display_) < 0) return false;
         } else cancel();
         if (wl_display_dispatch_pending(display_) < 0) return false;
+        // A minimize can take the surface off every output before xdg-shell
+        // reports suspension. Finish transitions, but keep frame pacing under
+        // the compositor's control. A handoff between outputs can send both
+        // leave and enter in the same batch.
+        if (std::exchange(outputLeft_, false) &&
+            std::none_of(outputs_.begin(), outputs_.end(), [](const auto& entry) { return entry.second.entered; }))
+            events.emplace_back(NativeEvent::Kind::leftOutputs);
         if (repeat_ && Clock::now() >= repeat_->next) {
             emitKey(repeat_->code, true, std::nullopt);
             repeat_->next = Clock::now() + std::chrono::milliseconds(std::max(1, 1000 / repeatRate_));
@@ -363,7 +370,7 @@ private:
     wl_fixed_t x_ = 0, y_ = 0;
     PointerAxis verticalAxis_, horizontalAxis_;
     bool configured_ = false, suspended_ = false, pendingSuspended_ = false;
-    bool geometryChanged_ = false, frameChangesGeometry_ = false;
+    bool geometryChanged_ = false, frameChangesGeometry_ = false, outputLeft_ = false;
 };
 
 const wl_registry_listener WaylandWindow::registryListener_{
@@ -465,7 +472,11 @@ const wl_surface_listener WaylandWindow::surfaceListener_{
         },
         [](void* data, wl_surface*, wl_output* output) {
             auto& w = self(data);
-            for (auto& [id, item] : w.outputs_) if (item.handle == output) item.entered = false;
+            for (auto& [id, item] : w.outputs_) if (item.handle == output && item.entered) {
+                item.entered = false;
+                w.outputLeft_ = true;
+                break;
+            }
             w.updateGeometry();
         },
         [](void* data, wl_surface*, int32_t scale) {
