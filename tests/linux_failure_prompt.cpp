@@ -36,7 +36,10 @@ int main(int argc, char** argv) {
         detail::LinuxDesktopTest::observeFrames(*created.desktop, [&](const auto&, const auto&) {
             if (failed) created.desktop->close();
         });
+        if (const auto* window = created.desktop->nativeWindow())
+            std::cout << "Main window " << (window->backend == DesktopBackendKind::x11 ? "x11 " : "wayland ") << window->windowId << std::endl;
         auto result = created.desktop->run();
+        prompt.stop();
         check(result.status == Status::rendererFailed || result.status == Status::ok, "Close or rebuild the failed host");
         check(demo.name.draft() && *demo.name.draft() == u"Unsaved draft", "Recoverable draft survives the prompt");
         std::cout << (result.status == Status::ok ? "Rebuilt" : "Closed frozen") << " with " << saves << " saves\n";

@@ -163,6 +163,8 @@ GMainContext* LinuxPreferenceMonitor::context() {
     return threadContext.get();
 }
 
+void LinuxPreferenceMonitor::wake() { g_main_context_wakeup(impl_->context); }
+
 int LinuxPreferenceMonitor::poll(std::span<pollfd> native, int timeout) {
     auto& monitor = *impl_;
     // The UI thread owns this context and integrates its sources with the native display poll.

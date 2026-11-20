@@ -250,6 +250,15 @@ static_assert(!HasCategory<isoduo::RenderDiagnostic>);
 namespace isoduo::consumerProbe {
 static_assert(Removed<DesktopOptions> && Removed<DesktopCreation> && Removed<DiagnosticCategory>);
 }
+// PR #115: the backend is a kind (rule A) and automatic selection is an empty optional, not an enumerator.
+namespace removedBy115 { struct Name {}; }
+using DesktopBackend = removedBy115::Name;
+namespace isoduo::consumerProbe {
+static_assert(std::same_as<DesktopBackend, ::removedBy115::Name>);
+static_assert(std::same_as<decltype(DesktopConfig::backend), std::optional<DesktopBackendKind>> &&
+              std::same_as<decltype(StartupFailure::backend), std::optional<DesktopBackendKind>>);
+static_assert(std::same_as<decltype(&Desktop::post), Result (Desktop::*)(std::function<void()>)>);
+}
 #endif
 // Handles compare within their own kind only (#94): equal when they control the same thing, a compile error across kinds.
 static_assert(handleKinds::equalityHolds);

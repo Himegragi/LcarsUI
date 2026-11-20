@@ -52,7 +52,7 @@ int run(char** argv) {
     if (!list && !typing && !slider && !animation && scenario != "startup")
         throw std::invalid_argument("Unknown performance scenario");
     DesktopConfig config;
-    config.backend = backend == "wayland" ? DesktopBackend::wayland : DesktopBackend::x11;
+    config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
     config.width = parseNumber(argv[4], 1, 8192);
     config.height = parseNumber(argv[5], 1, 8192);
     config.title = u"Isoduo Demo Performance";

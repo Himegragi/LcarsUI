@@ -2,6 +2,7 @@
 // #81 rich text through the public core seams: the value type, typed editing, shortcuts, clipboard,
 // data connections and the semantic layer. Expected values are worked out by hand in each case.
 #include "check.hpp"
+#include "clipboard_text.hpp"
 #include "rich_text_contract.hpp"
 #include "component_type.hpp"
 #include "fake_measure.hpp"
@@ -518,7 +519,8 @@ void copyAndPasteKeepStylesBetweenRichFields() {
     source.setStyle(4, 7, {.color = "teal"});
     host.focus("source"); host.select("source", 1, 6);
     host.keyDown(ctrl(u'C'));
-    check(clipboard.content == u"bc\r\nde" && clipboard.payload.has_value(), "Copy writes CRLF plain text and the private payload together");
+    check(clipboard.content == test::copiedClipboardText(u"bc\nde", test::ClipboardSeam::core) && clipboard.payload.has_value(),
+          "Copy writes the LF plain text and the private payload together");
     check(source.richValue()->text == u"abc\ndef", "Copy does not change the field");
     host.focus("target"); host.select("target", 1, 1);
     host.keyDown(ctrl(u'V'));

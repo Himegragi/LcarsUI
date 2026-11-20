@@ -208,13 +208,15 @@ enum class WordSegmentation {
     scriptRun      // a run of Chinese or Japanese characters is one word, a run of Latin letters and digits another
 };
 // Host-provided system clipboard. Core never touches OS services directly.
+// Core writes text with LF line breaks; the host stores it in its platform's convention (the Windows host
+// writes CRLF). Text read back may use any line break: pasting normalizes it.
 class Clipboard {
 public:
     virtual ~Clipboard() = default;
     virtual bool write(std::u16string_view text) = 0;
     // notSupported means no text; failed means the clipboard could not be read.
     virtual Query<std::u16string> read() = 0;
-    // Rich text. A copy from a rich text field hands the plain text (CRLF) together with an opaque payload that
+    // Rich text. A copy from a rich text field hands the plain text together with an opaque payload that
     // carries the styles; the host stores the payload under one private format beside the plain text and
     // returns it unchanged. A host that does not know the format keeps these defaults, so only plain text
     // moves. A plain write replaces every format, as on Windows, so a stale payload never outlives its text.

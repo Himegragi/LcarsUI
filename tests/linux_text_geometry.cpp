@@ -264,7 +264,7 @@ int main(int argc, char** argv) {
         Fixture fixture;
         if (argc == 5 && mode == "input") fixture.enableScaleTrial();
         DesktopConfig config;
-        config.backend = backend == "wayland" ? DesktopBackend::wayland : DesktopBackend::x11;
+        config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
         config.title = u"Isoduo text geometry";
         config.width = argc == 5 ? std::stoi(argv[3]) : width;
         config.height = argc == 5 ? std::stoi(argv[4]) : height;

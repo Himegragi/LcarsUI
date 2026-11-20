@@ -2,6 +2,7 @@
 // #79 multi-line text fields through the public core and layout seams, with a deterministic
 // fake text backend. Expected values are worked out by hand in each case.
 #include "check.hpp"
+#include "clipboard_text.hpp"
 #include "fake_measure.hpp"
 #include "text_geometry_checks.hpp"
 #include "isoduo/core.hpp"
@@ -82,10 +83,38 @@ void pasteNormalizesEveryLineBreakToOneLineFeed() {
     check(pasteAsSingleLine(u"x\r\ny") == u"x y", "paste_as_single_line is unchanged");
     host.select("note", 0, 3);
     host.keyDown(ctrl(u'C'));
-    check(clipboard.content == u"a\r\nb", "Copy writes line breaks as CRLF");
+    const auto copied = test::copiedClipboardText(u"a\nb", test::ClipboardSeam::core);
+    check(clipboard.content == copied && copied == u"a\nb", "Copy hands the clipboard seam LF line breaks");
     check(valueOf(ui, "note") == u"a\nb\nc\nd", "Copy does not change the value");
     host.keyDown(ctrl(u'X'));
-    check(clipboard.content == u"a\r\nb" && valueOf(ui, "note") == u"\nc\nd", "Cut also writes CRLF");
+    check(clipboard.content == copied && valueOf(ui, "note") == u"\nc\nd", "Cut also hands over LF");
+}
+
+// The asynchronous seam the Linux hosts use carries the same LF text, and a delivered CRLF, lone CR or
+// lone LF pastes as one LF each. The native Wayland and X11 offers are checked on real desktops (N15-N16).
+struct DeferredClipboard final : detail::AsyncClipboard {
+    std::uint64_t request = 0;
+    detail::ClipboardData offered;
+    bool hasText() const override { return true; }
+    Result read(std::uint64_t id, bool) override { request = id; return {}; }
+    Result write(std::uint64_t id, detail::ClipboardData data) override { request = id; offered = std::move(data); return {}; }
+};
+void asynchronousClipboardCarriesLineFeeds() {
+    Ui ui;
+    auto field = connect(ui, multi("note", u"a\nb\nc"));
+    DeferredClipboard clipboard;
+    auto& host = detail::access(ui);
+    host.setAsyncClipboard(&clipboard); host.focus("note");
+    host.select("note", 0, 3);
+    check(bool(host.keyDown(ctrl(u'C'))) && clipboard.offered.text == test::copiedClipboardText(u"a\nb", test::ClipboardSeam::core),
+          "A copy offers LF line breaks to the asynchronous clipboard");
+    check(bool(host.completeClipboard({clipboard.request, {}, {}})) && valueOf(ui, "note") == u"a\nb\nc", "The copy leaves the value");
+    host.select("note", 2, 5);
+    check(bool(host.keyDown(ctrl(u'X'))) && clipboard.offered.text == u"b\nc" && valueOf(ui, "note") == u"a\nb\nc",
+          "A cut offers LF and keeps the text until the offer succeeds");
+    check(bool(host.completeClipboard({clipboard.request, {}, {}})) && valueOf(ui, "note") == u"a\n", "The supplied cut removes the text");
+    check(bool(host.keyDown(ctrl(u'V'))) && bool(host.completeClipboard({clipboard.request, {}, {u"x\r\ny\rz\nw", {}}})) &&
+          valueOf(ui, "note") == u"a\nx\ny\nz\nw", "A delivered CRLF, CR and LF each paste as one LF");
 }
 
 void singleLinePasteStillTurnsBreaksIntoSpaces() {
@@ -686,7 +715,8 @@ int main() {
     const test::Case cases[] = {
         {"multiline values allow LF and reject CR", multilineValuesAllowLineFeedAndRejectCarriageReturn},
         {"semantic and typed set_value share the rule", semanticAndTypedSetValueShareTheLineFeedRule},
-        {"paste normalizes breaks and copy writes CRLF", pasteNormalizesEveryLineBreakToOneLineFeed},
+        {"paste normalizes breaks and copy hands over LF", pasteNormalizesEveryLineBreakToOneLineFeed},
+        {"the asynchronous clipboard carries LF", asynchronousClipboardCarriesLineFeeds},
         {"single-line paste still converts to spaces", singleLinePasteStillTurnsBreaksIntoSpaces},
         {"a line feed counts one toward max_length", aLineFeedCountsAsOneTowardMaxLength},
         {"a source value with CR is ignored", aSourceValueWithCarriageReturnIsIgnored},

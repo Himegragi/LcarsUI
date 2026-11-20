@@ -58,7 +58,15 @@ The Linux settings demo uses Zenity for renderer recovery. When GTK 3 developmen
 files (`libgtk-3-dev` on Ubuntu) are available at configure time, the build also
 produces `isoduo_settings_recovery_dialog`. Keep this optional executable beside
 the demo so it can open the recovery dialog if Zenity is unavailable or fails.
-A dirty draft stays open if neither prompt can run.
+A dirty draft stays open if neither prompt can run. The demo builds the prompt from
+public interfaces only: `NativeWindow` and `Desktop::post`, which brings the
+prompt's answer back to the desktop thread. On X11 the prompt is attached to the
+main window through `NativeWindow::windowId`: Zenity gets `--attach=XID`, and
+because Zenity 4 accepts but ignores that option, the demo also sets
+`WM_TRANSIENT_FOR` on the Zenity window; the GTK helper makes itself transient
+for the same XID. On Wayland the prompt opens unparented: an external prompt
+process cannot reliably be made a child of another client's surface. This is a
+known platform limit.
 
 The Linux host reads the desktop's animation preference at creation. GNOME
 provides enable-animations and reduced-motion settings. Xfce can provide the
@@ -73,11 +81,13 @@ ctest --test-dir build-linux --output-on-failure
 ./build-linux/isoduo_edit_form_web
 ```
 
-`DesktopConfig::backend` defaults to `DesktopBackend::automatic`. On Linux this
+`DesktopConfig::backend` is a `std::optional<DesktopBackendKind>` and is empty by
+default, which selects the backend automatically. On Linux this
 uses `XDG_SESSION_TYPE` when it names Wayland or X11, then checks for a configured
 Wayland connection before checking `DISPLAY`. An explicit `wayland` or `x11`
 selects that native connection. If it fails, `StartupFailure::backend` identifies
-the selected backend. Linux `nativeWindow()` returns a borrowed tagged reference:
+the selected backend; it is empty only when automatic selection finds no native
+session. Linux `nativeWindow()` returns a borrowed tagged reference:
 a `wl_display*` and `wl_surface*` on Wayland, or a `Display*` and XID on X11.
 It is valid while the native window lives, including across a renderer rebuild.
 
@@ -260,7 +270,7 @@ auto first = note.scrollLine();                   // Query<unsigned>
 ui.semantics().perform({"item.note"}, isoduo::Verb::scroll, 4);  // the same operation, same Status values
 ```
 
-- **Value.** A line break is one LF (`\n`) and counts as one character toward `maxLength`. A value containing CR, or any other control character, is invalid wherever a value enters (initial value, source, `setValue`, semantic `setValue`). Pasted CRLF, lone CR and lone LF each become one LF; copy and cut write CRLF to the clipboard. Single-line fields still turn pasted breaks into spaces. ComponentSnapshot and UI Automation report the value with its LF characters.
+- **Value.** A line break is one LF (`\n`) and counts as one character toward `maxLength`. A value containing CR, or any other control character, is invalid wherever a value enters (initial value, source, `setValue`, semantic `setValue`). Pasted CRLF, lone CR and lone LF each become one LF; copy and cut hand the clipboard LF, which the Windows clipboard stores as CRLF and the Linux (Wayland and X11) clipboards keep as LF. Single-line fields still turn pasted breaks into spaces. ComponentSnapshot and UI Automation report the value with its LF characters.
 - **Keys.** Enter and Shift+Enter insert a line break (one undo entry each) and never reach Enter shortcuts; Ctrl+Enter does, so an application can make it "OK". Tab still moves focus. Enter while an input method is composing belongs to the input method. Up/Down move by display line (a wrapped piece counts) and keep their column; Home/End go to the line's start/end, Ctrl+Home/Ctrl+End to the text's; PageUp/PageDown move `visibleLines` lines. Shift extends the selection.
 - **Layout.** The height is exactly `visibleLines` lines. Long lines wrap at the field's edge like labels; there is no horizontal scrolling. The scrollbar's width is always reserved, so the first lines never re-wrap when the scrollbar appears; the thumb shows only when the text overflows.
 - **Scrolling.** The scroll position is the index of the first visible display line, so it keeps its meaning across text size and density changes (the same text stays on top). It follows the caret when the caret moves, never moves the caret, and never snaps back after the wheel or the thumb scrolled it. The wheel scrolls the field first and passes to the page at the ends. Inside an open dialog the dialog's own scrollable content (this field included) takes the wheel and the thumb; the page behind still does not. A position past the last page is `Status::invalidValue` for both entry points.
@@ -308,7 +318,7 @@ auto value = note.richValue();                                      // Query<Ric
 - **Keys.** Ctrl+B / Ctrl+I / Ctrl+U are taken by a focused rich field before any application shortcut on the same chord (any other field leaves them to the application). With a selection the attribute is applied to all of it unless all of it already has it, then removed. With a caret only, the next typed text changes: it ends when the caret moves or text is inserted. There is no built-in toolbar or menu and no color shortcut: an application calls `toggleStyle` / `applyStyle` from its own buttons.
 - **Typed text** takes the style of the character before the caret, or of the one after it at the start of a paragraph (an empty paragraph is plain); a temporary typing style from Ctrl+B etc. wins. `typingStyle()` / `setTypingStyle()` read and set it. An IME preedit is shown in the style it will take.
 - **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
-- **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::writeRich`; the Windows host registers the format `Isoduo.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `writeRich` / `readRich` carries plain text only.
+- **Clipboard.** Copy and cut write plain text (CRLF on Windows, LF on Linux) and, beside it, the framework's private payload (`Clipboard::writeRich`; the Windows host registers the format `Isoduo.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `writeRich` / `readRich` carries plain text only.
 - **History and data connections.** One style application is one undo entry. Rich fields connect with `connectRichSource` / `connectRichImmediate` / `connectRichConfirmed` (the plain `connect_*` answer `notSupported`, and these answer `notSupported` on a plain field); a confirmation group takes them through `Ui::connectConfirmation` (a `Change<TextFieldHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `useLatest`, `resetToSource`).
 - **Semantic layer and UI Automation.** `NodeSnapshot::rich / styles / typingStyle`; `Verb::setStyle` (`StyleEdit{begin, end, change}`), `Verb::setTypingStyle` (`TextStyle`) and `Verb::setValue` with a `RichText`, all admitted like the typed calls and listed in snapshot `verbs`; property event `styles`; `SemanticTree::textColor(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
 

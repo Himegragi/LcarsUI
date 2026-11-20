@@ -3,7 +3,7 @@
 
 namespace isoduo::detail {
 struct ClipboardData {
-    std::u16string text;
+    std::u16string text;  // core writes LF line breaks; a host offers them in its platform's convention
     std::string rich;
 };
 struct ClipboardDelivery {

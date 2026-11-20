@@ -1,6 +1,7 @@
 // Interactive clipboard probe. Run on a native desktop alongside a clipboard
 // peer. The application logs observable field changes and style spans.
 #include "check.hpp"
+#include "clipboard_text.hpp"
 #include "isoduo/desktop.hpp"
 #include "isoduo/semantics.hpp"
 #include "utf.hpp"
@@ -66,13 +67,20 @@ int main(int argc, char** argv) {
     std::cout << "Window " << window->windowId << " backend " << static_cast<int>(window->backend) << ' '
               << utf8FromUtf16(caps.version) << ' ' << utf8FromUtf16(caps.renderer) << std::endl;
     if (mode == "blocked-cut") {
-        check(window->backend == DesktopBackend::wayland && bool(field.select(0, 10)), "Wayland selection before native input");
+        check(window->backend == DesktopBackendKind::wayland && bool(field.select(0, 10)), "Wayland selection before native input");
         check(field.cut().status == Status::failed && *field.richValue() == initial,
               "a Wayland cut without native input fails with its selection intact");
         std::cout << "PASS Wayland cut rejected before native input\n";
         return 0;
     }
     log();
+    if (source && !large) {
+        // A copy of the whole source value: the peer must read exactly these UTF-8 bytes (LF line breaks).
+        std::cout << "Expected offer";
+        for (unsigned char ch : utf8FromUtf16(test::copiedClipboardText(initial.text, test::ClipboardSeam::linuxDesktop)))
+            std::cout << ' ' << "0123456789abcdef"[ch >> 4] << "0123456789abcdef"[ch & 15];
+        std::cout << std::endl;
+    }
     auto result = created.desktop->run();
     std::cout << "Final ";
     log();

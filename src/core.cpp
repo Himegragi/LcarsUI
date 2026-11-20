@@ -2629,13 +2629,8 @@ Result detail::UiState::copy(std::string_view id) {
 Result detail::UiState::writeSelection(std::string_view id, Field& field, ClipboardAction action) {
     const auto& session = field.session;
     if (session.begin() == session.end()) return {};
-    auto selected = std::u16string(session.text, session.begin(), session.end() - session.begin());
-    if (find(id)->multiline) {  // the clipboard carries CRLF, as other Windows text does
-        std::u16string crlf;
-        for (auto ch : selected) { if (ch == u'\n') crlf += u'\r'; crlf += ch; }
-        selected = std::move(crlf);
-    }
-    ClipboardData data{std::move(selected), {}};
+    // Line breaks leave as LF; each host's clipboard writes them in its platform's convention.
+    ClipboardData data{std::u16string(session.text, session.begin(), session.end() - session.begin()), {}};
     if (field.rich) {
         data.rich = serializeRichPayload({session.text.substr(session.begin(), session.end() - session.begin()),
                                           sliceSpans(field.spans, session.begin(), session.end())});

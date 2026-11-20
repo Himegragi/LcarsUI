@@ -173,8 +173,9 @@ int main(int argc, char** argv) {
         if (noticeTimer) KillTimer(nullptr, noticeTimer);
         pendingDemo=nullptr;
 #else
+        prompt.stop();  // an answer must not reach the Desktop after it is destroyed
         if (result.failure) {
-            std::cerr << "Renderer failed: " << isoduo::detail::utf8FromUtf16(result.failure->message) << '\n';
+            std::cerr << "Renderer failed: " << settingsDemo::promptUtf8(result.failure->message) << '\n';
         }
 #endif
 #ifdef ISODUO_DEMO_DIAGNOSTICS

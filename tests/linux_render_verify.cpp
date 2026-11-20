@@ -24,9 +24,9 @@ constexpr int width = 960, height = 720;
 void reportContext(const Desktop& desktop, std::ostream& out) {
     const auto& caps = desktop.capabilities();
     const auto* window = desktop.nativeWindow();
-    check(window && (window->backend == DesktopBackend::wayland ? window->surface != nullptr : window->windowId != 0),
+    check(window && (window->backend == DesktopBackendKind::wayland ? window->surface != nullptr : window->windowId != 0),
           "The draw context belongs to a native desktop window");
-    out << "# backend=" << (window->backend == DesktopBackend::wayland ? "wayland" : "x11")
+    out << "# backend=" << (window->backend == DesktopBackendKind::wayland ? "wayland" : "x11")
         << " window=" << window->windowId << " renderer=" << utf8FromUtf16(caps.renderer)
         << " vendor=" << utf8FromUtf16(caps.vendor) << " version=" << utf8FromUtf16(caps.version)
         << " debugContext=" << caps.debugContext << " debugMessages=" << caps.debugMessages
@@ -422,7 +422,7 @@ int main(int argc, char** argv) {
         std::string_view backend = argv[1], mode = argv[2];
         check(backend == "wayland" || backend == "x11", "Specify a native desktop backend");
         DesktopConfig config;
-        config.backend = backend == "wayland" ? DesktopBackend::wayland : DesktopBackend::x11;
+        config.backend = backend == "wayland" ? DesktopBackendKind::wayland : DesktopBackendKind::x11;
         config.title = u"Isoduo render verification";
         config.width = width;
         config.height = height;

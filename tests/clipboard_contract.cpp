@@ -1,6 +1,8 @@
 #include "desktop_host.hpp"
+#include "core_internal.hpp"
 #include "rich_text_contract.hpp"
 #include "check.hpp"
+#include "clipboard_text.hpp"
 #include <cstring>
 #include <system_error>
 
@@ -27,6 +29,41 @@ void isolateClipboard() {
     requireWin32(SetThreadDesktop(desktop) != FALSE, "attach private clipboard desktop");
 }
 
+std::u16string unicodeText(HWND window) {
+    std::u16string text;
+    if (!OpenClipboard(window)) return text;
+    if (auto memory = GetClipboardData(CF_UNICODETEXT)) {
+        if (auto data = static_cast<const char16_t*>(GlobalLock(memory))) {
+            text = data;
+            GlobalUnlock(memory);
+        }
+    }
+    CloseClipboard();
+    return text;
+}
+
+// Core hands the clipboard LF line breaks; the Windows clipboard holds CRLF, as other Windows text does,
+// and pasting it back gives LF again.
+void multiLineCopy(HWND window, isoduo::detail::WindowsClipboard& clipboard) {
+    const auto windowsText = test::copiedClipboardText(u"one\ntwo", test::ClipboardSeam::windows);
+    check(windowsText == u"one\r\ntwo", "the shared predicate gives Windows CRLF");
+    isoduo::Ui ui;
+    auto field = ui.addTextField({.id = "note", .value = u"one\ntwo", .multiline = true, .visibleLines = 2}).value.value();
+    check(bool(field.connectSource({[] { return std::u16string(u"one\ntwo"); }, [](std::function<void()>) { return [] {}; }})) &&
+          bool(field.connectConfirmed([](const auto&) { return isoduo::Result{}; })), "connect the field");
+    auto& host = isoduo::detail::access(ui);
+    host.setClipboard(&clipboard);
+    host.focus("note");
+    host.select("note", 0, 7);
+    check(bool(host.copy("note")) && unicodeText(window) == windowsText, "a multi-line copy stores CRLF in CF_UNICODETEXT");
+    auto read = clipboard.read();
+    check(read && *read == windowsText, "the Windows clipboard reads back CRLF");
+    host.select("note", 7, 7);
+    check(bool(host.pasteClipboard("note")) && host.text("note") == u"one\ntwoone\ntwo", "pasting the CRLF text inserts LF");
+    check(clipboard.write(u"a\r\nb") && unicodeText(window) == u"a\r\nb", "text that already has CRLF keeps it");
+    host.setClipboard(nullptr);
+}
+
 void clipboardContract() {
     HWND window = CreateWindowExW(0, L"STATIC", L"Isoduo clipboard contract", 0, 0, 0, 1, 1, HWND_MESSAGE, nullptr, nullptr, nullptr);
     requireWin32(window != nullptr, "create clipboard owner window");
@@ -51,6 +88,7 @@ void clipboardContract() {
     check(IsClipboardFormatAvailable(canonicalFormat) && !IsClipboardFormatAvailable(legacyFormat), "new clipboard transaction publishes only canonical format");
     auto read = clipboard.readRich();
     check(read && test::canonicalRichRoundTrip(*read, *rich), "real clipboard canonical round trip");
+    multiLineCopy(window, clipboard);
     DestroyWindow(window);
 }
 }

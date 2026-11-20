@@ -4,6 +4,7 @@
 #include "desktop_linux_test.hpp"
 #include "desktop_paint.hpp"
 #include "diagnostic_queue.hpp"
+#include "pointer_routing.hpp"
 #include "renderer.hpp"
 #include "utf.hpp"
 #include <xkbcommon/xkbcommon-keysyms.h>
@@ -12,9 +13,11 @@
 #include <chrono>
 #include <cstdlib>
 #include <climits>
+#include <mutex>
 #include <set>
 #include <utility>
 #include <thread>
+#include <vector>
 
 namespace isoduo::detail {
 int LinuxWindow::pollFileDescriptors(std::span<pollfd> descriptors, int timeout) {
@@ -75,25 +78,25 @@ bool hasEnv(const char* name) {
     auto value = std::getenv(name);
     return value && *value;
 }
-DesktopBackend selectedBackend(DesktopBackend requested) {
-    if (requested != DesktopBackend::automatic) return requested;
+// Empty when automatic selection finds no native desktop session.
+std::optional<DesktopBackendKind> selectedBackend(std::optional<DesktopBackendKind> requested) {
+    if (requested) return requested;
     auto session = std::getenv("XDG_SESSION_TYPE");
-    if (session && std::string_view(session) == "wayland") return DesktopBackend::wayland;
-    if (session && std::string_view(session) == "x11") return DesktopBackend::x11;
-    if (hasEnv("WAYLAND_DISPLAY") || hasEnv("WAYLAND_SOCKET")) return DesktopBackend::wayland;
-    if (hasEnv("DISPLAY")) return DesktopBackend::x11;
-    return DesktopBackend::automatic;
+    if (session && std::string_view(session) == "wayland") return DesktopBackendKind::wayland;
+    if (session && std::string_view(session) == "x11") return DesktopBackendKind::x11;
+    if (hasEnv("WAYLAND_DISPLAY") || hasEnv("WAYLAND_SOCKET")) return DesktopBackendKind::wayland;
+    if (hasEnv("DISPLAY")) return DesktopBackendKind::x11;
+    return std::nullopt;
 }
 std::unique_ptr<LinuxWindow> openWindow(const DesktopConfig& config) {
     if (config.width <= 0 || config.height <= 0 || !validSingleLine(config.title, config.title.size()))
         throw StartupError{{StartupFailureKind::window, {}, {}, u"Invalid window dimensions or title"}};
-    switch (config.backend) {
-    case DesktopBackend::wayland: return makeWaylandWindow(config);
-    case DesktopBackend::x11: return makeX11Window(config);
-    case DesktopBackend::windows:
+    if (!config.backend) throw StartupError{{StartupFailureKind::window, {}, {}, u"No native desktop session found"}};
+    switch (*config.backend) {
+    case DesktopBackendKind::wayland: return makeWaylandWindow(config);
+    case DesktopBackendKind::x11: return makeX11Window(config);
+    case DesktopBackendKind::windows:
         throw StartupError{{StartupFailureKind::window, {}, {}, u"Windows desktop backend is unavailable on Linux"}};
-    case DesktopBackend::automatic:
-        throw StartupError{{StartupFailureKind::window, {}, {}, u"No native desktop session found"}};
     }
     throw StartupError{{StartupFailureKind::window, {}, {}, u"Unknown desktop backend"}};
 }
@@ -104,7 +107,7 @@ struct Desktop::Impl {
     const Appearance& appearance;
     std::function<layout::Node()> page;
     ScrollState& scroll;
-    DesktopConfig config;
+    DesktopConfig config;  // config.backend holds the selected backend
     RendererTestHooks* hooks;
     std::thread::id owner = std::this_thread::get_id();
     DiagnosticQueue diagnostics{config.onDiagnostic, &ui};
@@ -126,12 +129,11 @@ struct Desktop::Impl {
     std::optional<std::uint64_t> textScrollDeadline;
     std::pair<int, int> textDragPoint{};
     Id sliderDrag;
-    struct ThumbDrag {
-        ScrollState* state;
-        ComponentHandle component;
-        int grabOffset;
-    };
-    std::optional<ThumbDrag> thumbDrag;
+    std::optional<ThumbGrab> thumbDrag;
+    // Work posted from any thread; it runs on the owner thread inside run(). Guarded by postMutex.
+    std::mutex postMutex;
+    std::vector<std::function<void()>> posted;
+    bool accepting = true;
     Id spaceTextTarget;
     bool focused = false, attached = false, dirty = true, closing = false, running = false;
     bool layoutDirty = true;
@@ -174,7 +176,10 @@ struct Desktop::Impl {
         state.beforeFocus([this] { finishIme(); });
         state.rendererFailed(false);
         state.bindAppearance(&appearance);
-        preferences.emplace();
+        {
+            std::lock_guard lock(postMutex);
+            preferences.emplace();
+        }
         window->observePreferences(*preferences);
         refreshPreferences();
         state.animationTime(nowMs);
@@ -218,7 +223,32 @@ struct Desktop::Impl {
         }
         renderer.reset();
         window.reset();
-        preferences.reset();
+        std::vector<std::function<void()>> discarded;
+        {
+            std::lock_guard lock(postMutex);
+            accepting = false;
+            discarded.swap(posted);
+            preferences.reset();
+        }
+    }
+    Result post(std::function<void()> work) {
+        if (!work) return {Status::invalidValue, u"No work to post"};
+        std::lock_guard lock(postMutex);
+        if (!accepting || !preferences) return {Status::notFound, u"Desktop window is closed"};
+        posted.push_back(std::move(work));
+        preferences->wake();
+        return {};
+    }
+    void runPosted() {
+        std::vector<std::function<void()>> work;
+        {
+            std::lock_guard lock(postMutex);
+            work.swap(posted);
+        }
+        for (auto& item : work) {
+            if (closing) break;
+            item();
+        }
     }
     void configureFont() {
         const auto& settings = ui.presentation();
@@ -384,21 +414,11 @@ struct Desktop::Impl {
         state.pointerLeft();
     }
     bool beginThumbDrag(const Placement* hit, int x, int y) {
-        auto& state = access(ui);
-        for (auto it = frame.regions.rbegin(); it != frame.regions.rend(); ++it) {
-            if (!it->state || state.retiredComponent(it->component)) continue;
-            const bool popup = hit && hit->dropdownPanel && hit->component == it->component;
-            if ((frame.modal && !it->modalContent && !popup) || (hit && hit->dropdownPanel && !popup)) continue;
-            if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
-            const int along = it->horizontal ? x : y;
-            const int thumbStart = it->horizontal ? it->thumb.x : it->thumb.y;
-            const int grabOffset = it->thumb.contains(x, y) ? along - thumbStart : (it->horizontal ? it->thumb.w : it->thumb.h) / 2;
-            thumbDrag = ThumbDrag{it->state, it->component, grabOffset};
-            state.hoverCapture({});
-            if (frame.scrollTo(ui, *it, it->offsetForThumb(along - grabOffset))) invalidateFrame();
-            return true;
-        }
-        return false;
+        thumbDrag = pressThumb(ui, frame, hit, x, y);
+        if (!thumbDrag) return false;
+        access(ui).hoverCapture({});  // the thumb is not a component: keep what is hovered
+        invalidateFrame();
+        return true;
     }
     void dragText(int x, int y) {
         textDragPoint = {x, y};
@@ -430,11 +450,8 @@ struct Desktop::Impl {
         }
         if (event.kind == Kind::rightPress) {
             state.pointerPressed();
-            rightPressed = true;
-            if (state.menuOpen() && !frame.menuContains(event.x, event.y)) {
-                state.closeMenu();
-                rightPressed = false;
-            }
+            // A press outside the open menu only closes it; its release is swallowed with it.
+            rightPressed = !(state.menuOpen() && routeMenuPointer(state, frame, PointerAction::rightPress, event.x, event.y));
             return;
         }
         if (event.kind == Kind::rightRelease && !std::exchange(rightPressed, false)) return;
@@ -444,19 +461,10 @@ struct Desktop::Impl {
         }
         if (event.kind == Kind::release && !std::exchange(leftPressed, false)) return;
         if (state.menuOpen()) {
-            auto row = frame.menuItemAt(event.x, event.y);
-            if (event.kind == Kind::motion && row) state.menuHighlight(*row);
-            if (event.kind == Kind::press) {
-                if (!frame.menuContains(event.x, event.y)) {
-                    leftPressed = false;
-                    state.closeMenu();
-                } else if (row) state.menuPointerDown(*row);
-            }
-            if (event.kind == Kind::release) state.menuPointerUp(row ? *row : std::string{});
-            if (event.kind == Kind::rightRelease && row) {
-                state.menuPointerDown(*row);
-                state.menuPointerUp(*row);
-            }
+            const auto action = event.kind == Kind::press ? PointerAction::press
+                              : event.kind == Kind::release ? PointerAction::release
+                              : event.kind == Kind::rightRelease ? PointerAction::rightRelease : PointerAction::move;
+            if (routeMenuPointer(state, frame, action, event.x, event.y)) leftPressed = false;
             return;
         }
         const auto* hit = frame.hit(event.x, event.y);
@@ -466,23 +474,12 @@ struct Desktop::Impl {
         if (event.kind == Kind::motion || event.kind == Kind::press)
             state.pointerOver(frame, event.x, event.y);
         if (event.kind == Kind::rightRelease) {
-            if (!hit || !hit->dropdownPanel) state.closePopup();
-            if (!hit || hit->dropdownPanel || hit->tooltip) return;
-            std::optional<unsigned> offset;
-            if (selectsText) offset = placementTextHit(frame, id, event.x, event.y).offset;
-            state.menuPointerOpen(id, option, offset, {event.x, event.y});
+            if (const auto target = pointerMenuTarget(state, frame, event.x, event.y))
+                openPointerMenu(state, frame, *target, event.x, event.y);
         } else if (event.kind == Kind::motion) {
             if (textDrag) dragText(event.x, event.y);
             else if (!sliderDrag.empty()) state.sliderPointer(sliderDrag, event.x);
-            else if (thumbDrag) {
-                auto region = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const ScrollRegion& item) {
-                    return item.state == thumbDrag->state && item.component == thumbDrag->component;
-                });
-                if (region != frame.regions.end()) {
-                    const int along = region->horizontal ? event.x : event.y;
-                    if (frame.scrollTo(ui, *region, region->offsetForThumb(along - thumbDrag->grabOffset))) invalidateFrame();
-                }
-            }
+            else if (thumbDrag && dragThumb(ui, frame, *thumbDrag, event.x, event.y)) invalidateFrame();
         } else if (event.kind == Kind::press) {
             if (!hit || !hit->dropdownPanel) state.closePopup();
             if (beginThumbDrag(hit, event.x, event.y) || !hit) return;
@@ -558,7 +555,7 @@ struct Desktop::Impl {
             const bool transferFailed = event.clipboard->result.status == Status::failed;
             const auto result = state.completeClipboard(std::move(*event.clipboard));
             if (transferFailed && result.status == Status::failed) {
-                diagnostics.push({.backend = config.backend == DesktopBackend::wayland ? u"Wayland" : u"X11",
+                diagnostics.push({.backend = config.backend == DesktopBackendKind::wayland ? u"Wayland" : u"X11",
                                   .severity = DiagnosticSeverity::error, .code = "clipboard.transfer_failed",
                                   .nativeMessage = utf8FromUtf16(result.message)});
             }
@@ -718,6 +715,7 @@ RunResult Desktop::run() {
             if (host.dirty && !host.failure) host.arrangeIfNeeded();
             host.syncIme(event.kind != NativeEvent::Kind::imeEdit);
         }
+        if (!host.closing) host.runPosted();
         if (!host.closing && host.preferences->changed()) host.refreshPreferences();
         if (!host.failure && !host.closing) {
             auto& state = access(host.ui);
@@ -744,6 +742,7 @@ Result Desktop::setTitle(std::u16string title) {
     impl_->config.title = std::move(title);
     return {};
 }
+Result Desktop::post(std::function<void()> work) { return impl_->post(std::move(work)); }
 Result Desktop::close() {
     if (impl_->owner != std::this_thread::get_id()) return {Status::wrongThread, wrongThread};
     if (impl_->attached && !impl_->failure) impl_->finishIme();

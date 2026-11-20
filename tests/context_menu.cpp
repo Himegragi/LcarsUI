@@ -3,6 +3,7 @@
 // Context menu (#85) through the public core interface: attach, open, query, keyboard, execute,
 // semantics and geometry. No window, GPU or font backend; the real-window twin is in host_verify.
 #include "check.hpp"
+#include "clipboard_text.hpp"
 #include "fake_measure.hpp"
 #include "geometry.hpp"
 #include "isoduo/core.hpp"
@@ -671,15 +672,18 @@ void multiLineFieldMenuHangsFromTheCaretLine() {
     check(bool(core(ui).menuPointerOpen("note", std::nullopt, 2, {30, 30})) && core(ui).edit("note")->selection.caret == 2, "right button moves the caret to the point");
     ui.invokeMenuItem("isoduo.paste");
     check(*model == u"fix\nyrst\nsecond\nthird", "paste inserts the clipboard text with its line break at the caret");
-    // Copy and cut over a selection that spans lines: the same functions as the shortcuts, so the clipboard gets CRLF (#79).
+    // Copy and cut over a selection that spans lines: the same functions as the shortcuts, so the clipboard seam
+    // gets the same LF text (#79); the Windows clipboard stores it as CRLF.
+    const auto copied = test::copiedClipboardText(u"fix\ny", test::ClipboardSeam::core);
     core(ui).select("note", 0, 5);   // "fix", the line break and "y"
     check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && enabled(ui, "isoduo.copy") && enabled(ui, "isoduo.cut"), "copy and cut are on with a multi-line selection");
-    check(bool(ui.invokeMenuItem("isoduo.copy")) && clipboard.content == u"fix\r\ny" && *model == u"fix\nyrst\nsecond\nthird", "copy writes CRLF and leaves the text");
+    check(bool(ui.invokeMenuItem("isoduo.copy")) && clipboard.content == copied && *model == u"fix\nyrst\nsecond\nthird", "copy writes the line break and leaves the text");
     core(ui).select("note", 0, 5);
-    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("isoduo.cut")) && clipboard.content == u"fix\r\ny" && *model == u"rst\nsecond\nthird",
-          "cut writes CRLF and removes the text across the line break");
+    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("isoduo.cut")) && clipboard.content == copied && *model == u"rst\nsecond\nthird",
+          "cut writes the line break and removes the text across it");
+    clipboard.content = test::copiedClipboardText(u"fix\ny", test::ClipboardSeam::windows);
     check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("isoduo.paste")) && *model == u"fix\nyrst\nsecond\nthird",
-          "pasting the CRLF clipboard back gives LF line breaks again");
+          "pasting the Windows CRLF text back gives LF line breaks again");
 }
 
 void semanticTreeShowsMenuAndItemsWhileOpen() {

@@ -10,12 +10,13 @@
 #include <string>
 
 namespace isoduo {
-enum class DesktopBackend { automatic, windows, wayland, x11 };
+// The native desktop backend a host runs on.
+enum class DesktopBackendKind { windows, wayland, x11 };
 #ifdef __linux__
 // Borrowed native objects. On Wayland display/surface are wl_display*/wl_surface*.
 // On X11 display is Display* and windowId is the XID. Valid until the host closes.
 struct NativeWindow {
-    DesktopBackend backend;
+    DesktopBackendKind backend;
     void* display;
     void* surface = nullptr;
     unsigned long windowId = 0;
@@ -25,7 +26,8 @@ enum class DebugContext { buildDefault, on, off };
 enum class RendererFailureKind { frameError, deviceReset, presentFailed, resourceFailed };
 struct RendererFailure { RendererFailureKind kind; std::uint32_t nativeCode = 0; std::u16string message; };
 enum class StartupFailureKind { window, contextVersion, contextCreation, shader, resource };
-struct StartupFailure { StartupFailureKind kind; std::u16string required, actual, message; DesktopBackend backend = DesktopBackend::automatic; };
+// backend is the backend that failed; it is empty when automatic selection found no native desktop session.
+struct StartupFailure { StartupFailureKind kind; std::u16string required, actual, message; std::optional<DesktopBackendKind> backend = std::nullopt; };
 struct RendererCapabilities { std::u16string version, vendor, renderer; bool debugContext = false, debugMessages = false, resetDetection = false; };
 enum class CloseDecision { close, keepOpen };
 class Desktop;
@@ -43,8 +45,8 @@ struct DesktopConfig {
     // Semantic queries, operations and events remain available; native window
     // information supplied by the operating system may still be exposed.
     bool platformAccessibilityEnabled = true;
-    // On Linux automatic selects the login session. An explicit backend never falls back.
-    DesktopBackend backend = DesktopBackend::automatic;
+    // Empty selects automatically: on Linux the login session decides. An explicit backend never falls back.
+    std::optional<DesktopBackendKind> backend;
 };
 struct CreateResult;
 struct RunResult { Status status = Status::ok; std::optional<RendererFailure> failure; std::optional<StartupFailure> startup; };
@@ -61,6 +63,11 @@ public:
     void* nativeWindow() const;
 #endif
     Result setTitle(std::u16string title);
+    // The one member any thread may call. Queues work to run once on the desktop thread inside run(), after
+    // the native input already read, in the order posted; it wakes an idle host. Returns notFound once the
+    // host has closed: work that has not run by then is destroyed without running. The caller keeps the
+    // Desktop alive while it posts.
+    Result post(std::function<void()> work);
     bool rendererFailed() const;
     RendererCapabilities capabilities() const;
 private:

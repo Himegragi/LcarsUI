@@ -78,7 +78,7 @@ public:
             detectableRepeat_ = detectable;
             XSync(display_, False);
             egl_->nativeWindow(&window_);
-            reference_ = {DesktopBackend::x11, display_, nullptr, window_};
+            reference_ = {DesktopBackendKind::x11, display_, nullptr, window_};
         } catch (...) {
             release();
             throw;

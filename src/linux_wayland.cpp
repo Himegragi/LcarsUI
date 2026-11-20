@@ -73,7 +73,7 @@ public:
             if (!eglWindow_) throw StartupError{{StartupFailureKind::resource, {}, {}, u"Unable to allocate the Wayland EGL window"}};
             egl_ = std::make_unique<EglWindow>(EGL_PLATFORM_WAYLAND_KHR, display_);
             egl_->nativeWindow(eglWindow_);
-            reference_ = {DesktopBackend::wayland, display_, surface_, 0};
+            reference_ = {DesktopBackendKind::wayland, display_, surface_, 0};
         } catch (...) {
             release();
             throw;

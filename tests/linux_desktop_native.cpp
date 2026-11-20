@@ -138,13 +138,13 @@ void interactive(DesktopConfig config, std::string_view mode) {
     checkStartup(created);
     auto& desktop = *created.desktop;
     reference = desktop.nativeWindow();
-    check(reference && reference->display && (reference->backend == DesktopBackend::x11 ?
+    check(reference && reference->display && (reference->backend == DesktopBackendKind::x11 ?
         reference->windowId != 0 && !reference->surface : reference->surface && !reference->windowId),
         "Tagged native reference identifies the display and window");
-    if (config.backend != DesktopBackend::automatic)
+    if (config.backend)
         check(reference->backend == config.backend, "Native reference uses the selected backend");
     check(bool(desktop.setTitle(u"Isoduo native verification 中文")), "Title update accepted");
-    std::cout << "Backend " << (reference->backend == DesktopBackend::wayland ? "wayland" : "x11") << '\n';
+    std::cout << "Backend " << (reference->backend == DesktopBackendKind::wayland ? "wayland" : "x11") << '\n';
     printCapabilities(desktop.capabilities());
     check(desktop.capabilities().debugContext == (config.debugContext == DebugContext::on),
         "Context matches its requested debug mode");
@@ -161,8 +161,8 @@ int main(int argc, char** argv) {
     try {
         DesktopConfig config;
         const std::string_view backend = argv[1], mode = argv[2];
-        if (backend == "wayland") config.backend = DesktopBackend::wayland;
-        else if (backend == "x11") config.backend = DesktopBackend::x11;
+        if (backend == "wayland") config.backend = DesktopBackendKind::wayland;
+        else if (backend == "x11") config.backend = DesktopBackendKind::x11;
         else check(backend == "auto", "Backend must be wayland, x11, or auto");
         config.width = 480;
         config.height = 320;

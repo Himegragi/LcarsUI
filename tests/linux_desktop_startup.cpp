@@ -5,7 +5,8 @@
 using namespace isoduo;
 
 namespace {
-void expectWindowFailure(DesktopBackend requested, DesktopBackend selected) {
+// An empty backend requests automatic selection; an empty selection means no native session was found.
+void expectWindowFailure(std::optional<DesktopBackendKind> requested, std::optional<DesktopBackendKind> selected) {
     Ui ui;
     ScrollState scroll;
     auto page = [] { return layout::column({}); };
@@ -27,21 +28,21 @@ void noDisplay() {
     unsetenv("WAYLAND_SOCKET");
     unsetenv("XDG_SESSION_TYPE");
     unsetenv("XDG_RUNTIME_DIR");
-    expectWindowFailure(DesktopBackend::automatic, DesktopBackend::automatic);
-    expectWindowFailure(DesktopBackend::wayland, DesktopBackend::wayland);
-    expectWindowFailure(DesktopBackend::x11, DesktopBackend::x11);
-    expectWindowFailure(DesktopBackend::windows, DesktopBackend::windows);
+    expectWindowFailure(std::nullopt, std::nullopt);
+    expectWindowFailure(DesktopBackendKind::wayland, DesktopBackendKind::wayland);
+    expectWindowFailure(DesktopBackendKind::x11, DesktopBackendKind::x11);
+    expectWindowFailure(DesktopBackendKind::windows, DesktopBackendKind::windows);
 }
 void bothDisplayVariables() {
     unsetenv("WAYLAND_SOCKET");
     setenv("DISPLAY", "invalid-display", 1);
     setenv("WAYLAND_DISPLAY", "/nonexistent/isoduo-test-wayland", 1);
     setenv("XDG_SESSION_TYPE", "x11", 1);
-    expectWindowFailure(DesktopBackend::automatic, DesktopBackend::x11);
-    expectWindowFailure(DesktopBackend::wayland, DesktopBackend::wayland);
+    expectWindowFailure(std::nullopt, DesktopBackendKind::x11);
+    expectWindowFailure(DesktopBackendKind::wayland, DesktopBackendKind::wayland);
     setenv("XDG_SESSION_TYPE", "wayland", 1);
-    expectWindowFailure(DesktopBackend::automatic, DesktopBackend::wayland);
-    expectWindowFailure(DesktopBackend::x11, DesktopBackend::x11);
+    expectWindowFailure(std::nullopt, DesktopBackendKind::wayland);
+    expectWindowFailure(DesktopBackendKind::x11, DesktopBackendKind::x11);
 }
 }
 

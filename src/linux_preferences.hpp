@@ -25,6 +25,8 @@ public:
     // Sources attached here run on the desktop's owner thread after native input dispatch.
     static GMainContext* context();
     int poll(std::span<pollfd> native, int timeout);
+    // Any thread: makes the owner thread's poll return, so work queued for it runs without waiting for input.
+    void wake();
 private:
     struct Impl;
     std::unique_ptr<Impl> impl_;
