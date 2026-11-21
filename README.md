@@ -464,18 +464,30 @@ GPU backend; failures save CPU, GPU and difference images.
 
 On an idle author desktop, run `./verify-idle.ps1 -Only presentation`. PR01
 requires Microsoft Bopomofo, Microsoft JhengHei and MingLiU; PR02 requires 100%
-and 150% monitors. The report keeps PR03 and PR04 open: install a per-user font
-and record its catalog entry, file path and display (PR03), then collect user
-feedback and the first frame time after changing fonts (PR04). Generate the
-16 V01 trial images and manifest with:
+and 150% monitors. PR03 reads the family names of registered per-user fonts
+under `%LOCALAPPDATA%\Microsoft\Windows\Fonts` with DirectWrite and checks that
+each is in the system catalog and resolves as the primary family. With no
+per-user font, PR03 reports BLOCKED and asks the operator to install one.
+The settings demo's Appearance page uses that catalog. The edit form's V04
+page shows a fixed list of four fonts.
+
+PR04 records font-switch timing in `presentation/trial/font-switch-timing.tsv`
+as a report-only measurement. The same run writes 16 V01 trial images and their
+manifest under `presentation/trial`. To generate just the trial artifacts, run
 
 ```powershell
 ./build/Release/isoduo_host_verify.exe --trial-screenshots --evidence build/Release/evidence/presentation-trial
 ```
 
-PR04 requires coordinator review and is not marked as passed by the generator.
-PS10 runs automatically in the `presentation_recovery` CTest. A report with open or failed cases causes the idle
-script to return a failure status.
+For the one-time author sign-off, review both appearances in the trial images,
+try switching fonts on the settings demo's Appearance page, and record feedback
+alongside the evidence. Use `-PresentationSignedOff` after recording that sign-off.
+PS10 runs automatically in the `presentation_recovery` CTest.
+
+`verify-idle.ps1` exits with `0` when the selected checks pass, `1` for a failed
+case or run, `2` when only author sign-off remains, and `3` for a blocked case
+with no failures. `-DryRun` lists the real-input and presentation cases without
+starting their executables.
 
 ## Real-platform runs per change
 
@@ -488,6 +500,21 @@ Production changes to layout or to the desktop host need runs that only a real, 
 input method, display scales, foreground window, frame timing). The core-seam twin of each property runs in CTest; this table
 lists, per change, which idle-desktop runs the author still has to do before a release. Commands are
 `./verify-idle.ps1 -Only <name>` unless the row says otherwise; `isoduo_host_verify` is `build/Release/isoduo_host_verify.exe`.
+
+Run `./verify-idle.ps1 -Only real-input` on an idle Windows desktop after a
+Release build. It takes over the mouse and keyboard while driving both web and
+material with temporary settings. Each case writes a result to
+`real-input/real-input.tsv` and saves screenshots under its appearance folder.
+
+- **RI01** Right-click the second line of the multi-line note and verify where a typed marker lands.
+- **RI02** Commit a wrapped Microsoft Bopomofo composition with no newline. The case is blocked if the current user profile lacks Bopomofo.
+- **RI03** Drag the items page scrollbar thumb and verify steady motion and the stop at the end of travel.
+- **RI04** Open the note color dropdown at a 660 px window width and confirm that the modal blocks a page thumb drag. The modal's 20 DIP margin prevents the dropdown from covering the page scrollbar in this demo. The CTest `pointer_routing` case `anOpenDialogBlocksThePageScrollbarUnderItsComponents` exercises the overlap.
+
+`build.ps1` records the built commit and working-tree dirty flag in
+`build/<Configuration>/source-revision.txt`. The real-input and presentation
+runs copy the Release file into their evidence directories and warn when the
+recorded commit differs from current HEAD.
 
 | Change | Idle-desktop runs |
 | --- | --- |
