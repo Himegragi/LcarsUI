@@ -6,14 +6,15 @@ Code: [isoduo/Isoduo](https://github.com/isoduo/Isoduo).
 Private tracker: [isoduo/Isoduo-issues](https://github.com/isoduo/Isoduo-issues).
 Historical numbered issue links retain their original destinations.
 
-This project was renamed from LcarsUI to Isoduo. Consumers now use `<isoduo/...>`,
+Consumers use `<isoduo/...>`,
 `isoduo::`, `find_package(Isoduo)` and `Isoduo::` CMake targets; build options use
 `ISODUO_*`. Configure a fresh build directory and install into a clean prefix.
-The settings-demo data directory is now `%APPDATA%/Isoduo/SettingsDemo`; migrate
-existing settings with `powershell -NoProfile -File tools/migrate-settings.ps1` before first launch.
+The settings-demo data directory is `%APPDATA%/Isoduo/SettingsDemo`. When upgrading
+from a version that used the legacy data directory, migrate existing settings with
+`powershell -NoProfile -File tools/migrate-settings.ps1` before first launch.
 The script also copies a legacy settings directory containing only backups and
 keeps each backup at its original relative path.
-Close both applications first. The script copies `%APPDATA%/LcarsUI/SettingsDemo` only when
+Close both applications first. The script copies the legacy settings directory only when
 `%APPDATA%/Isoduo/SettingsDemo` does not exist, preserves the old directory as a backup,
 and refuses to merge or overwrite an existing destination. Optional `-AppDataRoot` selects
 a different roaming profile root. Old settings headers, rich clipboard payloads and
