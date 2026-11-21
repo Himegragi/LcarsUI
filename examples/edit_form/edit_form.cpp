@@ -40,7 +40,9 @@ Ids defaultIds() {
     return i;
 }
 
-Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view)> resolveFont) : ids_(std::move(ids)), applied_(initialName), resolveFont_(std::move(resolveFont)), pages_(pages), ui() {
+Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view)> resolveFont,
+           std::optional<std::vector<FontFamily>> fontFamilies)
+    : ids_(std::move(ids)), applied_(initialName), resolveFont_(std::move(resolveFont)), pages_(pages), ui() {
     const auto& i = ids_;
     handles.title = ui.addLabel({.id = i.title, .value = u"編輯表單"}).value.value();
     handles.intro = ui.addLabel({.id = i.intro}).value.value();
@@ -93,9 +95,12 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
     handles.title.connectSource([this, titleId, titleText] {
         return clipPaddingId_ == titleId ? clipPaddingText_ : titleText;
     });
-    handles.intro.connectSource([this] {
+    handles.intro.connectSource({[this] {
         return clipPaddingId_ == ids_.intro ? clipPaddingText_ : (longIntro_ ? longIntro : shortIntro);
-    });
+    }, [this](std::function<void()> changed) {
+        introChanged_ = std::move(changed);
+        return [this] { introChanged_ = {}; };
+    }});
     handles.state.connectSource([this] {
         std::u16string state = mode_ == Mode::readOnly ? u"\u540d\u7a31\u552f\u8b80" : mode_ == Mode::disabled ? u"\u8cc7\u6599\u5340\u505c\u7528" : u"\u6b63\u5e38";
         if (handles.name.describe()->invalid) state += u"\u30fb\u540d\u7a31\u6709\u932f\u8aa4";
@@ -136,7 +141,11 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         regionEmpty_ = !regionEmpty_;
         return handles.region.setItems(regionEmpty_ ? std::vector<OptionItem>{} : regions());
     });
-    bindAction(handles.longText, [this] { longIntro_ = !longIntro_; return Result{}; });
+    bindAction(handles.longText, [this] {
+        longIntro_ = !longIntro_;
+        if (introChanged_) introChanged_();
+        return Result{};
+    });
     bindAction(handles.reset, [this] { return reset(); });
     bindAction(handles.noticesLatest, [this] { auto result = handles.notices.useLatest(); refreshConflict(); return result; });
     bindAction(handles.modeLatest, [this] { auto result = handles.mode.useLatest(); refreshConflict(); return result; });
@@ -214,22 +223,37 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             if (resolveFont_) return resolveFont_(family);
             FontResolution result; result.requested = family; result.primary = family.empty() ? u"Segoe UI" : std::u16string(family); return result;
         };
-        std::vector<OptionItem> fonts = {{{"default"}, u"\u9810\u8a2d"}};
-        for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
-            bool available = resolve(family).requestedAvailable;
-            fonts.push_back({{id}, std::u16string(family) + (available ? u"" : u"\uff08\u672a\u5b89\u88dd\uff09"), available});
+        std::vector<OptionItem> fonts;
+        auto addFont = [&](std::string id, std::u16string family, std::u16string label, bool available = true) {
+            OptionValue value{std::move(id)};
+            fonts.push_back({value, std::move(label), available});
+            fontChoices_.emplace_back(std::move(value), std::move(family));
+        };
+        addFont("default", {}, u"\u9810\u8a2d");
+        if (fontFamilies) {
+            for (const auto& family : *fontFamilies)
+                addFont("family:" + std::to_string(fontChoices_.size()), family.key, family.displayName);
+        } else {
+            for (auto [id, family] : {std::pair{"jhenghei", u"Microsoft JhengHei"}, {"segoe", u"Segoe UI"}, {"mingliu", u"MingLiU"}, {"consolas", u"Consolas"}}) {
+                bool available = resolve(family).requestedAvailable;
+                addFont(id, family, std::u16string(family) + (available ? u"" : u"\uff08\u672a\u5b89\u88dd\uff09"), available);
+            }
         }
-        fonts.push_back({{"missing"}, u"\u4e0d\u5b58\u5728\u7684\u5b57\u578b\uff08\u6e2c\u8a66\uff09"});
+        addFont("missing", u"Missing test font", u"\u4e0d\u5b58\u5728\u7684\u5b57\u578b\uff08\u6e2c\u8a66\uff09");
         handles.font = ui.addDropdown({.id = prefix + "v04.font", .label = u"\u5b57\u578b"}, std::move(fonts)).value.value();
         handles.font.connectSource({[this] {
-            const auto& f = ui.presentation().fontFamily;
-            return std::optional<OptionValue>{{f.empty() ? "default" : f == u"Microsoft JhengHei" ? "jhenghei" : f == u"Segoe UI" ? "segoe" : f == u"MingLiU" ? "mingliu" : f == u"Consolas" ? "consolas" : "missing"}};
+            const auto family = ui.presentation().fontFamily;
+            auto choice = std::find_if(fontChoices_.begin(), fontChoices_.end(),
+                                       [&](const auto& font) { return font.second == family; });
+            return std::optional<OptionValue>{choice == fontChoices_.end() ? OptionValue{"missing"} : choice->first};
         }, [this](std::function<void()> changed) { fontChanged_ = std::move(changed); return [this] { fontChanged_ = {}; }; }});
         handles.font.connectImmediate([this](const Change<DropdownHandle>& change) {
             if (!change.value) return Result{Status::invalidValue, u"Font choice required"};
-            const auto& id = change.value->id;
+            auto choice = std::find_if(fontChoices_.begin(), fontChoices_.end(),
+                                       [&](const auto& font) { return font.first == *change.value; });
+            if (choice == fontChoices_.end()) return Result{Status::invalidValue, u"Unknown font choice"};
             auto settings = ui.presentation();
-            settings.fontFamily = id == "default" ? u"" : id == "jhenghei" ? u"Microsoft JhengHei" : id == "segoe" ? u"Segoe UI" : id == "mingliu" ? u"MingLiU" : id == "consolas" ? u"Consolas" : u"Missing test font";
+            settings.fontFamily = choice->second;
             auto result = ui.setPresentation(settings); if (result && fontChanged_) fontChanged_(); return result;
         });
         handles.fontStatus = ui.addLabel({.id = prefix + "v04.status"}).value.value();
@@ -244,6 +268,7 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
         bindAction(handles.resetV04, [this] {
             auto result = ui.setPresentation({}); if (!result) return result;
             if (fontChanged_) fontChanged_(); if (textSizeChanged_) textSizeChanged_(); if (darkChanged_) darkChanged_();
+            if (compactChanged_) compactChanged_();
             handles.font.useLatest(); handles.textSize.useLatest(); handles.dark.useLatest(); handles.compact.useLatest(); return Result{};
         });
         handles.textSize = ui.addSlider({.id = prefix + "v04.text_size", .label = u"\u6587\u5b57\u5927\u5c0f"}, {12, 28, 1}).value.value();
@@ -254,10 +279,13 @@ Form::Form(Ids ids, bool pages, std::function<FontResolution(std::u16string_view
             auto result = ui.setPresentation(settings); if (result && darkChanged_) darkChanged_(); return result;
         });
         handles.compact = ui.addCheckbox({.id = prefix + "v04.compact", .label = u"\u7dfb\u6e4a"}).value.value();
-        handles.compact.connectSource({[this] { return ui.presentation().density == Density::compact; }, [](std::function<void()>) { return [] {}; }});
+        handles.compact.connectSource({[this] { return ui.presentation().density == Density::compact; },
+            [this](std::function<void()> changed) { compactChanged_ = std::move(changed); return [this] { compactChanged_ = {}; }; }});
         handles.compact.connectImmediate([this](const Change<CheckboxHandle>& change) {
             auto settings = ui.presentation(); settings.density = change.value ? Density::compact : Density::standard;
-            return ui.setPresentation(settings);
+            auto result = ui.setPresentation(settings);
+            if (result && compactChanged_) compactChanged_();
+            return result;
         });
         handles.preview = ui.addTextField({.id = prefix + "v04.preview", .label = u"\u9810\u89bd", .value = u"\u7e41\u4e2d English \U0001f600 \U00020000 \u2764\ufe0f"}).value.value();
         handles.preview.connectSource({[this] { return preview_; }, [](std::function<void()>) { return [] {}; }});
@@ -344,10 +372,15 @@ Result Form::setClipPadding(LabelHandle label, std::u16string text) {
     if (id != handles.title.describe()->id && id != handles.intro.describe()->id &&
         (!pages_ || (id != handles.v03Title.describe()->id && id != handles.dialogResult.describe()->id && id != handles.v04Title.describe()->id)))
         return {Status::invalidValue, u"Unknown clipping fixture label"};
-    clipPaddingId_ = std::move(id); clipPaddingText_ = std::move(text); return {};
+    const bool affectsIntro = clipPaddingId_ == ids_.intro || id == ids_.intro;
+    clipPaddingId_ = std::move(id); clipPaddingText_ = std::move(text);
+    if (affectsIntro && introChanged_) introChanged_();
+    return {};
 }
 void Form::clearClipPadding() {
+    const bool affectsIntro = clipPaddingId_ == ids_.intro;
     clipPaddingId_.clear(); clipPaddingText_.clear();
+    if (affectsIntro && introChanged_) introChanged_();
     if (list) list->clearClipPadding();
 }
 
@@ -433,6 +466,7 @@ void Form::setMode(Mode mode) {
 Result Form::reset() {
     setMode(Mode::normal);
     longIntro_ = false;
+    if (introChanged_) introChanged_();
     updateSource(initialName);
     noticesApplied_ = true; modeApplied_ = OptionValue{"normal"}; regionApplied_ = OptionValue{"north"}; volumeApplied_ = 40;
     regionEmpty_ = false; handles.region.setItems(regions());

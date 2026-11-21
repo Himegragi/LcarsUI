@@ -6,6 +6,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     env:
+      ISODUO_MSVC_TOOLSET: '14.44'
       MESA_URL: https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
       MESA_SHA256: 997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2
       GALLIUM_DRIVER: llvmpipe

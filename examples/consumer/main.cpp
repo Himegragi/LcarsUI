@@ -239,7 +239,7 @@ static_assert(std::same_as<decltype(std::declval<const isoduo::Appearance&>().ar
               std::same_as<decltype(std::declval<const isoduo::Appearance&>().arrangeTextField(240, isoduo::TextFieldHeights{}, 1.f, isoduo::Density::compact)), isoduo::TextFieldLayout>);
 // The desktop module (when the package has it): creation parameters are a Config, creation hands back a Result, and a
 // diagnostic says which kind of problem it is.
-#if __has_include("isoduo/desktop.hpp")
+#if !defined(ISODUO_CONSUMER_CORE_ONLY) && __has_include("isoduo/desktop.hpp")
 #include "isoduo/desktop.hpp"
 static_assert(std::same_as<decltype(isoduo::Desktop::create), isoduo::CreateResult(isoduo::Ui&, const isoduo::Appearance&, std::function<isoduo::layout::Node()>,
                                                                                  isoduo::ScrollState&, isoduo::DesktopConfig)>);
@@ -249,6 +249,15 @@ template <class T> concept HasCategory = requires(T value) { value.category; };
 static_assert(!HasCategory<isoduo::RenderDiagnostic>);
 namespace isoduo::consumerProbe {
 static_assert(Removed<DesktopOptions> && Removed<DesktopCreation> && Removed<DiagnosticCategory>);
+}
+// PR #115: the backend is a kind (rule A) and automatic selection is an empty optional, not an enumerator.
+namespace removedBy115 { struct Name {}; }
+using DesktopBackend = removedBy115::Name;
+namespace isoduo::consumerProbe {
+static_assert(std::same_as<DesktopBackend, ::removedBy115::Name>);
+static_assert(std::same_as<decltype(DesktopConfig::backend), std::optional<DesktopBackendKind>> &&
+              std::same_as<decltype(StartupFailure::backend), std::optional<DesktopBackendKind>>);
+static_assert(std::same_as<decltype(&Desktop::post), Result (Desktop::*)(std::function<void()>)>);
 }
 #endif
 // Handles compare within their own kind only (#94): equal when they control the same thing, a compile error across kinds.

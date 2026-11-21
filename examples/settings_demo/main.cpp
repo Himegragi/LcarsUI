@@ -1,17 +1,25 @@
 #include "../startup_report.hpp"
 #include "settings_demo.hpp"
-#include "close_controller.hpp"
 #include "isoduo/desktop.hpp"
 #include "about_desktop.hpp"
 #include "settings_store.hpp"
 #include "failure_diagnostic.hpp"
 #include <fstream>
+#include <filesystem>
+#include <iostream>
+#ifdef _WIN32
+#include "close_controller.hpp"
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <shlobj.h>
-#include <filesystem>
-#include <iostream>
+#else
+#include "linux_failure_prompt.hpp"
+#include <cstdlib>
+#include <pwd.h>
+#include <unistd.h>
+#endif
 namespace {
+#ifdef _WIN32
 class WindowsPrompt : public settingsDemo::NativePrompt {
     HWND owner_;
     static std::wstring wide(std::u16string_view s) { return {s.begin(), s.end()}; }
@@ -35,8 +43,25 @@ void CALLBACK showPendingNotice(HWND, UINT, UINT_PTR timer, DWORD) {
     auto* demo = pendingDemo; pendingDemo = nullptr;
     if (demo) demo->showLoadNotice(std::move(pendingTitle), std::move(pendingMessage));
 }
+#else
+std::filesystem::path defaultDirectory() {
+    if (auto config = std::getenv("XDG_CONFIG_HOME"); config && std::filesystem::path(config).is_absolute())
+        return std::filesystem::path(config) / "Isoduo" / "SettingsDemo";
+    std::filesystem::path home;
+    if (auto value = std::getenv("HOME")) home = value;
+    if (!home.is_absolute()) {
+        if (auto account = ::getpwuid(::getuid())) home = account->pw_dir;
+    }
+    if (!home.is_absolute()) throw std::runtime_error("Cannot locate the user's configuration directory");
+    return home / ".config" / "Isoduo" / "SettingsDemo";
 }
+#endif
+}
+#ifdef _WIN32
 int wmain(int argc, wchar_t** argv) {
+#else
+int main(int argc, char** argv) {
+#endif
     try {
 #ifdef ISODUO_APPEARANCE_material
         const auto& appearance = isoduo::materialAppearance();
@@ -45,19 +70,32 @@ int wmain(int argc, wchar_t** argv) {
 #endif
         auto name = appearance.name();
         std::filesystem::path directory, diagnosticsOut;
+#ifdef _WIN32
+        constexpr std::wstring_view settingsFlag = L"--settings-dir", diagnosticsFlag = L"--diagnostics-out";
+#else
+        constexpr std::string_view settingsFlag = "--settings-dir", diagnosticsFlag = "--diagnostics-out";
+#endif
         for (int i = 1; i < argc; i += 2) {
-            std::wstring_view flag(argv[i]);
-            if (i + 1 < argc && flag == L"--settings-dir" && directory.empty()) directory = argv[i + 1];
-            else if (i + 1 < argc && flag == L"--diagnostics-out" && diagnosticsOut.empty()) diagnosticsOut = argv[i + 1];
+            std::basic_string_view flag(argv[i]);
+            bool hasValue = i + 1 < argc;
+#ifndef _WIN32
+            hasValue = hasValue && argv[i + 1][0] && !std::string_view(argv[i + 1]).starts_with("--");
+#endif
+            if (hasValue && flag == settingsFlag && directory.empty()) directory = argv[i + 1];
+            else if (hasValue && flag == diagnosticsFlag && diagnosticsOut.empty()) diagnosticsOut = argv[i + 1];
             else { std::cerr << "Usage: [--settings-dir <directory>] [--diagnostics-out <file>]\n"; return 1; }
         }
 #ifndef ISODUO_DEMO_DIAGNOSTICS
         if (!diagnosticsOut.empty()) { std::cerr << "--diagnostics-out needs a build with Isoduo::Diagnostics\n"; return 1; }
 #endif
+#ifdef _WIN32
         if (directory.empty()) {
             PWSTR raw=nullptr; if (FAILED(SHGetKnownFolderPath(FOLDERID_RoamingAppData,0,nullptr,&raw))) throw std::runtime_error("Cannot locate Roaming AppData");
             directory=std::filesystem::path(raw)/L"Isoduo"/L"SettingsDemo"; CoTaskMemFree(raw);
         }
+#else
+        directory = directory.empty() ? defaultDirectory() : std::filesystem::absolute(directory);
+#endif
         settingsDemo::SettingsStore store(directory);
         auto loaded=store.load();
         auto about=settingsDemo::desktopAboutInfo(appearance);
@@ -65,10 +103,10 @@ int wmain(int argc, wchar_t** argv) {
         isoduo::Diagnostics diagnostics;
         about.diagnostics = true;
 #endif
-        auto path=store.path().wstring(); about.settingsPath.assign(path.begin(),path.end());
+        auto pathText = store.path().u16string();
+        about.settingsPath = pathText;
         settingsDemo::Demo demo(std::move(about));
         if (loaded.document) demo.loadDocument(*loaded.document);
-        std::u16string pathText(path.begin(),path.end());
         demo.onSave([&store](const auto& document) { return store.save(document); },pathText);
         isoduo::DesktopConfig options;
 #ifdef ISODUO_DEMO_DIAGNOSTICS
@@ -81,6 +119,7 @@ int wmain(int argc, wchar_t** argv) {
         };
 #endif
         options.title = u"設定管理示範 — " + std::u16string(name.begin(), name.end());
+#ifdef _WIN32
         settingsDemo::CloseController closeController(demo);
         options.onCloseRequested = [&](isoduo::Desktop& desktop) {
             WindowsPrompt prompt(desktop.nativeWindow());
@@ -94,23 +133,59 @@ int wmain(int argc, wchar_t** argv) {
             WindowsPrompt prompt(desktop.nativeWindow());
             closeController.failure(desktop, failure, prompt);
         };
+#else
+        settingsDemo::LinuxFailurePrompt prompt(demo);
+        options.onCloseRequested = [&](isoduo::Desktop& desktop) { return prompt.requestClose(desktop); };
+        options.onRendererFailed = [&](isoduo::Desktop& desktop, const isoduo::RendererFailure& failure) {
+#ifdef ISODUO_DEMO_DIAGNOSTICS
+            diagnostics.recordFailure(settingsDemo::failureDiagnostic(failure));
+            exportDiagnostics();
+#endif
+            prompt.show(desktop, failure.message);
+        };
+#endif
         auto creation = isoduo::Desktop::create(demo.ui, appearance, [&] { return demo.page(); }, demo.scroll, options);
         if (!creation.desktop) { reportStartupFailure(creation.failure); return 1; }
+#ifndef _WIN32
+        // Declared after creation, so it stops the prompt before the Desktop is destroyed on every exit path,
+        // including an exception from run(): the prompt's worker must not post to a destroyed Desktop.
+        struct StopPrompt {
+            settingsDemo::LinuxFailurePrompt& prompt;
+            ~StopPrompt() { prompt.stop(); }
+        } stopPrompt{prompt};
+#endif
         demo.onClose([&] { creation.desktop->close(); });
         demo.onDirtyChanged([&](bool dirty) { creation.desktop->setTitle((dirty ? u"*" : u"") + options.title); });
-        if (loaded.kind==settingsDemo::LoadKind::corrupt) {
-            auto message=u"無法讀取 " + pathText + u"（" + loaded.reason + u"）。已改用預設值啟動，";
-            message += loaded.renamed ? u"原檔已改名為 settings.json.bad。" : u"原檔無法改名，下次儲存會覆蓋它。";
-            pendingDemo=&demo; pendingTitle=u"設定檔已損毀"; pendingMessage=std::move(message);
-        } else if (loaded.kind==settingsDemo::LoadKind::unreadable) {
-            pendingDemo=&demo; pendingTitle=u"無法讀取設定檔"; pendingMessage=u"無法讀取 " + pathText + u"（" + loaded.reason + u"）。已改用預設值啟動。";
+        if (loaded.kind == settingsDemo::LoadKind::corrupt || loaded.kind == settingsDemo::LoadKind::unreadable) {
+            bool corrupt = loaded.kind == settingsDemo::LoadKind::corrupt;
+            std::u16string title = corrupt ? u"設定檔已損毀" : u"無法讀取設定檔";
+            auto message = u"無法讀取 " + pathText + u"（" + loaded.reason + u"）。已改用預設值啟動";
+            if (corrupt)
+                message += loaded.renamed ? u"，原檔已改名為 settings.json.bad。" : u"，原檔無法改名，下次儲存會覆蓋它。";
+            else message += u"。";
+#ifdef _WIN32
+            pendingDemo = &demo;
+            pendingTitle = std::move(title);
+            pendingMessage = std::move(message);
+#else
+            demo.showLoadNotice(std::move(title), std::move(message));
+#endif
         }
+#ifdef _WIN32
         UINT_PTR noticeTimer = pendingDemo ? SetTimer(nullptr, 0, 1, showPendingNotice) : 0;
+#endif
         auto caps = creation.desktop->capabilities();
         demo.setRenderer(caps.version + u" — " + caps.renderer);
         auto result=creation.desktop->run();
+#ifdef _WIN32
         if (noticeTimer) KillTimer(nullptr, noticeTimer);
         pendingDemo=nullptr;
+#else
+        prompt.stop();  // an answer must not reach the Desktop after it is destroyed
+        if (result.failure) {
+            std::cerr << "Renderer failed: " << settingsDemo::promptUtf8(result.failure->message) << '\n';
+        }
+#endif
 #ifdef ISODUO_DEMO_DIAGNOSTICS
         exportDiagnostics();
 #endif

@@ -2,6 +2,7 @@
 #include "core_internal.hpp"
 #include "component_type.hpp"
 #include "desktop_host.hpp"
+#include "pointer_routing.hpp"
 #include "uia_provider.hpp"
 #include <windowsx.h>
 #include <dwmapi.h>
@@ -162,11 +163,21 @@ HGLOBAL globalBytes(std::string_view bytes) {  // NUL-terminated: a global block
 }
 }
 bool WindowsClipboard::write(std::u16string_view text) { return writeRich(text, {}); }
+// Windows text carries CRLF line breaks; core hands every clipboard LF. A CRLF already there stays as it is.
+static std::u16string windowsLineBreaks(std::u16string_view text) {
+    std::u16string result;
+    result.reserve(text.size());
+    for (std::size_t i = 0; i < text.size(); ++i) {
+        if (text[i] == u'\n' && (i == 0 || text[i - 1] != u'\r')) result += u'\r';
+        result += text[i];
+    }
+    return result;
+}
 // One clipboard transaction: the plain text and, for a copy from a rich field, the private payload beside it.
 // EmptyClipboard drops every older format, so a payload never outlives the text it belonged to.
 bool WindowsClipboard::writeRich(std::u16string_view text, std::string_view payload) {
     if (!openClipboard(window_)) return false;
-    auto memory = globalText(text);
+    auto memory = globalText(windowsLineBreaks(text));
     auto rich = payload.empty() ? nullptr : globalBytes(payload);
     bool ok = false;
     if (memory && (payload.empty() || rich)) {
@@ -288,6 +299,8 @@ DesktopHost::DesktopHost(Ui& ui, const Appearance& appearance, std::function<lay
         capabilities_ = renderer_->capabilities();
         clientSize(options.width, options.height);
         PostMessageW(window_,WM_APP+43,0,0);
+        std::lock_guard lock(postMutex_);
+        postWindow_ = window_;
     } catch (...) {
         release();  // the destructor will not run for a half-built host
         throw;
@@ -339,7 +352,36 @@ void DesktopHost::configureFont(std::u16string_view family) {
     if(window_) PostMessageW(window_,WM_APP+43,0,0);
 }
 DesktopHost::~DesktopHost() { release(); }
+Result DesktopHost::post(std::function<void()> work) {
+    if (!work) return {Status::invalidValue, u"No work to post"};
+    std::lock_guard lock(postMutex_);
+    if (!postWindow_) return {Status::notFound, u"Desktop window is closed"};
+    posted_.push_back(std::move(work));
+    // One wake-up message serves everything queued before it is handled.
+    if (posted_.size() == 1 && !PostMessageW(postWindow_, postedWorkMessage, 0, 0)) {
+        posted_.clear();
+        return {Status::failed, u"Unable to wake the desktop thread"};
+    }
+    return {};
+}
+void DesktopHost::runPosted() {
+    std::vector<std::function<void()>> work;
+    {
+        std::lock_guard lock(postMutex_);
+        work.swap(posted_);
+    }
+    for (auto& item : work) {
+        if (quit_ || !window_) break;
+        item();
+    }
+}
 void DesktopHost::release() {
+    std::vector<std::function<void()>> discarded;
+    {
+        std::lock_guard lock(postMutex_);
+        postWindow_ = nullptr;
+        discarded.swap(posted_);
+    }
     if (uia_) { uia_->close(); uia_.reset(); }
     // A host may be destroyed while its Ui remains alive. Discard an unfinished
     // preedit on both sides before detaching the window; closing must not leave
@@ -528,41 +570,7 @@ GpuComparison DesktopHost::compareGpu(int width, int height, float s, int fault)
     auto frame = arrange(width, height, s);
     RecordingCanvas recording(width, height, detail::access(ui_).effectivePalette(appearance_).background);
     draw(recording, frame, s, true);
-    auto reference = renderCpu(recording.list, width, height);
-    std::vector<Rect> regions;
-    std::vector<GpuRegion> observed;
-    std::string owner; bool popup=false;
-    unsigned roles=0;
-    Rect clip{0,0,width,height};
-    for (std::size_t i=0;i<recording.list.commands.size();++i) {
-        const auto& command=recording.list.commands[i];
-        if(command.type==DrawCommand::Type::clip){clip=intersect(command.rect,{0,0,width,height});continue;}
-        if(command.type==DrawCommand::Type::beginGroup){owner=command.owner;popup=command.popup;continue;}
-        if(command.type==DrawCommand::Type::endGroup){owner.clear();popup=false;continue;}
-        if(command.role==PaintRole::content)continue;
-        auto glyph=command.resolve?command.resolve():ResolvedGlyph{command.rect,command.coverage};
-        auto bounds=intersect(glyph.rect,clip);
-        if(bounds.w>0 && bounds.h>0){
-            bool ink=commandInk(recording.list,i,i+1,clip,width,height);
-            regions.push_back(bounds); observed.push_back({bounds,owner,static_cast<unsigned>(command.role),popup,ink,false});
-            if(ink)roles |= static_cast<unsigned>(command.role);
-        }
-    }
-    auto gpuList=recording.list;
-    for(auto& command:gpuList.commands){
-        unsigned role=static_cast<unsigned>(command.role);
-        if(fault==1 && (role & static_cast<unsigned>(PaintRole::caret))) ++command.rect.x;
-        if(fault==2 && (role & static_cast<unsigned>(PaintRole::focusIndicator))) command.color.a=0;
-    }
-    auto actual = renderer_->readBack(gpuList, width, height);
-    auto result=compareImages(reference,actual,regions);
-    unsigned failedRoles=0;
-    for(std::size_t i=0;i<observed.size();++i){
-        observed[i].passed=observed[i].ink && result.regionPass[i];
-        if(!observed[i].passed)failedRoles |= observed[i].role;
-    }
-    bool passed=!failedRoles && result.regionsOk && result.differentPixels*200<=static_cast<std::size_t>(width)*height;
-    return {std::move(reference),std::move(actual),std::move(result),roles,failedRoles,std::move(observed),passed};
+    return compareDrawList(*renderer_, recording.list, width, height, fault);
 }
 std::string DesktopHost::rendererName() const { return renderer_->name(); }
 
@@ -576,185 +584,8 @@ bool DesktopHost::compareLegacy(int width, int height, float s) {
 }
 
 template<class Target> void DesktopHost::draw(Target& canvas, const Frame& frame, float s, bool windowFocused) {
-    UiState::OperationScope operation(&access(ui_));
-    const auto p = detail::access(ui_).effectivePalette(appearance_);
-    const Rect whole{0, 0, canvas.width, canvas.height};
-    struct PaintAdapter final : ComponentPaint {
-        Target& canvas;
-        Text& renderer;
-        std::vector<PaintObservation>* observations;
-        PaintAdapter(UiState& ui, const Placement& item, const ComponentSnapshot& semantics, const Appearance& appearance,
-                     float scale, bool windowFocused, Target& target, Text& text, std::vector<PaintObservation>* events)
-            : ComponentPaint(ui, item, semantics, appearance, scale, windowFocused), canvas(target), renderer(text), observations(events) {}
-        void role(PaintRole value) override { if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.currentRole=value; }
-        void observe(DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin, bool bold = false, bool italic = false) {
-            if constexpr (std::is_same_v<Target, RecordingCanvas>) {
-                if (observations) canvas.list.observations.push_back({type, placement.id, std::move(text), bounds,
-                    canvas.clip, color, placement.popup, placement.tooltip, begin, canvas.list.commands.size(), bold, italic});
-            }
-        }
-        std::size_t cursor() const {
-            if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
-            return 0;
-        }
-        void fill(Rect rect, Color color) override {
-            auto begin=cursor(); canvas.fill(rect, color);
-            observe(DrawObservation::Type::fill, {}, rect, color, begin);
-        }
-        void rounded(Rect rect, int radius, Color color) override {
-            auto begin=cursor(); canvas.rounded(rect, radius, color);
-            observe(DrawObservation::Type::rounded, {}, rect, color, begin);
-        }
-        void overlay(Rect rect, int radius, Color color, unsigned char alpha) override {
-            auto begin=cursor();
-            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.overlay(rect, radius, color, alpha);
-            else if (radius > 0) canvas.rounded(rect, radius, color, alpha);
-            else canvas.fill(rect, color, alpha);
-            observe(radius > 0 ? DrawObservation::Type::rounded : DrawObservation::Type::fill, {}, rect, color, begin);
-        }
-        void clip(Rect rect) override { canvas.clip = intersect(canvas.clip, rect); }
-        void verticalText(std::u16string_view value, VerticalForm form, int pixels, Rect cell, Color color) override {
-            auto begin=cursor();
-            renderer.drawVertical(canvas, value, form, pixels, cell, color);
-            observe(DrawObservation::Type::text, std::u16string(value), cell, color, begin);
-        }
-        void text(std::u16string_view value, int pixels, int x, int y, Color color) override { styledText(value, pixels, {}, x, y, color); }
-        void styledText(std::u16string_view value, int pixels, FontStyle style, int x, int y, Color color) override {
-            auto layout = renderer.shape(value, pixels, style);
-            auto begin=cursor();
-            renderer.draw(canvas, layout, x, y + ShapedMeasure::baseline(pixels), color);
-            observe(DrawObservation::Type::text, std::u16string(value),
-                {x, y, static_cast<int>(std::ceil(layout.width)), (pixels * 3 + 1) / 2}, color, begin, style.bold, style.italic);
-        }
-    };
-    for (const auto& item : frame.items) {
-        canvas.clip = intersect(item.clip, whole);
-        auto semantics = detail::access(ui_).describe(item.id);
-        PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, windowFocused, canvas, text_, observePaint_ && canvas.countInk ? &paintObservations_ : nullptr};
-        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.beginGroup(item.id,item.popup,item.tooltip);
-        detail::componentType(item.kind).paint(adapter);
-        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.endGroup();
-    }
-    for (const auto& region : frame.regions) {
-        canvas.clip = intersect(region.clip, whole);
-        if (region.thumb.h) {
-            canvas.rounded(region.track, region.track.w / 2, p.panel);
-            canvas.rounded(region.thumb, region.thumb.w / 2, p.outline);
-        }
-    }
-    if (frame.modal) {
-        canvas.clip = whole;
-        if constexpr (std::is_same_v<Target, RecordingCanvas>) {
-            canvas.list.setClip(whole); canvas.list.fillRect(whole, {p.scrim.r, p.scrim.g, p.scrim.b, p.scrimAlpha});
-        } else {
-            for (int y = 0; y < canvas.height; ++y)
-                for (int x = 0; x < canvas.width; ++x) canvas.blend(x, y, p.scrim, p.scrimAlpha);
-        }
-        canvas.rounded(frame.modalPanel, static_cast<int>(appearance_.radius() * s), p.surface);
-    }
-    for (const auto& item : frame.overlays) {
-        canvas.clip = intersect(item.clip, whole);
-        if (item.menu) {
-            // The open context menu: a bordered panel, one row per item, a scrollbar when it overflows.
-            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.beginGroup(item.id, true, false);
-            auto cursor = [&]() -> std::size_t {
-                if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
-                return 0;
-            };
-            auto observeMenu = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
-                if constexpr (std::is_same_v<Target, RecordingCanvas>) {
-                    if (observePaint_ && canvas.countInk) canvas.list.observations.push_back({type, item.id, std::move(text), bounds,
-                        canvas.clip, color, true, false, begin, canvas.list.commands.size()});
-                }
-            };
-            const int radius = static_cast<int>(appearance_.radius() * s);
-            const int border = std::max(1, static_cast<int>(std::lround(appearance_.componentPresentation(ui_.presentation().density).thin * s)));
-            auto begin = cursor();
-            canvas.rounded(item.bounds, radius, p.border);
-            observeMenu(DrawObservation::Type::rounded, {}, item.bounds, p.border, begin);
-            Rect panel{item.bounds.x + border, item.bounds.y + border, std::max(0, item.bounds.w - 2 * border), std::max(0, item.bounds.h - 2 * border)};
-            begin = cursor();
-            canvas.rounded(panel, radius, p.surface);
-            observeMenu(DrawObservation::Type::rounded, {}, panel, p.surface, begin);
-            canvas.clip = intersect(canvas.clip, item.menuInner);
-            const int line = measure_.lineHeight(item.textSize);
-            for (const auto& row : item.menuRows) {
-                if (row.bounds.y + row.bounds.h <= item.menuInner.y || row.bounds.y >= item.menuInner.y + item.menuInner.h) continue;
-                if (row.separator) {
-                    Rect rule{row.bounds.x + item.menuPad, row.bounds.y + row.bounds.h / 2, std::max(0, row.bounds.w - 2 * item.menuPad), std::max(1, static_cast<int>(std::lround(s)))};
-                    begin = cursor(); canvas.fill(rule, p.border); observeMenu(DrawObservation::Type::fill, {}, rule, p.border, begin);
-                    continue;
-                }
-                if (row.highlighted) {
-                    const Color fill = row.enabled ? p.selection : p.panel;
-                    begin = cursor(); canvas.fill(row.bounds, fill); observeMenu(DrawObservation::Type::fill, {}, row.bounds, fill, begin);
-                }
-                const Color color = row.enabled ? p.text : p.muted;
-                const int top = row.bounds.y + (row.bounds.h - line) / 2;
-                auto drawText = [&](const std::u16string& value, int x, Color paintColor) {
-                    auto layout = text_.shape(value, item.textSize);
-                    begin = cursor();
-                    text_.draw(canvas, layout, x, top + ShapedMeasure::baseline(item.textSize), paintColor);
-                    observeMenu(DrawObservation::Type::text, value, {x, top, static_cast<int>(std::ceil(layout.width)), line}, paintColor, begin);
-                    return static_cast<int>(std::ceil(layout.width));
-                };
-                drawText(row.label, row.bounds.x + item.menuPad, color);
-                if (!row.hint.empty()) {
-                    const int width = static_cast<int>(std::ceil(text_.shape(row.hint, item.textSize).width));
-                    drawText(row.hint, row.bounds.x + row.bounds.w - item.menuPad - width, p.muted);
-                }
-            }
-            if (item.menuThumb.h) {
-                canvas.rounded(item.menuTrack, item.menuTrack.w / 2, p.panel);
-                canvas.rounded(item.menuThumb, item.menuThumb.w / 2, p.outline);
-            }
-            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.endGroup();
-            continue;
-        }
-        if (item.tooltip) {
-            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.beginGroup(item.id,true,true);
-            auto observeTooltip = [&](DrawObservation::Type type, std::u16string text, Rect bounds, Color color, std::size_t begin) {
-                if constexpr (std::is_same_v<Target, RecordingCanvas>) {
-                    if (observePaint_ && canvas.countInk) canvas.list.observations.push_back({type, item.id, std::move(text), bounds,
-                        canvas.clip, color, true, true, begin, canvas.list.commands.size()});
-                }
-            };
-            auto cursor = [&]() -> std::size_t {
-                if constexpr (std::is_same_v<Target, RecordingCanvas>) return canvas.list.commands.size();
-                return 0;
-            };
-            auto begin = cursor();
-            canvas.rounded(item.bounds, static_cast<int>(appearance_.radius() * s), p.border);
-            observeTooltip(DrawObservation::Type::rounded, {}, item.bounds, p.border, begin);
-            int inset = std::max(1, static_cast<int>(std::lround(1 * s)));
-            Rect inner{item.bounds.x + inset, item.bounds.y + inset,
-                       std::max(0, item.bounds.w - 2 * inset), std::max(0, item.bounds.h - 2 * inset)};
-            begin = cursor();
-            canvas.rounded(inner, static_cast<int>(appearance_.radius() * s), p.surface);
-            observeTooltip(DrawObservation::Type::rounded, {}, inner, p.surface, begin);
-            canvas.clip = intersect(canvas.clip, inner);
-            for (const auto& line : item.lines) {
-                begin = cursor();
-                text_.draw(canvas, text_.shape(line.text, item.textSize), line.bounds.x,
-                           line.bounds.y + ShapedMeasure::baseline(item.textSize), p.text);
-                observeTooltip(DrawObservation::Type::text, line.text, line.bounds, p.text, begin);
-            }
-            if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.endGroup();
-            continue;
-        }
-        auto semantics = detail::access(ui_).describe(item.id);
-        if (!semantics || (!frame.modal && !semantics->expanded)) continue;
-        PaintAdapter adapter{detail::access(ui_), item, *semantics, appearance_, s, windowFocused, canvas, text_, observePaint_ && canvas.countInk ? &paintObservations_ : nullptr};
-        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.beginGroup(item.id,item.popup,item.tooltip);
-        detail::componentType(item.kind).paint(adapter);
-        if constexpr (std::is_same_v<Target, RecordingCanvas>) canvas.endGroup();
-        if (item.dropdownPanel) for (const auto& region : frame.regions) {
-            if (region.state != &detail::access(ui_).dropdownScroll(item.id) || !region.thumb.h) continue;
-            canvas.rounded(region.track, region.track.w / 2, p.panel);
-            canvas.rounded(region.thumb, region.thumb.w / 2, p.outline);
-        }
-    }
-    canvas.clip = whole;
+    paintDesktop(canvas, frame, s, windowFocused, ui_, appearance_, text_, measure_,
+                 observePaint_ && canvas.countInk ? &paintObservations_ : nullptr);
 }
 
 void DesktopHost::logIme(const wchar_t* event, std::u16string_view detail) {
@@ -818,15 +649,12 @@ void DesktopHost::syncIme() {
 // Right button released over a component: focus it, place the caret or select the row, open its menu.
 void DesktopHost::openPointerMenu(int x, int y) {
     auto before = detail::access(ui_).focused();
-    const auto* hit = frame_.hit(x, y);
-    if (!hit || !hit->dropdownPanel) detail::access(ui_).closePopup();
-    if (!hit || hit->dropdownPanel || hit->tooltip) return;
+    const auto target = detail::pointerMenuTarget(detail::access(ui_), frame_, x, y);
+    if (!target) return;
     finishComposition();
-    std::optional<unsigned> offset;
-    if (detail::componentType(hit->kind).selectsText()) offset = detail::placementTextOffset(frame_, hit->id, x);
-    detail::access(ui_).menuPointerOpen(hit->id, frame_.optionAt(*hit, x, y), offset, {x, y});
+    detail::openPointerMenu(detail::access(ui_), frame_, *target, x, y);
     afterInput(before);
-    if (detail::componentType(hit->kind).hasRowCursor()) reveal_.clear();  // the pressed row is already visible
+    if (detail::componentType(target->kind).hasRowCursor()) reveal_.clear();  // the pressed row is already visible
 }
 // Extend the selection of the field being dragged; outside a multi-line field's top or bottom edge it
 // scrolls a line, and a timer repeats that while the pointer rests there.
@@ -895,6 +723,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         return 0;
     case WM_APP+43:
         diagnostics_.drain(); return 0;
+    case postedWorkMessage:
+        runPosted(); return 0;
     case WM_APP+45:
         ui_.semantics().dispatchEvents(); return 0;
     case WM_PAINT: {
@@ -1005,10 +835,9 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         detail::access(ui_).pointerPressed();  // the right button is a press in the client area too (code review 2026-11-12, item 1)
         SetFocus(window_);
         int x = GET_X_LPARAM(l), y = GET_Y_LPARAM(l);
-        if (detail::access(ui_).menuOpen() && !frame_.menuContains(x, y)) {
-            // A press outside only dismisses the menu; the release is swallowed with it.
-            auto before = detail::access(ui_).focused();
-            detail::access(ui_).closeMenu();
+        auto before = detail::access(ui_).focused();
+        // A press outside only dismisses the menu; the release is swallowed with it.
+        if (detail::access(ui_).menuOpen() && detail::routeMenuPointer(detail::access(ui_), frame_, detail::PointerAction::rightPress, x, y)) {
             swallowRight_ = true;
             afterInput(before);
         }
@@ -1019,7 +848,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         if (std::exchange(swallowRight_, false)) return 0;
         auto before = detail::access(ui_).focused();
         if (detail::access(ui_).menuOpen()) {
-            if (auto row = frame_.menuItemAt(x, y)) { detail::access(ui_).menuPointerDown(*row); detail::access(ui_).menuPointerUp(*row); }
+            detail::routeMenuPointer(detail::access(ui_), frame_, detail::PointerAction::rightRelease, x, y);
             afterInput(before);
             return 0;
         }
@@ -1047,11 +876,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         const bool touch = synthesizedByTouch();
         if (detail::access(ui_).menuOpen()) {
             auto before = detail::access(ui_).focused();
-            if (!frame_.menuContains(x, y)) {
-                // Outside the menu the press only closes it: it reaches nothing underneath.
-                detail::access(ui_).closeMenu();
-                swallowLeft_ = true;
-            } else if (auto row = frame_.menuItemAt(x, y)) detail::access(ui_).menuPointerDown(*row);
+            // Outside the menu the press only closes it: it reaches nothing underneath.
+            if (detail::routeMenuPointer(detail::access(ui_), frame_, detail::PointerAction::press, x, y)) swallowLeft_ = true;
             afterInput(before);
             return 0;
         }
@@ -1059,28 +885,12 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         pendingHigh_ = 0;
         const auto* hit = frame_.hit(x, y);
         if (!hit || !hit->dropdownPanel) detail::access(ui_).closePopup();
-        {
-            // An open dialog blocks the page's scrollbars but not its own.
-            const bool popupHit = hit && detail::componentType(hit->kind).opensPopup() && hit->popup;
-            for (auto it = frame_.regions.rbegin(); it != frame_.regions.rend(); ++it) {
-                if (detail::access(ui_).retiredComponent(it->component)) continue;
-                if (frame_.modal && !popupHit && !it->modalContent) continue;
-                if (!it->thumb.h || !it->clip.contains(x, y) || !it->track.contains(x, y)) continue;
-                if (hit && hit->dropdownPanel && it->component != hit->component) continue;
-                // Track click centers the thumb on the pointer; dragging then moves its top.
-                // A sideways-scrolling label has a horizontal bar: its thumb is dragged by x.
-                int along = it->horizontal ? x : y;
-                dragOffset_ = it->thumb.contains(x, y) ? (it->horizontal ? it->thumb.x : it->thumb.y)
-                                                        : along - (it->horizontal ? it->thumb.w : it->thumb.h) / 2;
-                dragScroll_ = it->state;
-                dragComponent_ = it->component;
-                frame_.scrollTo(ui_, *it, it->offsetForThumb(dragOffset_));
-                drag_ = Drag::thumb; dragOrigin_ = along;
-                if (!touch) detail::access(ui_).hoverCapture({});  // the thumb is not a component: keep what is hovered
-                SetCapture(window_);
-                InvalidateRect(window_, nullptr, FALSE);
-                return 0;
-            }
+        if ((thumbGrab_ = detail::pressThumb(ui_, frame_, hit, x, y))) {
+            drag_ = Drag::thumb;
+            if (!touch) detail::access(ui_).hoverCapture({});  // the thumb is not a component: keep what is hovered
+            SetCapture(window_);
+            InvalidateRect(window_, nullptr, FALSE);
+            return 0;
         }
         if (!hit || !detail::componentType(hit->kind).acceptsPointer()) return 0;
         Id id = hit->id;
@@ -1120,7 +930,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         updateHover(x, y, touch);
         if (detail::access(ui_).menuOpen()) {
             // A menu row's hover is its own highlight (lines are ignored); touch moves do not hover.
-            if (!touch) if (auto row = frame_.menuItemAt(x, y)) detail::access(ui_).menuHighlight(*row);
+            if (!touch) detail::routeMenuPointer(detail::access(ui_), frame_, detail::PointerAction::move, x, y);
             InvalidateRect(window_, nullptr, FALSE);
             return 0;
         }
@@ -1130,9 +940,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             detail::access(ui_).sliderPointer(detail::access(ui_).focused(), x);
             InvalidateRect(window_, nullptr, FALSE);
         } else if (drag_ == Drag::thumb && (w & MK_LBUTTON)) {
-            auto region = std::find_if(frame_.regions.begin(), frame_.regions.end(),
-                [this](const ScrollRegion& item) { return item.state == dragScroll_ && item.component == dragComponent_; });
-            if (region != frame_.regions.end()) frame_.scrollTo(ui_, *region, region->offsetForThumb(dragOffset_ + ((region->horizontal ? x : y) - dragOrigin_)));
+            if (thumbGrab_) detail::dragThumb(ui_, frame_, *thumbGrab_, x, y);
             followComposition();
             InvalidateRect(window_, nullptr, FALSE);
         }
@@ -1143,9 +951,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         auto before = detail::access(ui_).focused();
         if (std::exchange(swallowLeft_, false)) return 0;
         if (detail::access(ui_).menuOpen()) {
-            // Releasing over the row that was pressed runs it; lines and disabled items do nothing.
-            auto row = frame_.menuItemAt(x, y);
-            detail::access(ui_).menuPointerUp(row ? *row : std::string{});
+            detail::routeMenuPointer(detail::access(ui_), frame_, detail::PointerAction::release, x, y);
             afterInput(before);
             return 0;
         }
@@ -1159,7 +965,7 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
             detail::access(ui_).pointerUp(hit ? std::string_view(hit->id) : std::string_view{}, hit ? frame_.optionAt(*hit, x, y) : std::nullopt);
         }
         if (drag_ == Drag::text) detail::access(ui_).endTextDrag();
-        drag_ = Drag::none; dragScroll_ = nullptr; dragComponent_ = {};
+        drag_ = Drag::none; thumbGrab_.reset();
         KillTimer(window_, dragScrollTimer);
         if (GetCapture() == window_) ReleaseCapture();
         detail::access(ui_).hoverRelease();
@@ -1197,8 +1003,8 @@ LRESULT DesktopHost::message(UINT msg, WPARAM w, LPARAM l) {
         // Space runs a menu item; the character it also produces must not then type into the field.
         if (key.key == Key::space && detail::access(ui_).menuOpen()) dropSpaceChar_ = true;
         detail::access(ui_).keyDown(key);
-        if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused()); focused && detail::componentType(focused->kind).hasRowCursor() &&
-            (key.key == Key::up || key.key == Key::down || key.key == Key::left || key.key == Key::right || key.key == Key::home || key.key == Key::end))
+        if (const auto* focused = detail::access(ui_).find(detail::access(ui_).focused());
+            focused && detail::revealsRowCursor(focused->kind, key.key))
             reveal_ = focused->id;
         afterInput(before);
         return 0;
@@ -1284,6 +1090,9 @@ CreateResult Desktop::create(Ui& ui, const Appearance& appearance, std::function
     return detail::DesktopHost::createForTest(ui,appearance,std::move(page),scroll,std::move(options),nullptr);
 }
 CreateResult detail::DesktopHost::createForTest(Ui& ui, const Appearance& appearance, std::function<layout::Node()> page, ScrollState& scroll, DesktopConfig options, detail::RendererTestHooks* hooks) {
+    if (options.backend && *options.backend != DesktopBackendKind::windows)
+        return {Status::failed, StartupFailure{StartupFailureKind::window, {}, {},
+            u"Requested desktop backend is unavailable on Windows", options.backend}, {}};
     try {
         auto impl=std::make_unique<Desktop::Impl>(); impl->options=std::move(options);
         impl->host=std::make_unique<detail::DesktopHost>(ui,appearance,std::move(page),scroll,impl->options,false,false,hooks);
@@ -1297,8 +1106,8 @@ CreateResult detail::DesktopHost::createForTest(Ui& ui, const Appearance& appear
             ptr->impl_->host->onRendererFailure([ptr](const RendererFailure& failure) { ptr->impl_->options.onRendererFailed(*ptr,failure); });
         }
         return {Status::ok,{},std::move(desktop)};
-    } catch (const detail::StartupError& e) { return {Status::failed,e.failure,{}}; }
-      catch (const std::exception& e) { std::string message=e.what(); return {Status::failed,StartupFailure{StartupFailureKind::resource,{}, {},detail::utf16FromUtf8(message)},{}}; }
+    } catch (const detail::StartupError& e) { auto failure=e.failure; failure.backend=DesktopBackendKind::windows; return {Status::failed,std::move(failure),{}}; }
+      catch (const std::exception& e) { std::string message=e.what(); return {Status::failed,StartupFailure{StartupFailureKind::resource,{}, {},detail::utf16FromUtf8(message),DesktopBackendKind::windows},{}}; }
 }
 RunResult Desktop::run() {
     auto& host=*impl_->host;
@@ -1320,6 +1129,7 @@ Result Desktop::close() {
     impl_->host->requestQuit(); return {};
 }
 void* Desktop::nativeWindow() const { return impl_->host->window(); }
+Result Desktop::post(std::function<void()> work) { return impl_->host->post(std::move(work)); }
 Result Desktop::rebuildRenderer() { return impl_->host->rebuildRenderer(); }
 bool Desktop::rendererFailed() const { return impl_->host->rendererFailed(); }
 RendererCapabilities Desktop::capabilities() const { return impl_->host->capabilities(); }

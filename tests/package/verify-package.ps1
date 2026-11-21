@@ -24,6 +24,11 @@ $vs = $record.InstallationPath
 $generatorName = Get-IsoduoVisualStudioGenerator $record.InstallationVersion
 if ($record.Generator -ne $generatorName -or -not $record.ToolsetVersion) { throw 'Invalid Visual Studio build toolchain record' }
 $toolsetVersion = Import-IsoduoVisualStudioEnvironment $vs $record.ToolsetVersion
+$vsToolset = "version=$toolsetVersion"
+$selectedToolset = [version]$toolsetVersion
+if ($selectedToolset -ge [version]'14.30' -and $selectedToolset -lt [version]'14.50') {
+    $vsToolset = "v143,$vsToolset"
+}
 $configFile = Join-Path $prefixPath 'lib/cmake/Isoduo/IsoduoConfig.cmake'
 $packageConfig = Get-Content -Raw -LiteralPath $configFile
 if ($packageConfig -notmatch 'set\(Isoduo_MSVC_TOOLSET_VERSION "([^"]+)"\)' -or $matches[1] -ne $toolsetVersion) {
@@ -55,7 +60,7 @@ function Run-Case($name, $generator, $config, $source, $mode = 'build', $extra =
     $args = @('-S', $source, '-B', $dir, '-G', $genName, '-DCMAKE_FIND_USE_PACKAGE_REGISTRY=OFF', '-DCMAKE_FIND_USE_SYSTEM_PACKAGE_REGISTRY=OFF')
     if ($name -ne 'reject/no-prefix') { $args += "-DCMAKE_PREFIX_PATH=$prefixPath" }
     if ($generator -eq 'Ninja') { $args += "-DCMAKE_CXX_COMPILER=$compiler"; if ($config) { $args += "-DCMAKE_BUILD_TYPE=$config" } }
-    else { $args += @('-A', 'x64', '-T', "version=$toolsetVersion", "-DCMAKE_GENERATOR_INSTANCE=$vs") }
+    else { $args += @('-A', 'x64', '-T', $vsToolset, "-DCMAKE_GENERATOR_INSTANCE=$vs") }
     $args += $extra
     $result = Invoke-Logged $cmake $args $log
     $ok = $true; $message = ''

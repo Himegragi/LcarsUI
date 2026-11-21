@@ -688,6 +688,7 @@ void v04CompactCheckboxAppliesDensity() {
     form.handles.tabs.activate({"v04"});
     check(bool(form.handles.compact.toggle()), "Compact checkbox toggles");
     check(form.ui.presentation().density == Density::compact, "Checkbox applies compact density");
+    check(!form.handles.compact.describe()->sourceConflict, "The checkbox's own write does not show an external conflict");
     check(bool(form.handles.compact.toggle()), "Compact checkbox toggles back");
     check(form.ui.presentation().density == Density::standard, "Checkbox restores standard density");
 }
@@ -759,6 +760,33 @@ void v04FontChoiceAppliesAndReportsFallback() {
     check(form.ui.presentation().fontFamily == u"MingLiU" && h.fontStatus.describe()->value.find(u"MingLiU") != std::u16string::npos, "Selected family is visible");
     check(bool(h.textSize.setValue(28)) && bool(h.dark.toggle()) && bool(h.resetV04.invoke()), "Reset presentation");
     check(form.ui.presentation() == PresentationSettings{} && h.font.draft().value.value() == OptionValue{"default"} && h.textSize.describe()->value == u"16" && h.dark.describe()->value != u"true", "Reset updates controls and settings");
+}
+
+void v04CatalogFontCanBeSelectedAndReset() {
+    auto resolve = [](std::u16string_view family) {
+        FontResolution result;
+        result.requested = family;
+        result.requestedAvailable = family.empty() || family == u"Trial Mono";
+        result.primary = family == u"Trial Mono" ? u"Trial Mono" : u"Default Sans";
+        return result;
+    };
+    editForm::Form form(ids, true, resolve, std::vector<FontFamily>{{u"Trial Mono", u"Trial Mono Display"}});
+    auto& h = form.handles;
+    check(bool(h.tabs.activate({"v04"})), "Open the presentation page");
+    const auto items = h.font.describe()->items;
+    const auto installed = std::find_if(items.begin(), items.end(), [](const auto& item) {
+        return item.label == u"Trial Mono Display";
+    });
+    check(installed != items.end() && installed->enabled, "The installed catalog font is available");
+    check(bool(h.font.select(installed->value)), "Choose the installed catalog font");
+    check(form.ui.presentation().fontFamily == u"Trial Mono" && h.font.draft().value.value() == installed->value &&
+          h.fontStatus.describe()->value.find(u"Trial Mono") != std::u16string::npos,
+          "Catalog choice, presentation and font status agree");
+    check(bool(h.font.select({"missing"})) && form.ui.presentation().fontFamily == u"Missing test font" &&
+          h.fontStatus.describe()->value.find(u"Default Sans") != std::u16string::npos,
+          "The missing font remains selectable and reports its fallback");
+    check(bool(h.resetV04.invoke()) && form.ui.presentation().fontFamily.empty() &&
+          h.font.draft().value.value() == OptionValue{"default"}, "Reset restores the default font");
 }
 
 void fontSwitchReflowsActiveComposition() {
@@ -856,6 +884,8 @@ void ps07ListAnchorSurvivesSizeChange() {
     check(list && test::inside(list->options[49], list->clip) && page.selection() == OptionValue{"T050"}, "PS07 focused item remains visible");
     settings.textSize = 12; form.ui.setPresentation(settings); frame = draw();
     h.list.enable(false); h.list.enable(true);
+    check(bool(h.hundred.focus()), "PS07 another component has focus while scrolling the list");
+    frame = draw();
     list = frame.find(h.list); auto region = std::find_if(frame.regions.begin(), frame.regions.end(), [&](const ScrollRegion& r) { return r.state == &page.listScroll; });
     page.listScroll.offset += list->options[29].y - region->viewport.y;
     frame = draw(); list = frame.find(h.list);
@@ -1413,7 +1443,10 @@ void pagesKeepIndependentDraftsHistoryAndScroll() {
     test::FakeMeasure measure;
     h.name.setValue(u"a very long draft that needs horizontal scrolling in a narrow field");
     h.name.focus(); h.name.select(66, 66);
-    h.longText.invoke();
+    bool frameRequested = false;
+    detail::access(form.ui).onInvalidate([&] { frameRequested = true; });
+    check(bool(h.longText.invoke()) && frameRequested, "Expanding the introduction requests a frame");
+    detail::access(form.ui).onInvalidate({});
     auto frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll, ids.name);
     auto offset = frame.find(h.name)->offset;
     form.scroll.offset = frame.maximum;
@@ -1450,6 +1483,32 @@ void pagesKeepIndependentDraftsHistoryAndScroll() {
     frame = arrange(form.page(), form.ui, *appearance, measure, 360, 180, 1.f, form.scroll);
     check(form.scroll.offset == savedScroll && frame.find(h.name)->offset == offset && bool(h.name.undo()) &&
           *h.name.draft() == u"\u6e2c\u8a66\u4f7f\u7528\u8005", "V02 reset preserves V01 offsets and undo history");
+}
+
+void tooltipDelayWaitsForFocusAfterRendererRecovery() {
+    Ui ui;
+    auto button = ui.addButton({.id = "pending", .label = u"Pending"}).value.value();
+    auto tip = ui.addTooltip("pending.tip", button, u"Help", 1000).value.value();
+    auto& state = detail::access(ui);
+    std::uint64_t now = 1000;
+    state.tooltipClock([&] { return now; });
+    state.windowActive(true);
+    state.setSystemKeyboardCues(true);
+    check(bool(button.focus()) && state.tooltipDeadline() == 2000, "Focus starts the tooltip delay");
+    now = 1400;
+    state.rendererFailed(true);
+    state.windowActive(false);
+    now = 6000;
+    state.rendererFailed(false);
+    state.frameVisibility({{"pending", true}});
+    check(!state.tooltipDeadline() && !*tip.visible(), "An inactive rebuilt frame does not restart the delay");
+    now = 6200;
+    state.windowActive(true);
+    check(state.tooltipDeadline() == 6800, "Focus return resumes the remaining 600 ms");
+    state.tooltipTime(now = 6799);
+    check(!*tip.visible(), "Tooltip remains pending until its restored deadline");
+    state.tooltipTime(now = 6800);
+    check(*tip.visible(), "Tooltip appears after the remaining delay");
 }
 
 void tooltipKeyboardDelayAndEscape() {
@@ -2959,6 +3018,7 @@ int main() {
         {"V04 justify comparison", v04JustifyComparisonFollowsItsDropdowns},
         {"V04 size slider", v04SliderUpdatesGlobalTextSize},
         {"V04 font selection", v04FontChoiceAppliesAndReportsFallback},
+        {"V04 installed catalog and fallback", v04CatalogFontCanBeSelectedAndReset},
         {"N01 long field label and error", longFieldLabelAndErrorKeepTheirAssociation},
         {"N03 radio boundaries in each appearance", radioBoundariesUnderTheAppearance},
         {"N04 slider boundaries in each appearance", sliderNonDivisibleUnderTheAppearance},
@@ -3012,6 +3072,7 @@ int main() {
         {"C11 tooltip lifetime and window focus", tooltipWindowModalAndSourceLifetime},
         {"P05 tooltip pointer visit", tooltipPointerVisitCanRestartAfterEscape},
         {"P05 tooltip keyboard delay and Escape", tooltipKeyboardDelayAndEscape},
+        {"R24 tooltip resumes after focus returns", tooltipDelayWaitsForFocusAfterRendererRecovery},
         {"Closed dialog members are hidden", closedDialogMembersAreHiddenAndRejectInput},
         {"P01 cancel dialog", dialogCancelPreservesProgress},
         {"P02 P03 modal input and confirm", dialogConfinesInputAndConfirmsOnce},

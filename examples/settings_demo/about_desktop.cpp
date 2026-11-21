@@ -10,15 +10,22 @@ AboutInfo desktopAboutInfo(const isoduo::Appearance& appearance) {
     AboutInfo about;
     about.fonts = isoduo::systemFontCatalog().families();
     about.resolveFont = [](const isoduo::PresentationSettings& settings) { return isoduo::systemFontCatalog().resolve(settings); };
+#ifdef __linux__
+    const auto primary = about.resolveFont({}).primary;
+    about.defaultFontLabel = primary.empty() ? u"\u9810\u8a2d" : u"\u9810\u8a2d\uff08" + primary + u"\uff09";
+#endif
     about.appearance = std::u16string(name.begin(), name.end());
     std::string configuration = ISODUO_DEMO_CONFIGURATION;
     about.build = std::u16string(ISODUO_DEMO_REVISION) + u"、" + std::u16string(configuration.begin(), configuration.end());
+    about.settingsPath = u"未知";
+#ifdef _WIN32
     wchar_t* raw = nullptr; std::size_t length = 0;
     if (_wdupenv_s(&raw, &length, L"APPDATA") == 0 && raw) {
         std::unique_ptr<wchar_t, decltype(&std::free)> appdata(raw, &std::free);
         std::wstring path = std::wstring(appdata.get()) + L"\\Isoduo\\SettingsDemo\\settings.json";
         about.settingsPath.assign(path.begin(), path.end());
-    } else about.settingsPath = u"未知";
+    }
+#endif
     about.licenses.push_back({{"isoduo"}, u"Isoduo 框架 — MIT", std::u16string(frameworkLicense)});
     const char* ids[] = {"freetype", "harfbuzz", "khronos", "unicode"};
     std::size_t i = 0;

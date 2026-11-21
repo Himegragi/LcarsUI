@@ -256,12 +256,36 @@ void nodeEquality() {
     ++changed.bounds->x;
     check(!(original == changed), "node equality: bounds are part of the whole snapshot");
 }
+
+void snapshotsKeepTheirValuesAfterEditing() {
+    Ui ui;
+    const auto box = ui.addCheckbox({.id = "box", .label = u"Enabled"}).value.value();
+    const auto radio = ui.addRadioGroup({.id = "mode", .label = u"Mode"}, {{{"a"}, u"Alpha"}}).value.value();
+    check(bool(box.connectSource(constantSource(false))) && bool(radio.connectSource(constantSource(std::optional<OptionValue>{}))),
+          "connect false and empty read sources");
+    check(bool(box.connectConfirmed([](const Change<CheckboxHandle>&) { return Result{}; })), "enable checkbox editing");
+    auto& tree = ui.semantics();
+    const auto before = box.describe();
+    const auto nodeBefore = tree.get({"box"});
+    const auto emptySelection = radio.draft();
+    const auto missingNode = tree.get({"missing"});
+    check(before && nodeBefore && sameCommonFields(*before, *nodeBefore) && nodeBefore->checked == false,
+          "a false checkbox value is present in both snapshots");
+    check(emptySelection && !*emptySelection && missingNode.status == Status::notFound && !missingNode.value,
+          "an empty selection is a successful query, and a missing node has no snapshot");
+    check(bool(tree.perform({"box"}, Verb::toggle)), "toggle through the semantic entry point");
+    const auto after = box.describe();
+    const auto nodeAfter = tree.get({"box"});
+    check(after && nodeAfter && sameCommonFields(*after, *nodeAfter) && nodeAfter->checked == true &&
+          before->checked == false && nodeBefore->checked == false,
+          "new snapshots show the edit while earlier snapshots keep their own values");
+}
 }
 int main() {
     const test::Case cases[] = {{"normal", normal}, {"disabled", disabled}, {"read_only", readOnly}, {"context_menu_open", contextMenuOpen},
                               {"attached_error_visible", attachedErrorVisible}, {"hidden", hidden}, {"blocked_by_modal", blockedByModal},
                               {"multiline_scrolled", multilineScrolled}, {"scrolled_offscreen", scrolledOffscreen},
                               {"errors", errors}, {"dropdown_open", dropdownOpen}, {"component_equality", componentEquality},
-                              {"node_equality", nodeEquality}};
+                              {"node_equality", nodeEquality}, {"snapshots keep their values after editing", snapshotsKeepTheirValuesAfterEditing}};
     return test::run("snapshots", cases);
 }

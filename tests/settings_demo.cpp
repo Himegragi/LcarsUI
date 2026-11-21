@@ -179,11 +179,13 @@ void semanticItemsAndDialogs() {
                 contains("items.delete_dialog", "items.delete_dialog.confirm") && !contains("items.delete_dialog", "items.dialog.name"),
                 "semantic dialogs contain only their own members");
     test::check(bool(demo.nav.select({"items"})) && bool(demo.itemsAdd.invoke()), "open Items editor");
+    test::check(tree.get({"items.dialog"})->name == u"新增項目", "add dialog uses its title as the accessible name");
     test::check(!tree.get({"items.dialog"})->hidden && !tree.get({"items.dialog.name"})->hidden &&
                 tree.get({"items.delete_dialog"})->hidden && tree.get({"items.delete_dialog.confirm"})->hidden &&
                 tree.get({"items.list"})->blockedByModal, "editor semantics expose modal and hidden peer dialog");
     test::check(bool(demo.itemDialog.settle(false)) && bool(demo.itemsList.select({"T001"})) && bool(demo.itemsDelete.invoke()),
                 "open Items delete confirmation");
+    test::check(tree.get({"items.delete_dialog"})->name == u"刪除項目", "delete dialog uses its title as the accessible name");
     test::check(tree.get({"items.dialog"})->hidden && tree.get({"items.dialog.name"})->hidden &&
                 !tree.get({"items.delete_dialog"})->hidden && !tree.get({"items.delete_dialog.confirm"})->hidden,
                 "semantic visibility follows the active Items dialog");
@@ -1114,6 +1116,7 @@ void closeDialogFlow() {
     test::check(bool(demo.volume.setValue(65)), "dirty volume");
     test::check(!demo.requestClose(), "dirty close is vetoed");
     test::check(demo.closeDialog.isOpen().value == true, "close dialog opened");
+    test::check(demo.ui.semantics().get({"app.close_dialog"})->name == u"要儲存修改嗎？", "close dialog uses its title as the accessible name");
     test::check(demo.ui.semantics().get({"app.close_dialog.title"})->value == u"\u8981\u5132\u5b58\u4fee\u6539\u55ce\uff1f", "close title text");
     test::check(demo.ui.semantics().get({"app.close_dialog.save"})->name == u"\u5132\u5b58", "close save label");
     test::check(demo.ui.semantics().get({"app.close_dialog.discard"})->name == u"\u4e0d\u5132\u5b58", "close discard label");
@@ -1153,11 +1156,15 @@ void appearanceToggleReset() {
 }
 void appearanceFontHistory() {
     settingsDemo::AboutInfo info;
+    info.defaultFontLabel = u"\u9810\u8a2d\uff08Trial Sans\uff09";
     info.fonts = {{u"Consolas", u"Consolas"}};
     for (int i=0; i<149; ++i) { auto n=std::to_string(i); auto key=u"Font" + std::u16string(n.begin(),n.end()); info.fonts.push_back({key,key}); }
     settingsDemo::Demo demo(info); demo.nav.select({"appearance"});
     auto& tree=demo.ui.semantics();
     auto options=tree.children({"appearance.font"});
+    auto defaultFont = tree.get({"appearance.font", OptionValue{"default"}});
+    test::check(defaultFont && defaultFont->name == info.defaultFontLabel && defaultFont->selected,
+                "The default choice displays the desktop's label");
     test::check(options && options->size()==151, "default and all 150 families remain semantic options");
     test::check(bool(tree.perform({"appearance.font", OptionValue{"family:Consolas"}}, Verb::select)), "select font");
     test::check(demo.ui.presentation().fontFamily == u"Consolas", "font applies");

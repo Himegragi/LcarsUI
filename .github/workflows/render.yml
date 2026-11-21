@@ -6,6 +6,7 @@ jobs:
     runs-on: windows-latest
     timeout-minutes: 60
     env:
+      ISODUO_MSVC_TOOLSET: '14.44'
       MESA_URL: https://github.com/pal1000/mesa-dist-win/releases/download/26.2.5/mesa3d-26.2.5-release-msvc.7z
       MESA_SHA256: 997123ef4ce8896204ab912d5b54f19372c487ff9835bcefafa2fca23b8953c2
       GALLIUM_DRIVER: llvmpipe
@@ -22,6 +23,9 @@ jobs:
       - name: Install and verify Release package
         shell: pwsh
         run: |
+          . ./cmake/VisualStudio.ps1
+          $toolchain = Get-Content build/Release/isoduo-visual-studio.json -Raw | ConvertFrom-Json
+          Import-IsoduoVisualStudioEnvironment $toolchain.InstallationPath $toolchain.ToolsetVersion | Out-Null
           ctest --test-dir build/Release --output-on-failure -R "package_install|consumer_example|third_party_notices"
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           cmake --install build/Release --prefix "$env:RUNNER_TEMP\isoduo-full"
@@ -61,6 +65,9 @@ jobs:
       - name: Run full CTest suite
         shell: pwsh
         run: |
+          . ./cmake/VisualStudio.ps1
+          $toolchain = Get-Content build/Release/isoduo-visual-studio.json -Raw | ConvertFrom-Json
+          Import-IsoduoVisualStudioEnvironment $toolchain.InstallationPath $toolchain.ToolsetVersion | Out-Null
           ctest --test-dir build/Release --output-on-failure --timeout 900
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: Run debug diagnostics checks

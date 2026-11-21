@@ -2,7 +2,9 @@
 // #79 multi-line text fields through the public core and layout seams, with a deterministic
 // fake text backend. Expected values are worked out by hand in each case.
 #include "check.hpp"
+#include "clipboard_text.hpp"
 #include "fake_measure.hpp"
+#include "text_geometry_checks.hpp"
 #include "isoduo/core.hpp"
 #include "isoduo/layout.hpp"
 #include "isoduo/semantics.hpp"
@@ -81,10 +83,38 @@ void pasteNormalizesEveryLineBreakToOneLineFeed() {
     check(pasteAsSingleLine(u"x\r\ny") == u"x y", "paste_as_single_line is unchanged");
     host.select("note", 0, 3);
     host.keyDown(ctrl(u'C'));
-    check(clipboard.content == u"a\r\nb", "Copy writes line breaks as CRLF");
+    const auto copied = test::copiedClipboardText(u"a\nb", test::ClipboardSeam::core);
+    check(clipboard.content == copied && copied == u"a\nb", "Copy hands the clipboard seam LF line breaks");
     check(valueOf(ui, "note") == u"a\nb\nc\nd", "Copy does not change the value");
     host.keyDown(ctrl(u'X'));
-    check(clipboard.content == u"a\r\nb" && valueOf(ui, "note") == u"\nc\nd", "Cut also writes CRLF");
+    check(clipboard.content == copied && valueOf(ui, "note") == u"\nc\nd", "Cut also hands over LF");
+}
+
+// The asynchronous seam the Linux hosts use carries the same LF text, and a delivered CRLF, lone CR or
+// lone LF pastes as one LF each. The native Wayland and X11 offers are checked on real desktops (N15-N16).
+struct DeferredClipboard final : detail::AsyncClipboard {
+    std::uint64_t request = 0;
+    detail::ClipboardData offered;
+    bool hasText() const override { return true; }
+    Result read(std::uint64_t id, bool) override { request = id; return {}; }
+    Result write(std::uint64_t id, detail::ClipboardData data) override { request = id; offered = std::move(data); return {}; }
+};
+void asynchronousClipboardCarriesLineFeeds() {
+    Ui ui;
+    auto field = connect(ui, multi("note", u"a\nb\nc"));
+    DeferredClipboard clipboard;
+    auto& host = detail::access(ui);
+    host.setAsyncClipboard(&clipboard); host.focus("note");
+    host.select("note", 0, 3);
+    check(bool(host.keyDown(ctrl(u'C'))) && clipboard.offered.text == test::copiedClipboardText(u"a\nb", test::ClipboardSeam::core),
+          "A copy offers LF line breaks to the asynchronous clipboard");
+    check(bool(host.completeClipboard({clipboard.request, {}, {}})) && valueOf(ui, "note") == u"a\nb\nc", "The copy leaves the value");
+    host.select("note", 2, 5);
+    check(bool(host.keyDown(ctrl(u'X'))) && clipboard.offered.text == u"b\nc" && valueOf(ui, "note") == u"a\nb\nc",
+          "A cut offers LF and keeps the text until the offer succeeds");
+    check(bool(host.completeClipboard({clipboard.request, {}, {}})) && valueOf(ui, "note") == u"a\n", "The supplied cut removes the text");
+    check(bool(host.keyDown(ctrl(u'V'))) && bool(host.completeClipboard({clipboard.request, {}, {u"x\r\ny\rz\nw", {}}})) &&
+          valueOf(ui, "note") == u"a\nx\ny\nz\nw", "A delivered CRLF, CR and LF each paste as one LF");
 }
 
 void singleLinePasteStillTurnsBreaksIntoSpaces() {
@@ -206,6 +236,34 @@ void enterDuringCompositionDoesNotBreakTheLine() {
     check(bool(host.keyDown(press(Key::enter))) && valueOf(form.ui, "note") == u"a你\n", "Enter breaks the line again after the composition");
 }
 
+void inputMethodReplacementIsOneUndoEntry() {
+    Form form;
+    auto& host = form.host();
+    auto field = connect(form.ui, multi("replace", u"甲🙂舊文乙"));
+    field.focus();
+    host.select("replace", 3, 5);
+    host.compositionUpdate(u"中", 1);
+    check(field.draft().value == u"甲🙂舊文乙" && host.edit("replace")->visible() == u"甲🙂中乙",
+          "Preedit temporarily replaces the selection only in visible text");
+    check(field.setValue(u"other").status == Status::busy && host.keyDown(press(Key::enter)).status == Status::busy,
+          "Competing edits and Enter leave the composition alone");
+    check(bool(host.compositionCommit(u"中文", 2, 0)) && field.draft().value == u"甲中文乙",
+          "The IME can replace the selection and a supplementary character before it");
+    check(bool(host.undo("replace")) && field.draft().value == u"甲🙂舊文乙" &&
+          host.edit("replace")->selection.anchor == 3 && host.edit("replace")->selection.caret == 5,
+          "One undo restores the original text and selection");
+    host.compositionUpdate(u"取消", 2);
+    host.compositionCancel();
+    const auto beforeRejectedCommit = field.draft().value;
+    host.compositionUpdate(u"preedit", 7);
+    check(host.compositionCommit(u"x\ty", 2, 0).status == Status::invalidValue, "Reject an invalid IME commit as a whole");
+    check(field.draft().value == beforeRejectedCommit && !host.edit("replace")->composing &&
+          host.edit("replace")->selection.anchor == 3 && host.edit("replace")->selection.caret == 5,
+          "A rejected IME commit ends the composition without editing or moving the selection");
+    check(bool(host.redo("replace")) && field.draft().value == u"甲中文乙",
+          "Cancel and a rejected commit preserve the redo entry");
+}
+
 void singleLineEnterStillReachesItsShortcut() {
     Form form; auto& host = form.host();
     host.focus("name");
@@ -300,6 +358,32 @@ void pointerPositionsMapToLineAndOffset() {
     check(laid.field->caretX(5) == view.text.x + 8 && laid.field->caretY(5) == view.text.y + 24, "Caret position of offset 5: column 1, second line");
 }
 
+void aWideStyledStopAfterAPreferredBreakStillFits() {
+    FakeMeasure measure;
+    constexpr std::u16string_view text = u" bbbc\n\U0001f600\n";
+    const std::vector<StyleSpan> spans{{.start = 4, .length = 1, .bold = true, .color = {}}};
+    const auto lines = wrapLines(measure, text, 16, 32, &spans);
+    check(lines.size() == 5, "The preferred space break leaves three narrow letters and a wide letter on separate lines");
+    check(lines[0].begin == 0 && lines[0].end == 1 && lines[0].soft && lines[0].run.width == 8 &&
+          lines[1].begin == 1 && lines[1].end == 4 && lines[1].soft && lines[1].run.width == 24 &&
+          lines[2].begin == 4 && lines[2].end == 5 && !lines[2].soft && lines[2].run.width == 10,
+          "The styled advance is included and the paragraph's LF is excluded");
+    check(lines[3].begin == 6 && lines[3].end == 8 && !lines[3].soft && lines[3].run.width == 16 &&
+          lines[3].run.stops.size() == 2 && lines[4].begin == 9 && lines[4].end == 9,
+          "An emoji takes one advance and a trailing LF leaves an empty line");
+}
+
+void publicWrappingMarksParagraphsAndPreservesEmptyLines() {
+    FakeMeasure measure;
+    constexpr std::u16string_view text = u"\n甲乙\U0001f600\n";
+    const std::vector<std::u16string> expected{u"", u"甲乙", u"\U0001f600", u""};
+    check(wrap(measure, text, 16, 32) == expected, "A leading and trailing LF each leave an empty line");
+    const auto marked = wrapMarked(measure, text, 16, 32);
+    check(marked.size() == expected.size(), "Marked and plain wrapping produce the same display lines");
+    for (std::size_t i = 0; i < marked.size(); ++i)
+        check(marked[i].text == expected[i] && marked[i].soft == (i == 1), "Only the middle cut is soft");
+}
+
 void aCaretOnAWrapBoundaryBelongsToTheNextLineUnlessUpstream() {
     Ui ui;
     auto field = connect(ui, multi("note", std::u16string(30, u'a')));
@@ -311,6 +395,7 @@ void aCaretOnAWrapBoundaryBelongsToTheNextLineUnlessUpstream() {
     auto upstream = view;
     upstream.upstream = true;
     check(upstream.lineOf(20) == 0 && upstream.lineOf(21) == 1, "Upstream puts the wrap-point caret on the line above");
+    check(test::caretMatchesHit(laid.frame, field, 1, 20), "A click on the drawn downstream caret returns the wrap offset");
 }
 
 // ---- Cursor movement ----------------------------------------------------------------------
@@ -630,7 +715,8 @@ int main() {
     const test::Case cases[] = {
         {"multiline values allow LF and reject CR", multilineValuesAllowLineFeedAndRejectCarriageReturn},
         {"semantic and typed set_value share the rule", semanticAndTypedSetValueShareTheLineFeedRule},
-        {"paste normalizes breaks and copy writes CRLF", pasteNormalizesEveryLineBreakToOneLineFeed},
+        {"paste normalizes breaks and copy hands over LF", pasteNormalizesEveryLineBreakToOneLineFeed},
+        {"the asynchronous clipboard carries LF", asynchronousClipboardCarriesLineFeeds},
         {"single-line paste still converts to spaces", singleLinePasteStillTurnsBreaksIntoSpaces},
         {"a line feed counts one toward max_length", aLineFeedCountsAsOneTowardMaxLength},
         {"a source value with CR is ignored", aSourceValueWithCarriageReturnIsIgnored},
@@ -638,9 +724,12 @@ int main() {
         {"Ctrl+Enter reaches its shortcut; Tab moves focus", ctrlEnterReachesTheShortcutAndTabMovesFocus},
         {"each Enter is one undo entry", eachEnterIsOneUndoEntry},
         {"Enter during composition does not break the line", enterDuringCompositionDoesNotBreakTheLine},
+        {"input method replacement is one undo entry", inputMethodReplacementIsOneUndoEntry},
         {"single-line Enter still reaches its shortcut", singleLineEnterStillReachesItsShortcut},
         {"read-only multi-line field refuses Enter", readOnlyMultilineFieldRefusesEnter},
         {"a long line wraps and the height stays fixed", aLongLineWrapsAtTheEdgeAndTheHeightStaysFixed},
+        {"a wide styled stop after a preferred break still fits", aWideStyledStopAfterAPreferredBreakStillFits},
+        {"public wrapping marks paragraphs and preserves empty lines", publicWrappingMarksParagraphsAndPreservesEmptyLines},
         {"hard breaks make lines; wrapping prefers spaces", hardBreaksMakeLinesAndWrappingPrefersSpaces},
         {"the scrollbar width is always reserved", theScrollbarWidthIsAlwaysReserved},
         {"pointer positions map to line and offset", pointerPositionsMapToLineAndOffset},

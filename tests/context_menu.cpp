@@ -3,11 +3,13 @@
 // Context menu (#85) through the public core interface: attach, open, query, keyboard, execute,
 // semantics and geometry. No window, GPU or font backend; the real-window twin is in host_verify.
 #include "check.hpp"
+#include "clipboard_text.hpp"
 #include "fake_measure.hpp"
 #include "geometry.hpp"
 #include "isoduo/core.hpp"
 #include "isoduo/semantics.hpp"
 #include <algorithm>
+#include <thread>
 using namespace isoduo;
 using test::check;
 using test::inside;
@@ -670,15 +672,18 @@ void multiLineFieldMenuHangsFromTheCaretLine() {
     check(bool(core(ui).menuPointerOpen("note", std::nullopt, 2, {30, 30})) && core(ui).edit("note")->selection.caret == 2, "right button moves the caret to the point");
     ui.invokeMenuItem("isoduo.paste");
     check(*model == u"fix\nyrst\nsecond\nthird", "paste inserts the clipboard text with its line break at the caret");
-    // Copy and cut over a selection that spans lines: the same functions as the shortcuts, so the clipboard gets CRLF (#79).
+    // Copy and cut over a selection that spans lines: the same functions as the shortcuts, so the clipboard seam
+    // gets the same LF text (#79); the Windows clipboard stores it as CRLF.
+    const auto copied = test::copiedClipboardText(u"fix\ny", test::ClipboardSeam::core);
     core(ui).select("note", 0, 5);   // "fix", the line break and "y"
     check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && enabled(ui, "isoduo.copy") && enabled(ui, "isoduo.cut"), "copy and cut are on with a multi-line selection");
-    check(bool(ui.invokeMenuItem("isoduo.copy")) && clipboard.content == u"fix\r\ny" && *model == u"fix\nyrst\nsecond\nthird", "copy writes CRLF and leaves the text");
+    check(bool(ui.invokeMenuItem("isoduo.copy")) && clipboard.content == copied && *model == u"fix\nyrst\nsecond\nthird", "copy writes the line break and leaves the text");
     core(ui).select("note", 0, 5);
-    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("isoduo.cut")) && clipboard.content == u"fix\r\ny" && *model == u"rst\nsecond\nthird",
-          "cut writes CRLF and removes the text across the line break");
+    check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("isoduo.cut")) && clipboard.content == copied && *model == u"rst\nsecond\nthird",
+          "cut writes the line break and removes the text across it");
+    clipboard.content = test::copiedClipboardText(u"fix\ny", test::ClipboardSeam::windows);
     check(bool(core(ui).menuPointerOpen("note", std::nullopt, std::nullopt, {30, 30})) && bool(ui.invokeMenuItem("isoduo.paste")) && *model == u"fix\nyrst\nsecond\nthird",
-          "pasting the CRLF clipboard back gives LF line breaks again");
+          "pasting the Windows CRLF text back gives LF line breaks again");
 }
 
 void semanticTreeShowsMenuAndItemsWhileOpen() {
@@ -746,6 +751,81 @@ void semanticEventsAnnounceOpeningFocusAndClosing() {
     check(has(SemanticEventKind::menuClosed, {menuId}), "closing is announced");
     check(has(SemanticEventKind::focusChanged, {"note"}), "and focus returns to the field");
 }
+
+void rapidMenuTransitionsReachOneSubscriberInOrder() {
+    Ui ui;
+    auto field = addField(ui, "note", u"hello");
+    check(bool(field.handle.focus()), "focus the menu owner");
+    auto& tree = ui.semantics();
+    const auto owner = std::this_thread::get_id();
+    std::vector<std::pair<SemanticEventKind, int>> transitions;
+    std::vector<std::uint64_t> instances;
+    bool onOwnerThread = true;
+    auto subscription = tree.subscribe([&, menuId = menuNodeId("note"), sequence = 0](const SemanticEvent& event) mutable {
+        if (event.ref.id != menuId || (event.kind != SemanticEventKind::menuOpened && event.kind != SemanticEventKind::menuClosed)) return;
+        onOwnerThread &= std::this_thread::get_id() == owner;
+        transitions.emplace_back(event.kind, ++sequence);
+        instances.push_back(event.instance.value_or(0));
+    });
+    for (int round = 0; round < 2; ++round) {
+        check(bool(ui.openContextMenu(field.handle)), "open the context menu");
+        check(bool(press(ui, Key::escape)), "close the context menu with Escape");
+    }
+    std::thread worker([&] { tree.dispatchEvents(); });
+    worker.join();
+    check(transitions.empty(), "events wait for dispatch on the owner thread");
+    tree.dispatchEvents();
+    using Kind = SemanticEventKind;
+    check(onOwnerThread && transitions == std::vector<std::pair<Kind, int>>{
+              {Kind::menuOpened, 1}, {Kind::menuClosed, 2}, {Kind::menuOpened, 3}, {Kind::menuClosed, 4}},
+          "one subscriber receives each queued transition in order and retains its callback state");
+    check(instances.size() == 4 && instances[0] && instances[2] &&
+          instances[0] == instances[1] && instances[2] == instances[3] && instances[0] != instances[2],
+          "opening and closing identify the same menu instance across dispatch");
+}
+
+void queuedTextEventsRetainBothEdits() {
+    Ui ui;
+    constexpr auto original = u"A\U0001F642\u4e2d";
+    constexpr auto changed = u"A\U0001F642\u754c";
+    auto field = addField(ui, "note", original);
+    auto& tree = ui.semantics();
+    tree.dispatchEvents();
+    const auto revision = tree.get({"note"})->textRevision;
+    std::vector<SemanticTextChange> edits;
+    auto subscription = tree.subscribe([&](const SemanticEvent& event) {
+        if (event.kind == SemanticEventKind::textChanged && event.ref.id == "note" && event.textChange)
+            edits.push_back(*event.textChange);
+    });
+    check(bool(field.handle.setValue(changed)) && bool(field.handle.setValue(original)), "replace and restore text");
+    check(edits.empty(), "text events are queued");
+    tree.dispatchEvents();
+    check(edits == std::vector<SemanticTextChange>{{original, changed}, {changed, original}},
+          "queued events describe both edits in order");
+    const auto current = tree.get({"note"});
+    check(current->value == original && current->textRevision > revision, "restoring text still invalidates the old revision");
+}
+
+void queuedTextEventsIdentifyOriginalFields() {
+    Ui ui;
+    auto original = addField(ui, "note", u"Original");
+    auto& tree = ui.semantics();
+    const auto first = tree.get({"note"})->instance;
+    std::vector<std::optional<std::uint64_t>> instances;
+    auto subscription = tree.subscribe([&](const SemanticEvent& event) {
+        if (event.kind == SemanticEventKind::textChanged && event.ref.id == "note")
+            instances.push_back(event.instance);
+    });
+    check(bool(original.handle.setValue(u"Old edit")), "queue an edit to the original field");
+    check(bool(original.handle.remove()), "remove the original field");
+    auto replacement = addField(ui, "note", u"New");
+    const auto second = tree.get({"note"})->instance;
+    check(first != second, "the replacement has its own instance");
+    check(bool(replacement.handle.setValue(u"New!")), "queue an edit to the replacement field");
+    tree.dispatchEvents();
+    check(instances == std::vector<std::optional<std::uint64_t>>{first, second},
+          "each pending edit identifies the field that generated it");
+}
 }
 
 int main() {
@@ -764,6 +844,9 @@ int main() {
         {"multi-line field menu hangs from the caret line", multiLineFieldMenuHangsFromTheCaretLine},
         {"semantic tree shows menu and items while open", semanticTreeShowsMenuAndItemsWhileOpen},
         {"semantic events announce opening, focus and closing", semanticEventsAnnounceOpeningFocusAndClosing},
+        {"rapid menu transitions reach one subscriber in order", rapidMenuTransitionsReachOneSubscriberInOrder},
+        {"queued text events retain both edits", queuedTextEventsRetainBothEdits},
+        {"queued text events identify original fields", queuedTextEventsIdentifyOriginalFields},
         {"text field menu has the Windows edit items", textFieldMenuHasTheWindowsEditItems},
         {"items are unavailable when they cannot act", itemsAreUnavailableWhenTheyCannotAct},
         {"read-only field only copies and selects", readOnlyFieldOnlyCopiesAndSelects},

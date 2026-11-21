@@ -12,4 +12,7 @@ FontFile systemFontFile(std::u16string_view family);
 // then draws the look from the regular face. (false, false) is systemFontFile.
 FontFile systemStyledFontFile(std::u16string_view family, bool bold, bool italic);
 long systemFontCatalogError();
+#ifndef _WIN32
+std::u16string_view systemEmojiFamily();
+#endif
 }

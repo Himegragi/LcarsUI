@@ -1,5 +1,6 @@
 #include "real_input_profiles.hpp"
 #include "presentation_matrix.hpp"
+#include "render_role_checks.hpp"
 #include "settings_demo.hpp"
 #include "core_internal.hpp"
 // Native verification of the V01 form in a real Win32 window for both appearances.
@@ -333,9 +334,7 @@ void drawListInitial(const Appearance& appearance, Report& report, std::ofstream
         auto comparison=f.host.compareGpu(width,height,scale);
         const unsigned required = scenario==0 ? 3u : scenario==1 ? 4u : scenario==2 ? 10u : scenario==3 ? 48u : scenario==4 ? 5u : scenario==5 || scenario==6 ? 5u : scenario==9 ? 1u : 0u;
         auto hasRole=[&](std::string_view owner, unsigned role, bool requirePopup=false){
-            return std::any_of(comparison.regions.begin(),comparison.regions.end(),[&](const auto& region){
-                return region.owner==owner && (region.role & role) && region.passed && (!requirePopup || region.popup);
-            });
+            return test::hasPaintRole(comparison, owner, static_cast<detail::PaintRole>(role), requirePopup);
         };
         bool rolePresence=(comparison.roles & required)==required;
         if(scenario==0)rolePresence &= hasRole(f.ids.name,1) && hasRole(f.ids.name,2);
@@ -410,23 +409,15 @@ int demoCompare(const std::filesystem::path& evidence) {
         // pictures are about the focus indicator, so the pointer stays out of them. Production behavior is untouched.
         host.pump(); detail::access(demo.ui).pointerLeft(); setup &= !detail::access(demo.ui).hoverTarget();
         auto result=host.compareGpu(960,720,scale);
-        auto hasRole=[&](std::string_view owner, unsigned role) { return std::any_of(result.regions.begin(),result.regions.end(),[&](const auto& r) { return r.owner==owner && (r.role & role) && r.passed; }); };
+        auto hasRole=[&](std::string_view owner, unsigned role) {
+            return test::hasPaintRole(result, owner, static_cast<detail::PaintRole>(role));
+        };
         bool cues=true;
         if(scenario==0) cues=hasRole("general.name",1) && hasRole("general.name",2);
         if(scenario==1) cues=hasRole("general.name",32) && (hasRole("general.name",16) || hasRole("general.name.error",16));
         if(scenario==2) cues=hasRole("items.list",1) && hasRole("items.list",4);
         if(scenario==7) cues=hasRole("app.nav",1);
-        if(scenario==8) {
-            // The vertical label is plain content: compare its own box between the CPU reference and OpenGL, and require ink in it.
-            const auto* label=host.frame().find(demo.aboutVertical());
-            cues=label && label->vertical;
-            if(cues) {
-                auto box=intersect(label->bounds,label->clip);
-                auto same=compareImages(result.reference,result.actual,{box});
-                int ink=0; for(int y=box.y;y<box.y+box.h;++y) for(int x=box.x;x<box.x+box.w;++x) { auto i=(static_cast<std::size_t>(y)*result.reference.width+x)*4; ink+=result.reference.pixels[i]!=result.reference.pixels[(static_cast<std::size_t>(box.y)*result.reference.width+box.x)*4]; }
-                cues=same.regionsOk && ink>box.w*box.h/40;
-            }
-        }
+        if(scenario==8) cues=test::matchesVerticalLabel(result, host.frame().find(demo.aboutVertical()));
         bool pass=setup && bool(result) && cues; ++rows; if(!pass) ++failures;
         std::string name="SD-"+std::string(1,char('a'+scenario));
         std::string key=name+"-"+(appearance==&webAppearance()?"web":"material")+(dark?"-dark":"-light")+(scale==1.f?"-100":"-150");
@@ -4294,7 +4285,7 @@ int runPerf(const std::filesystem::path& evidence, const std::wstring& scenario,
         cpuMs=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paintMessages()-beforePaints; presents=host.frames()-beforeFrames;
     }
     auto warm=host.perfSamples().summary(true), steady=host.perfSamples().summary(false);
-    bool ok=scenario==L"startup" ? host.firstPresentMs()>=0 && host.firstPresentMs()<=1000 : scenario==L"idle" ? detail::idlePass(presents,paints,cpuMs) : steady.count>0 && (delay ? steady.overBudget>0 : steady.maximum<=16.7);
+    bool ok=scenario==L"startup" ? detail::startupPass(host.firstPresentMs()) : scenario==L"idle" ? detail::idlePass(presents,paints,cpuMs) : detail::activePerfPass(steady,delay!=0);
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
     std::filesystem::create_directories(evidence); std::ofstream out(evidence/"perf.tsv");
@@ -4427,7 +4418,7 @@ int runDemoPerf(const std::filesystem::path& evidence, const std::wstring& scena
         cpuMs=double(ticks(k2)-ticks(k1)+ticks(u2)-ticks(u1))/10000.; paints=host.paintMessages()-beforePaints; presents=host.frames()-beforeFrames;
     }
     auto warm=host.perfSamples().summary(true), steady=host.perfSamples().summary(false);
-    bool ok=sliderDrag ? true : scenario==L"startup" ? host.firstPresentMs()>=0 && host.firstPresentMs()<=1000 : (scenario==L"idle" || idleAfterAnimation) ? detail::idlePass(presents,paints,cpuMs) : steady.count>0 && (delay ? steady.overBudget>0 : steady.maximum<=16.7);
+    bool ok=sliderDrag ? true : scenario==L"startup" ? detail::startupPass(host.firstPresentMs()) : (scenario==L"idle" || idleAfterAnimation) ? detail::idlePass(presents,paints,cpuMs) : detail::activePerfPass(steady,delay!=0);
     PROCESS_MEMORY_COUNTERS memory{}; memory.cb=sizeof(memory);
     if (!GetProcessMemoryInfo(GetCurrentProcess(),&memory,sizeof(memory))) throw std::runtime_error("Cannot read process memory");
     if (sliderDrag && warm.count+steady.count==0) throw std::runtime_error("Perf slider drag produced no frames");

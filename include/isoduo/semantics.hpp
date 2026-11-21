@@ -19,10 +19,19 @@ inline std::optional<std::string> menuTargetId(std::string_view node) {
     if (node.size() <= suffix.size() || node.substr(node.size() - suffix.size()) != suffix) return std::nullopt;
     return std::string(node.substr(0, node.size() - suffix.size()));
 }
+struct SemanticTextChange {
+    std::u16string before, after;
+    bool operator==(const SemanticTextChange&) const = default;
+};
 struct SemanticEvent {
     SemanticEventKind kind; NodeRef ref; std::string property;
     // Overlay visibility is captured at the transition, not at delivery time.
     std::optional<bool> hidden;
+    // Text edits retain their before and after values until dispatch.
+    std::optional<SemanticTextChange> textChange = {};
+    // The originating node for queued events. Structure and layout changes
+    // instead ask listeners to refresh the current tree.
+    std::optional<std::uint64_t> instance = {};
 };
 class Subscription {
 public:

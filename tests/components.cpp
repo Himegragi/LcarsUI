@@ -389,6 +389,51 @@ void overLimitEditIsRejectedWhole() {
     check(refused, "Initial text must respect the field limit");
 }
 
+void invalidTextInputPreservesTheSelectionAndRedo() {
+    Ui ui;
+    populate(ui, {{ComponentKind::textField, {.id = "code", .value = u"A\U0001f600B"}}});
+    auto& input = detail::access(ui);
+    check(input.focus("code") && input.select("code", 3, 1) && input.textInput(u"x") && input.undo("code"),
+          "Undo a replacement of a reverse selection across a surrogate pair");
+    const std::u16string badUtf16{static_cast<char16_t>(0xd800), u'y'};
+    check(input.textInput(u"x\ty").status == Status::invalidValue &&
+          input.textInput(badUtf16).status == Status::invalidValue,
+          "Each invalid input is rejected in full");
+    const auto node = ui.semantics().get({"code"});
+    check(node && node->value == u"A\U0001f600B" && node->textSelection == Selection{3, 1},
+          "The draft and reverse selection are unchanged");
+    check(input.redo("code") && input.text("code") == u"AxB", "The same replacement can still be redone");
+}
+
+void standaloneEditSessionPreeditReplacesAReverseSelection() {
+    EditSession session;
+    session.text = u"A\U0001f600BC";
+    session.select(4, 2);
+    check(session.selection == Selection{4, 1} && session.begin() == 1 && session.end() == 4,
+          "Reverse selection snaps to the start of the surrogate pair and sorts its endpoints");
+    session.updateComposition(u"中\U0001f600", 3);
+    check(session.visible() == u"A中\U0001f600C" && session.visibleCaret() == 4 && session.text == u"A\U0001f600BC",
+          "Preedit replaces only the visible selection and positions its caret in UTF-16 units");
+    session.cancelComposition();
+    check(session.visible() == u"A\U0001f600BC" && session.visibleCaret() == 1 &&
+          session.selection == Selection{4, 1}, "Cancel restores both the committed text and the reverse selection");
+}
+
+void publicValidationAndPasteNormalizationAgree() {
+    const auto plain = pasteAsSingleLine(u"a\r\n\U0001f600\rb\n");
+    const auto multiline = pasteAsMultiLine(u"a\r\n\U0001f600\rb\n");
+    check(plain == u"a \U0001f600 b " && multiline == u"a\n\U0001f600\nb\n",
+          "CRLF, CR, and LF each contribute one separator");
+    check(validSingleLine(plain, 7) && !validSingleLine(plain, 6) &&
+          validMultiLine(multiline, 7) && !validSingleLine(multiline) && !validMultiLine(u"a\r\nb"),
+          "The validators count UTF-16 units and only the multiline validator accepts LF");
+    const std::u16string invalid{static_cast<char16_t>(0xdc00)};
+    check(!validSingleLine(pasteAsSingleLine(invalid)) && !validMultiLine(pasteAsMultiLine(invalid)),
+          "Line-break normalization does not make malformed text valid");
+    check(normalizeRichText({multiline, {{.start = 3, .length = 1, .bold = true, .color = {}}}}).status == Status::invalidValue,
+          "A rich span cannot start between the halves of the surrogate pair");
+}
+
 bool has(const std::vector<Verb>& actions, Verb operation) {
     return std::find(actions.begin(), actions.end(), operation) != actions.end();
 }
@@ -481,7 +526,9 @@ void configurationRequiresUiThread() {
         connect = label.connectSource([] { return std::u16string(u"wrong"); }).status;
     });
     worker.join();
-    check(reset == Status::wrongThread && connect == Status::wrongThread, "Configuration rejects another thread");
+    check(reset == Status::wrongThread && connect == Status::wrongThread &&
+          field.describe()->value == u"source" && label.describe()->value.empty(),
+          "Configuration rejects another thread without changing displayed values");
     auto fault = ui.addButton({.id = "thread.fault"}).value.value();
     fault.bind([]() -> Result { throw std::runtime_error("failure"); });
     check(fault.invoke().status == Status::failed && field.resetToSource().status == Status::failed &&
@@ -553,7 +600,11 @@ void sourceConflictKeepsDraftUntilCancelled() {
         changed = std::move(callback); return [&] { changed = {}; };
     }});
     auto confirm = ui.addButton({.id = "conflict.apply"}).value.value();
-    ui.connectConfirmation(confirm, {field}, [](const std::vector<ConfirmFieldChange>&) { return ConfirmationResult{}; });
+    std::optional<Change<TextFieldHandle>> submitted;
+    ui.connectConfirmation(confirm, {field}, [&](const std::vector<ConfirmFieldChange>& changes) {
+        submitted = std::get<Change<TextFieldHandle>>(changes.at(0));
+        return ConfirmationResult{{Status::invalidValue, u"Conflict"}, {{field, u"Conflict"}}};
+    });
     field.setValue(u"draft");
     model = u"newest";
     changed();
@@ -562,8 +613,17 @@ void sourceConflictKeepsDraftUntilCancelled() {
     field.enable(false);
     check(field.describe()->sourceConflict, "Conflict remains visible in disabled semantics");
     field.enable(true);
+    check(confirm.invoke().status == Status::invalidValue && submitted && submitted->field == field &&
+          submitted->value == u"draft" && submitted->origin == u"original",
+          "A conflicted submission retains the draft and its original starting value");
     check(bool(field.useLatest()) && field.describe()->value == u"newest" && !field.sourceConflict().value.value_or(false),
           "Choosing the latest value discards the draft and clears the conflict");
+    check(bool(field.setValue(u"second draft")), "edit again from the latest value");
+    model = u"another source value";
+    changed();
+    check(field.describe()->sourceConflict && bool(field.resetToSource()) &&
+          field.describe()->value == u"another source value" && !field.describe()->sourceConflict,
+          "Reset also returns a conflicted field to its current source");
 }
 
 void confirmationSubmitsDraftAndOriginAndKeepsHistory() {
@@ -896,6 +956,28 @@ void unconnectedSelectionControlsDoNotAdvertiseWrites() {
           "Connected editable controls advertise their available modifications");
 }
 
+void semanticFieldWritesRequestAFrameWithoutSourceNotifications() {
+    Ui ui;
+    bool checked = false;
+    int volume = 2;
+    auto box = ui.addCheckbox({.id = "box"}).value.value();
+    auto slider = ui.addSlider({.id = "volume"}, {0, 10, 2}).value.value();
+    const auto subscribe = [](std::function<void()>) { return [] {}; };
+    box.connectSource({[&] { return checked; }, subscribe});
+    box.connectImmediate([&](const Change<CheckboxHandle>& change) { checked = change.value; return Result{}; });
+    slider.connectSource({[&] { return volume; }, subscribe});
+    slider.connectImmediate([&](const Change<SliderHandle>& change) { volume = change.value; return Result{}; });
+
+    bool frameRequested = false;
+    detail::access(ui).onInvalidate([&] { frameRequested = true; });
+    auto& tree = ui.semantics();
+    check(bool(tree.perform({"box"}, Verb::toggle)) && checked && frameRequested,
+          "An external checkbox action changes the model and requests a frame");
+    frameRequested = false;
+    check(bool(tree.perform({"volume"}, Verb::setValue, 6)) && volume == 6 && frameRequested,
+          "An external slider action changes the model and requests a frame");
+}
+
 void sliderConnectedDraftIsConfirmedAsANumber() {
     int model = 40;
     Ui ui;
@@ -1067,8 +1149,10 @@ void dropdownOptionChangesDoNotRecurseIntoNotifications() {
     field.connectConfirmed([](const Change<DropdownHandle>&) { return Result{}; });
     int calls = 0; Status nested = Status::ok;
     ui.onChange([&] { if (++calls == 1) nested = field.setItems({}).status; });
-    field.setItems({{{"north"}, u"North"}, {{"south"}, u"South"}});
-    check(calls == 1 && nested == Status::busy && field.describe()->items.size() == 2,
+    const auto result = field.setItems({{{"north"}, u"North"}, {{"south"}, u"South"}});
+    const auto snapshot = field.describe();
+    check(result && calls == 1 && nested == Status::busy && snapshot && snapshot->items.size() == 2 &&
+          snapshot->items[0].value == OptionValue{"north"} && snapshot->items[1].value == OptionValue{"south"},
           "An option update during a notification is refused without recursion or mutation");
 }
 
@@ -1580,11 +1664,18 @@ void throwingReadWhileConnecting() {
         std::function<void()> notifyA;
         Ui ui;
         auto probe = kind.make(ui);
+        auto throwingRead = []() -> int { throw std::runtime_error("read failed"); };
+        auto noUpdates = [](std::function<void()>) { return [] {}; };
+        {
+            Ui fresh;
+            auto first = kind.make(fresh).connect(throwingRead, noUpdates);
+            expect(first.status == Status::failed && !first.message.empty(), "A throwing first read fails the connection");
+        }
         probe.connect([] { return 0; }, subscribedInto(notifyA));
         const auto showsA = probe.shown();
         Result result; bool escaped = false;
         try {
-            result = probe.connect([]() -> int { throw std::runtime_error("read failed"); }, [](std::function<void()>) { return [] {}; });
+            result = probe.connect(throwingRead, noUpdates);
         } catch (...) { escaped = true; }
         expect(!escaped && result.status == Status::failed && !result.message.empty(), "A throwing read fails the call and does not escape");
         if (kind.firstRead == FirstRead::beforeReplacing)
@@ -1633,6 +1724,7 @@ int main() {
         {"N04 non-divisible steps and keys", sliderNonDivisibleRangeAndKeyboard},
         {"N04 invalid slider ranges", sliderRejectsInvalidRanges},
         {"C07 numeric draft and confirmation", sliderConnectedDraftIsConfirmedAsANumber},
+        {"Semantic field writes request a frame", semanticFieldWritesRequestAFrameWithoutSourceNotifications},
         {"G04 selection operations reflect write admission", unconnectedSelectionControlsDoNotAdvertiseWrites},
         {"G10 standalone typed confirmations", standaloneBooleanAndOptionConfirmation},
         {"G11 radio conflict and latest", radioSourceConflictCanBeResolved},
@@ -1676,6 +1768,9 @@ int main() {
         {"G07 focus notifications queue instead of recursing", focusNotificationsQueueInsteadOfRecursing},
         {"AC10 keyboard editing obeys the same admission", keyboardEditingObeysTheSameAdmission},
         {"AC08 over-limit edit is rejected whole", overLimitEditIsRejectedWhole},
+        {"invalid text input preserves the selection and redo", invalidTextInputPreservesTheSelectionAndRedo},
+        {"standalone preedit replaces a reverse selection", standaloneEditSessionPreeditReplacesAReverseSelection},
+        {"public validation and paste normalization agree", publicValidationAndPasteNormalizationAgree},
         {"AC11 owner hears focus moves and semantics list actions", ownerHearsFocusMovesAndSemanticsListActions},
     };
     return test::run("components", cases);

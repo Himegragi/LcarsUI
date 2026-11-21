@@ -2,7 +2,7 @@
 // #83 word and paragraph selection: double click, triple click, drag by unit, Ctrl+arrow and Ctrl+Backspace/Delete,
 // through the public text handle, the pointer entry the host uses and the semantic layer. Expected ranges are worked
 // out by hand in each case. A fake dictionary breaker with fixed rules stands in for ICU, whose real dictionary is
-// only used by the few rule-independent cases run with --icu (ctest word_select_icu, skipped without icu.dll).
+// exercised separately with --icu (ctest word_select_icu, skipped without system ICU).
 #include "check.hpp"
 #include "fake_measure.hpp"
 #include "isoduo/core.hpp"
@@ -422,7 +422,15 @@ void theSemanticLayerReadsSelectsAndQueriesLikeTheTypedHandle() {
 }
 
 void theSemanticLayerReportsADictionaryFallbackAndTheSameAdmission() {
-    Field f(mixed, false, WordSegmentation::dictionary, std::make_shared<FailingBreaker>());
+    struct FieldFailure final : detail::WordBreaker {
+        bool boundaries(std::u16string_view text, std::vector<unsigned>&) const override {
+            return text == u"a";
+        }
+    };
+    auto breaker = std::make_shared<FieldFailure>();
+    check(breaker->usable(), "Dictionary answers the startup probe");
+    Field f(mixed, false, WordSegmentation::dictionary, breaker);
+    check(*f.handle.wordSegmentationInUse() == WordSegmentation::perCharacter, "The handle reports the field's fallback");
     auto& tree = f.ui.semantics();
     auto node = tree.get({"t"});
     check(node->wordSegmentation == WordSegmentation::dictionary && node->wordSegmentationInUse == WordSegmentation::perCharacter, "The node reports the fallback");
@@ -473,6 +481,53 @@ void theSystemDictionaryAlwaysBreaksBetweenScriptsAndAroundPunctuation() {
     check(*f.handle.wordSegmentationInUse() == WordSegmentation::dictionary, "The dictionary is what is in use");
     check(f.doubleClicked(0) != TextSpan{0, 0} && f.doubleClicked(0).end <= 2, "A Chinese word never reaches into the Latin letters");
 }
+
+#ifdef __linux__
+void checkChineseWordContract(std::shared_ptr<const detail::WordBreaker> breaker, WordSegmentation effective) {
+    // zh_TW splits 中文|設定| |test. Script run would keep all four Han characters together.
+    Field f(u"中文設定 test", false, WordSegmentation::dictionary, std::move(breaker));
+    const bool usesDictionary = effective == WordSegmentation::dictionary;
+    const unsigned stop = usesDictionary ? 2 : 1;
+    const TextSpan firstWord{0, stop};
+    const auto& tree = f.ui.semantics();
+    const auto node = tree.get({"t"});
+    check(f.handle.wordSegmentation().value == WordSegmentation::dictionary && node->wordSegmentation == WordSegmentation::dictionary &&
+          f.handle.wordSegmentationInUse().value == effective && node->wordSegmentationInUse == effective,
+          "The handle and the semantic node report the requested and effective modes");
+    check(f.doubleClicked(0) == firstWord && f.handle.wordAt(0).value == firstWord &&
+          tree.textUnit("t", TextUnitKind::word, 0).value == firstWord,
+          "Double click and both word queries agree on the first word");
+    const TextSpan withSpace{usesDictionary ? 2u : 3u, 5};
+    check(f.doubleClicked(3) == withSpace && f.handle.wordAt(3).value == withSpace &&
+          tree.textUnit("t", TextUnitKind::word, 3).value == withSpace,
+          "The second word keeps its trailing space");
+    check(f.handle.nextWordStop(0).value == stop && tree.wordStop("t", 0, true).value == stop &&
+          f.handle.previousWordStop(stop).value == 0 && tree.wordStop("t", stop, false).value == 0,
+          "Both word-stop queries agree in both directions");
+    check(f.handle.focus() && f.handle.select(0, 0), "Focus at the start");
+    check(f.host().keyDown(press(Key::right, false, true)) && f.selection().caret == stop &&
+          f.host().keyDown(press(Key::left, false, true)) && f.selection().caret == 0,
+          "Ctrl+Right and Ctrl+Left follow the queried stops");
+    const std::u16string_view afterDeletion = usesDictionary ? u"設定 test" : u"文設定 test";
+    check(f.host().keyDown(press(Key::del, false, true)) && f.text() == afterDeletion,
+          "Ctrl+Delete removes exactly through the next word stop");
+    check(f.handle.undo() && f.handle.select(stop, stop), "Undo and place the caret on the next stop");
+    check(f.host().keyDown(press(Key::backspace, false, true)) && f.text() == afterDeletion && f.selection().caret == 0,
+          "Ctrl+Backspace removes the same word from the other side");
+}
+
+void theLinuxDictionaryDrivesSelectionAndKeyboardStops() {
+    checkChineseWordContract(nullptr, WordSegmentation::dictionary);
+}
+
+void unavailableDictionarySelectionAndKeyboardUsePerCharacter() {
+    checkChineseWordContract(nullptr, WordSegmentation::perCharacter);
+}
+
+void failingDictionarySelectionAndKeyboardUsePerCharacter() {
+    checkChineseWordContract(std::make_shared<FailingBreaker>(), WordSegmentation::perCharacter);
+}
+#endif
 }
 
 // ---- #79 / #80 / #81 interaction: clicks and Ctrl+word keys go through the same line model as the caret.
@@ -591,13 +646,25 @@ void ctrlBackspaceOverAStyledWordKeepsTheOtherStylesAndUndoRestoresThem() {
 }
 
 int main(int argc, char** argv) {
-    if (argc > 1 && std::strcmp(argv[1], "--icu") == 0) {
+#ifdef __linux__
+    if (argc > 1 && std::strcmp(argv[1], "--icu-unavailable") == 0) {
+        static const test::Case unavailableCases[] = {
+            {"unavailable_dictionary_selection_and_keyboard_use_per_character", unavailableDictionarySelectionAndKeyboardUsePerCharacter},
+        };
+        return test::run("word_select_icu_unavailable", unavailableCases);
+    }
+#endif
+    const bool requireIcu = argc > 1 && std::strcmp(argv[1], "--require-icu") == 0;
+    if (requireIcu || (argc > 1 && std::strcmp(argv[1], "--icu") == 0)) {
         if (!icuPresent()) {
-            std::cout << "SKIPPED: icu.dll is not available on this machine; the real ICU cases did not run\n";
-            return 77;
+            std::cout << (requireIcu ? "FAIL" : "SKIPPED") << ": system ICU word breaking is unavailable\n";
+            return requireIcu ? 1 : 77;
         }
         static const test::Case icuCases[] = {
             {"the_system_dictionary_always_breaks_between_scripts_and_around_punctuation", theSystemDictionaryAlwaysBreaksBetweenScriptsAndAroundPunctuation},
+#ifdef __linux__
+            {"the_linux_dictionary_drives_selection_and_keyboard_stops", theLinuxDictionaryDrivesSelectionAndKeyboardStops},
+#endif
         };
         return test::run("word_select_icu", icuCases);
     }
@@ -608,6 +675,9 @@ int main(int argc, char** argv) {
         {"double_click_in_a_multi_line_field_stays_in_its_paragraph", doubleClickInAMultiLineFieldStaysInItsParagraph},
         {"the_three_segmentations_split_mixed_text_differently_and_switch_at_once", theThreeSegmentationsSplitMixedTextDifferentlyAndSwitchAtOnce},
         {"a_failing_dictionary_falls_back_to_per_character_without_interrupting", aFailingDictionaryFallsBackToPerCharacterWithoutInterrupting},
+#ifdef __linux__
+        {"failing_dictionary_selection_and_keyboard_use_per_character", failingDictionarySelectionAndKeyboardUsePerCharacter},
+#endif
         {"read_only_fields_select_but_disabled_ones_do_nothing", readOnlyFieldsSelectButDisabledOnesDoNothing},
         {"composing_refuses_word_selection_like_a_single_click_does", composingRefusesWordSelectionLikeASingleClickDoes},
         {"keyboard_moves_by_the_same_word_stops", keyboardMovesByTheSameWordStops},

@@ -2,27 +2,21 @@
 // Internal host type shared by runDesktop and the native verification driver.
 #include "isoduo/desktop.hpp"
 #include "renderer.hpp"
+#include "desktop_paint.hpp"
 #include "text.hpp"
 #include "diagnostic_queue.hpp"
 #include "perf.hpp"
+#include "pointer_routing.hpp"
 #include <chrono>
 #include <filesystem>
 #include <memory>
+#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
 namespace isoduo::detail {
 class UiaBridge;
-struct PaintObservation {
-    enum class Type { text, fill, rounded } type;
-    std::string owner;
-    std::u16string text;
-    Rect bounds, clip;
-    Color color;
-    bool visible = false, popup = false, tooltip = false;
-    bool bold = false, italic = false;  // text: the face it was drawn in
-};
 class WindowsClipboard final : public Clipboard {
 public:
     explicit WindowsClipboard(HWND window) : window_(window) {}
@@ -34,20 +28,6 @@ private:
     HWND window_;
 };
 
-struct GpuRegion {
-    Rect bounds{};
-    std::string owner;
-    unsigned role = 0;
-    bool popup = false, ink = false, passed = false;
-};
-struct GpuComparison {
-    Image reference, actual;
-    ImageComparison comparison;
-    unsigned roles = 0, failedRoles = 0;
-    std::vector<GpuRegion> regions;
-    bool passed = false;
-    explicit operator bool() const { return passed; }
-};
 class DesktopHost {
 public:
     static CreateResult createForTest(Ui&, const Appearance&, std::function<layout::Node()>, ScrollState&, DesktopConfig, RendererTestHooks*);
@@ -110,6 +90,8 @@ public:
     void close() { release(); }
     void requestQuit() { quit_ = true; }
     void onCloseRequest(std::function<CloseDecision()> callback) { closeCallback_ = std::move(callback); }
+    // Any thread: queues work for the window's thread (Desktop::post).
+    Result post(std::function<void()> work);
     RendererCapabilities capabilities() const { return renderer_ ? renderer_->capabilities() : capabilities_; }
     std::vector<std::wstring>& imeLog() { return imeLog_; }
     std::vector<std::wstring>& trace() { return trace_; }  // verification mode: input messages as handled
@@ -156,9 +138,12 @@ private:
     std::function<void(const RendererFailure&)> failureCallback_;
     std::string reveal_;                        // focus target to scroll into view on the next arrange
     enum class Drag { none, text, thumb, slider } drag_ = Drag::none;
-    int dragOrigin_ = 0, dragOffset_ = 0;
-    ScrollState* dragScroll_ = nullptr;
-    ComponentHandle dragComponent_;
+    std::optional<ThumbGrab> thumbGrab_;
+    static constexpr UINT postedWorkMessage = WM_APP + 47;  // Desktop::post wakes the window thread
+    std::mutex postMutex_;                      // guards postWindow_ and posted_
+    HWND postWindow_ = nullptr;                 // set while the host accepts posted work
+    std::vector<std::function<void()>> posted_;
+    void runPosted();
     char16_t pendingHigh_ = 0;
     bool swallowLeft_ = false, swallowRight_ = false;  // a press that only closed a menu: its release is dropped too
     bool menuSysSwallow_ = false, dropSpaceChar_ = false;

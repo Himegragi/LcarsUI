@@ -1,4 +1,5 @@
 third_party/** -text
 THIRD_PARTY_NOTICES.txt text eol=lf
+tools/test-linux-core.sh text eol=lf
 examples/settings_demo/about_licenses/nlohmann-json-3.12.0.LICENSE.MIT -text
 examples/settings_demo/third_party/nlohmann/json.hpp -text

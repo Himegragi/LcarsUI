@@ -21,12 +21,6 @@ void outputDiagnostic(const std::string& message) {
 #endif
 }
 #endif
-// Committed text from typing or an IME: control characters (Enter, Tab, Ctrl+letter) never insert.
-std::u16string withoutControls(std::u16string_view text) {
-    std::u16string result;
-    for (auto ch : text) if (ch >= 0x20 && ch != 0x7f) result += ch;
-    return result;
-}
 }
 namespace {
 bool validText(std::u16string_view text, std::size_t maxLength, bool allowLineFeed) {
@@ -163,6 +157,7 @@ template <class Handle> Result detail::UiState::confirmField(const Handle& handl
 }
 // An edit of the value: an immediate write runs now (unless one is already running); otherwise the change is only announced.
 template <class FieldType> Result detail::UiState::writeImmediately(const Id& id, FieldType& field, const typename FieldType::Change& change) {
+    if (invalidate_) invalidate_();
     if (!field.immediate || field.submitting) return notify();
     field.submitting = true;
     Result result;
@@ -1190,7 +1185,7 @@ TooltipHandle detail::UiState::addTooltip(ComponentHandle source, std::u16string
 }
 void detail::UiState::refreshTooltips() {
     OperationScope operation(this);
-    if (rendererFailed_) return;
+    if (rendererFailed_ || tooltipPausedAt_) return;
     if (tooltipClock_) tooltipNow_ = tooltipClock_();
     bool changed = false;
     for (auto& [id, tip] : tooltips_) {
@@ -1213,11 +1208,16 @@ void detail::UiState::refreshTooltips() {
 void detail::UiState::rendererFailed(bool failed) {
     if (rendererFailed_ == failed) return;
     if (failed) {
+        pendingClipboard_.reset();
         closeMenu();
-        if (tooltipClock_) tooltipPausedAt_ = tooltipClock_();
+        if (tooltipClock_ && !tooltipPausedAt_) tooltipPausedAt_ = tooltipClock_();
         rendererFailed_ = true;
         return;
     }
+    rendererFailed_ = false;
+    if (windowActive_) resumeTooltipClock();
+}
+void detail::UiState::resumeTooltipClock() {
     if (tooltipPausedAt_ && tooltipClock_) {
         auto now = tooltipClock_();
         auto elapsed = now >= *tooltipPausedAt_ ? now - *tooltipPausedAt_ : 0;
@@ -1225,7 +1225,6 @@ void detail::UiState::rendererFailed(bool failed) {
         tooltipNow_ = now;
     }
     tooltipPausedAt_.reset();
-    rendererFailed_ = false;
 }
 void detail::UiState::frameVisibility(std::map<Id, bool, std::less<>> visibility) {
     visibility_ = std::move(visibility);
@@ -1247,6 +1246,7 @@ void detail::UiState::scrolled() {
     if (changed && invalidate_) invalidate_();
 }
 std::optional<std::uint64_t> detail::UiState::tooltipDeadline() const {
+    if (tooltipPausedAt_) return std::nullopt;
     std::optional<std::uint64_t> deadline;
     for (const auto& [id, tip] : tooltips_) {
         if (tip.eligible && !tip.visible && !tip.dismissed && (!deadline || tip.deadline < *deadline))
@@ -1255,6 +1255,7 @@ std::optional<std::uint64_t> detail::UiState::tooltipDeadline() const {
     return deadline;
 }
 const std::u16string* detail::UiState::tooltipText(std::string_view id) const {
+    if (!windowActive_ && !rendererFailed_) return nullptr;
     auto it = tooltips_.find(id);
     return it != tooltips_.end() && it->second.visible ? &it->second.text : nullptr;
 }
@@ -1277,6 +1278,7 @@ void detail::UiState::windowActive(bool active) {
     OperationScope operation(this);
     if (windowActive_ == active) return;
     windowActive_ = active;
+    if (active && !rendererFailed_) resumeTooltipClock();
     if (!active) { tooltipHover_.clear(); hoverClear(); closeMenu(); }  // a menu does not outlive window activation
     refreshTooltips();
 }
@@ -1389,7 +1391,7 @@ Query<bool> TooltipHandle::visible() const {
         if (auto r = ui_->configurationAccess(id_, true); !r) return {r.status, r.message, std::nullopt};
         auto it = ui_->tooltips_.find(id_);
         if (it == ui_->tooltips_.end()) return {Status::notFound, u"Tooltip no longer exists", std::nullopt};
-        return {Status::ok, {}, it->second.visible};
+        return {Status::ok, {}, it->second.visible && (ui_->windowActive_ || ui_->rendererFailed_)};
     }, detail::UiState::uiGone);
 }
 bool detail::UiState::dialogMember(std::string_view id) const {
@@ -2588,11 +2590,12 @@ Result detail::UiState::notify() {
 Result detail::UiState::textInput(std::u16string_view text) {
     OperationScope operation(this);
     if (menu_) return menuText(text);  // quick-key letters
-    auto committed = withoutControls(text);
-    if (committed.empty()) return {};
+    if (text.empty()) return {};
+    // Keyboard commands handle Enter and Tab. A text event is one printable insertion.
+    if (!validSingleLine(text, text.size())) return {Status::invalidValue, u"Invalid typed text"};
     Field* field = nullptr;
     if (auto result = writable(focus_, field); !result) return result;
-    return replaceSelection(focus_, *field, committed);
+    return replaceSelection(focus_, *field, text);
 }
 std::u16string pasteAsSingleLine(std::u16string_view text) {
     std::u16string result;
@@ -2621,47 +2624,75 @@ Result detail::UiState::copy(std::string_view id) {
     if (auto result = available(id); !result) return result;
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::invalidValue, u"元件不是文字欄位"};
-    const auto& session = it->second.session;
-    if (session.begin() == session.end()) return {};
-    auto selected = std::u16string(session.text, session.begin(), session.end() - session.begin());
-    if (find(id)->multiline) {  // the clipboard carries CRLF, as other Windows text does
-        std::u16string crlf;
-        for (auto ch : selected) { if (ch == u'\n') crlf += u'\r'; crlf += ch; }
-        selected = std::move(crlf);
-    }
-    // A rich field also hands over the styles of the selection, beside the plain text.
-    const bool written = it->second.rich && clipboard_
-        ? clipboard_->writeRich(selected, detail::serializeRichPayload(RichText{std::u16string(session.text, session.begin(), session.end() - session.begin()),
-                                                                                    detail::sliceSpans(it->second.spans, session.begin(), session.end())}))
-        : clipboard_ && clipboard_->write(selected);
-    if (!written) return {Status::failed, u"無法寫入剪貼簿"};
-    return {};
+    return writeSelection(id, it->second, ClipboardAction::copy);
 }
-// A paste from the clipboard: a rich field takes the styles of a payload that belongs to the plain text it
-// came with; anything else (another program's text, a payload left from another copy, a plain field) is plain text.
+Result detail::UiState::writeSelection(std::string_view id, Field& field, ClipboardAction action) {
+    const auto& session = field.session;
+    if (session.begin() == session.end()) return {};
+    // Line breaks leave as LF; each host's clipboard writes them in its platform's convention.
+    ClipboardData data{std::u16string(session.text, session.begin(), session.end() - session.begin()), {}};
+    if (field.rich) {
+        data.rich = serializeRichPayload({session.text.substr(session.begin(), session.end() - session.begin()),
+                                          sliceSpans(field.spans, session.begin(), session.end())});
+    }
+    if (!clipboard_ && asyncClipboard_) return beginClipboard(id, field, action, std::move(data));
+    const bool written = clipboard_ && (field.rich ? clipboard_->writeRich(data.text, data.rich) : clipboard_->write(data.text));
+    if (!written) return {Status::failed, u"無法寫入剪貼簿"};
+    return action == ClipboardAction::cut ? replaceSelection(id, field, u"") : Result{};
+}
 Result detail::UiState::pasteClipboard(std::string_view id) {
     OperationScope operation(this);
-    if (!clipboard_) return {Status::notSupported, u"剪貼簿不可用"};
+    if (!clipboard_) {
+        if (!asyncClipboard_) return {Status::notSupported, u"剪貼簿不可用"};
+        Field* field = nullptr;
+        if (auto result = writable(id, field); !result) return result;
+        return beginClipboard(id, *field, ClipboardAction::paste);
+    }
     auto content = clipboard_->read();
     if (!content) return {content.status, content.message};
-    if (isRich(id)) {
-        auto payload = clipboard_->readRich();
-        auto rich = payload ? detail::parseRichPayload(*payload) : std::nullopt;
-        if (rich && rich->text == pasteAsMultiLine(*content)) {
+    auto payload = isRich(id) ? clipboard_->readRich() : Query<std::string>{};
+    return applyClipboard(id, *content, payload ? std::string_view(*payload) : std::string_view{});
+}
+// The private payload must describe the same text as its plain representation.
+Result detail::UiState::applyClipboard(std::string_view id, std::u16string_view text, std::string_view payload) {
+    if (!payload.empty() && isRich(id)) {
+        auto rich = parseRichPayload(payload);
+        if (rich && rich->text == pasteAsMultiLine(text)) {
             Field* field = nullptr;
             if (auto result = writable(id, field); !result) return result;
             return replaceRange(id, *field, field->session.begin(), field->session.end(), rich->text, &rich->spans);
         }
     }
-    return paste(id, *content);
+    return paste(id, text);
 }
 Result detail::UiState::cut(std::string_view id) {
     OperationScope operation(this);
     Field* field = nullptr;
     if (auto result = writable(id, field); !result) return result;
-    if (field->session.begin() == field->session.end()) return {};
-    if (auto result = copy(id); !result) return result;
-    return replaceSelection(id, *field, u"");
+    return writeSelection(id, *field, ClipboardAction::cut);
+}
+Result detail::UiState::beginClipboard(std::string_view id, Field& field, ClipboardAction action, ClipboardData data) {
+    const auto request = ++nextClipboardRequest_;
+    auto lifetime = componentLifetimes_.find(id)->second;
+    pendingClipboard_ = {request, action, Id(id), lifetime, field.session.revision, field.session.selectionChanges};
+    auto result = action == ClipboardAction::paste ? asyncClipboard_->read(request, field.rich)
+                                                   : asyncClipboard_->write(request, std::move(data));
+    if (!result) pendingClipboard_.reset();
+    return result;
+}
+Result detail::UiState::completeClipboard(ClipboardDelivery delivery) {
+    OperationScope operation(this);
+    if (!pendingClipboard_ || pendingClipboard_->request != delivery.request)
+        return {Status::notFound, u"剪貼簿請求已結束"};
+    auto pending = *std::exchange(pendingClipboard_, std::nullopt);
+    if (!delivery.result || pending.action == ClipboardAction::copy) return delivery.result;
+    if (pending.lifetime.expired()) return {Status::notFound, u"Component no longer exists"};
+    Field* field = nullptr;
+    if (auto result = writable(pending.target, field); !result) return result;
+    if (field->session.revision != pending.revision || field->session.selectionChanges != pending.selectionChanges)
+        return {Status::busy, u"文字或選取已變更"};
+    if (pending.action == ClipboardAction::cut) return replaceSelection(pending.target, *field, u"");
+    return applyClipboard(pending.target, delivery.data.text, delivery.data.rich);
 }
 float detail::UiState::textOffset(std::string_view id) const {
     auto it = edits_.find(id);
@@ -2775,7 +2806,7 @@ Query<WordSegmentation> detail::UiState::wordSegmentationInUse(std::string_view 
     if (auto r = configurationAccess(id, true); !r) return {r.status, r.message, std::nullopt};
     auto it = edits_.find(id);
     if (it == edits_.end()) return {Status::notSupported, u"Not a text field", std::nullopt};
-    return {Status::ok, {}, segmentationInUse(it->second.segmentation, dictionary())};
+    return {Status::ok, {}, segmentationInUse(it->second.session.text, it->second.segmentation, dictionary())};
 }
 Query<TextSpan> detail::UiState::wordAt(std::string_view id, unsigned offset) const {
     if (auto r = configurationAccess(id, true); !r) return {r.status, r.message, std::nullopt};
@@ -2919,6 +2950,7 @@ std::vector<Id> detail::UiState::focusOrder() const {
 Result detail::UiState::moveFocus(Id next) {
     OperationScope operation(this);
     if (next == focus_) return {};
+    pendingClipboard_.reset();
     if (!composing_.empty() && beforeFocus_) beforeFocus_();
     if (!popupSource_.empty() && next != popupSource_) closePopup();
     if (menu_ && next != menu_->target) closeMenu();
@@ -2963,22 +2995,26 @@ Result detail::UiState::compositionUpdate(std::u16string preedit, unsigned caret
     if (composing_.empty()) {
         Field* field = nullptr;
         if (auto result = writable(focus_, field); !result) return result;
+        pendingClipboard_.reset();
         composing_ = focus_;
     }
     edits_.at(composing_).session.updateComposition(std::move(preedit), caret);
     return {};
 }
-Result detail::UiState::compositionCommit(std::u16string_view text) {
+Result detail::UiState::compositionCommit(std::u16string_view text, unsigned before, unsigned after) {
     OperationScope operation(this);
     auto target = composing_.empty() ? focus_ : composing_;
     if (auto result = available(target); !result) return result;
     compositionCancel();
     if (!edits_.contains(target)) return {Status::invalidValue, u"沒有接收組字的文字欄位"};
-    auto committed = withoutControls(text);
     Field* field = nullptr;
     if (auto result = writable(target, field); !result) return result;
-    if (committed.empty()) return {};
-    return replaceSelection(target, *field, committed);
+    if (!validSingleLine(text, text.size())) return {Status::invalidValue, u"Invalid input method text"};
+    const auto& session = field->session;
+    if (before > session.begin() || after > session.text.size() - session.end())
+        return {Status::invalidValue, u"Input method replacement exceeds the surrounding text"};
+    if (text.empty() && !before && !after) return {};
+    return replaceRange(target, *field, session.begin() - before, session.end() + after, text, nullptr);
 }
 Result detail::UiState::compositionCancel() {
     OperationScope operation(this);
@@ -3255,7 +3291,20 @@ Result detail::UiState::pointerUp(std::string_view id, std::optional<std::size_t
     return componentType(find(armed)->kind).pointerUp(*this, {armed, pressedOption, option, pressedValue});
 }
 void detail::UiState::cancelInput() {
-    OperationScope operation(this); endTextDrag(); keyArmed_.clear(); pointerArmed_.clear(); pointerOption_.reset(); pointerOptionValue_.reset(); endSliderDrag(false); }
+    OperationScope operation(this);
+    pendingClipboard_.reset();
+    keyArmed_.clear();
+    cancelPointer();
+}
+void detail::UiState::cancelPointer() {
+    OperationScope operation(this);
+    endTextDrag();
+    pointerArmed_.clear();
+    pointerOption_.reset();
+    pointerOptionValue_.reset();
+    endSliderDrag(false);
+    if (menu_) menu_->pressed.clear();
+}
 Result detail::UiState::setError(std::string_view id, std::u16string message) {
     OperationScope operation(this);
     const auto* control = find(id);
@@ -3270,6 +3319,7 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
     auto* control = const_cast<Component*>(find(id));
     if (!control) return;
     control->enabled = enabled;
+    if (!enabled && pendingClipboard_ && pendingClipboard_->target == id) pendingClipboard_.reset();
     if (!enabled && menu_ && menu_->target == id) closeMenu();
     if (!enabled && popupSource_ == id) closePopup();
     if (!enabled && focus_ == control->id) moveFocus({});
@@ -3277,7 +3327,10 @@ void detail::UiState::enable(std::string_view id, bool enabled) {
 }
 void detail::UiState::setReadOnly(std::string_view id, bool readOnly) {
     OperationScope operation(this);
-    if (auto* control = const_cast<Component*>(find(id))) control->readOnly = readOnly;
+    if (auto* control = const_cast<Component*>(find(id))) {
+        if (readOnly && pendingClipboard_ && pendingClipboard_->target == id) pendingClipboard_.reset();
+        control->readOnly = readOnly;
+    }
 }
 void detail::UiState::check(std::string_view id, bool checked) {
     OperationScope operation(this);
@@ -3653,9 +3706,11 @@ void detail::UiState::semanticDiff() {
     const bool wasEmpty = semanticPending_.empty();
     auto after = semanticSnapshot();
     std::vector<SemanticEvent> changes;
-    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}, std::optional<bool> hidden = {}) {
+    auto emit = [&](SemanticEventKind kind, NodeRef ref, std::string property = {}, std::optional<bool> hidden = {},
+                    std::optional<std::uint64_t> instance = {}) {
         auto same = [&](const SemanticEvent& e) { return e.kind == kind && e.ref == ref && e.property == property; };
-        if (std::none_of(changes.begin(), changes.end(), same)) changes.push_back({kind, std::move(ref), std::move(property), hidden});
+        if (std::none_of(changes.begin(), changes.end(), same))
+            changes.push_back({kind, std::move(ref), std::move(property), hidden, {}, instance});
     };
     auto find = [](const auto& nodes, const NodeRef& ref) -> const NodeSnapshot* {
         auto i = std::find_if(nodes.begin(), nodes.end(), [&](const auto& n) { return n.ref == ref; });
@@ -3672,15 +3727,18 @@ void detail::UiState::semanticDiff() {
     const auto previousFocus = deepestFocus(semanticBefore_);
     const auto nextFocus = deepestFocus(after);
     if (nextFocus && (!previousFocus || previousFocus->ref != nextFocus->ref || previousFocus->instance != nextFocus->instance))
-        emit(SemanticEventKind::focusChanged, nextFocus->ref);
+        emit(SemanticEventKind::focusChanged, nextFocus->ref, {}, {}, nextFocus->instance);
     // A menu's structure changes belong to the component that owns it.
     auto ownerOf = [](const NodeRef& ref) -> NodeRef {
         if (auto target = menuTargetId(ref.id)) return NodeRef{*target};
         return ref.item ? NodeRef{ref.id} : NodeRef{};
     };
-    for (const auto& old : semanticBefore_) if (!find(after, old.ref)) {
-        if (old.role == Role::menu) emit(SemanticEventKind::menuClosed, old.ref);
-        emit(SemanticEventKind::structureChanged, ownerOf(old.ref));
+    for (const auto& old : semanticBefore_) {
+        const auto* current = find(after, old.ref);
+        if (old.role == Role::menu && (!current || old.instance != current->instance))
+            changes.push_back({.kind = SemanticEventKind::menuClosed, .ref = old.ref,
+                               .property = {}, .hidden = {}, .instance = old.instance});
+        if (!current) emit(SemanticEventKind::structureChanged, ownerOf(old.ref));
     }
     for (const auto& node : after) if (!node.ref.item) {
         std::vector<NodeRef> beforeItems, afterItems;
@@ -3690,17 +3748,22 @@ void detail::UiState::semanticDiff() {
     }
     for (const auto& node : after) {
         auto old = find(semanticBefore_, node.ref);
-        if (!old) {
-            if (node.role == Role::menu) emit(SemanticEventKind::menuOpened, node.ref);
+        const bool added = !old || node.instance != old->instance;
+        if (added && node.role == Role::menu)
+            changes.push_back({.kind = SemanticEventKind::menuOpened, .ref = node.ref,
+                               .property = {}, .hidden = {}, .instance = node.instance});
+        if (added) {
             emit(SemanticEventKind::structureChanged, node.role == Role::menu ? ownerOf(node.ref) : node.ref.item ? NodeRef{node.ref.id} : NodeRef{});
             continue;
         }
         if (node.hidden != old->hidden) {
             if (node.role == Role::dialog || node.role == Role::tooltip)
-                emit(SemanticEventKind::propertyChanged, node.ref, "hidden", node.hidden);
+                emit(SemanticEventKind::propertyChanged, node.ref, "hidden", node.hidden, node.instance);
             emit(SemanticEventKind::structureChanged, {});
         }
-        auto property = [&](bool changed, const char* name) { if (changed) emit(SemanticEventKind::propertyChanged, node.ref, name); };
+        auto property = [&](bool changed, const char* name) {
+            if (changed) emit(SemanticEventKind::propertyChanged, node.ref, name, {}, node.instance);
+        };
         property(node.name != old->name, "name"); property(node.value != old->value, "value");
         property(node.enabled != old->enabled, "enabled"); property(node.readOnly != old->readOnly, "readOnly");
         property(node.checked != old->checked, "checked"); property(node.selected != old->selected, "selected");
@@ -3717,9 +3780,12 @@ void detail::UiState::semanticDiff() {
             property(node.scroll->visibleLines != old->scroll->visibleLines, "visibleLines");
         }
         property(node.writingMode != old->writingMode, "writingMode"); property(node.verticalDigits != old->verticalDigits, "verticalDigits");
-        if (node.role == Role::textField && node.value != old->value) emit(SemanticEventKind::textChanged, node.ref);
+        if (node.role == Role::textField && node.value != old->value)
+            changes.push_back({.kind = SemanticEventKind::textChanged, .ref = node.ref,
+                               .property = {}, .hidden = {}, .textChange = SemanticTextChange{old->value, node.value},
+                               .instance = node.instance});
         if (node.textSelection && old->textSelection && (node.textSelection->anchor != old->textSelection->anchor || node.textSelection->caret != old->textSelection->caret))
-            emit(SemanticEventKind::textSelectionChanged, node.ref);
+            emit(SemanticEventKind::textSelectionChanged, node.ref, {}, {}, node.instance);
         if (node.bounds != old->bounds) emit(SemanticEventKind::layoutChanged, {});
     }
     semanticBefore_.clear();
@@ -3728,7 +3794,8 @@ void detail::UiState::semanticDiff() {
 }
 Subscription SemanticTree::subscribe(std::function<void(const SemanticEvent&)> callback) {
     if (std::this_thread::get_id() != state_->owner_ || !callback) return Subscription{};
-    auto id = ++state_->nextSemanticSubscriber_; state_->semanticSubscribers_.emplace(id, std::move(callback));
+    auto id = ++state_->nextSemanticSubscriber_;
+    state_->semanticSubscribers_.emplace(id, std::make_shared<std::function<void(const SemanticEvent&)>>(std::move(callback)));
     std::weak_ptr<void> lifetime = state_->lifetime_; auto state = state_;
     return Subscription([state, lifetime, id] { if (!lifetime.expired()) state->semanticSubscribers_.erase(id); });
 }
@@ -3739,9 +3806,10 @@ void SemanticTree::dispatchEvents() {
     for (unsigned round = 0; round < 64 && !u.semanticPending_.empty(); ++round) {
         auto batch = std::exchange(u.semanticPending_, {});
         for (const auto& event : batch) {
+            // Keep callbacks alive through unsubscription without copying their state.
             auto subscribers = u.semanticSubscribers_;
             for (const auto& [id, callback] : subscribers) if (u.semanticSubscribers_.contains(id)) {
-                try { callback(event); } catch (...) { u.stopped_ = true; }
+                try { (*callback)(event); } catch (...) { u.stopped_ = true; }
             }
         }
         u.commitRemovals();

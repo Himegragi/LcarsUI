@@ -22,8 +22,8 @@ public:
 // perCharacter also gives every Chinese or Japanese character its own word; scriptRun keeps a run of them.
 const WordBreaker& perCharacterBreaker();
 const WordBreaker& scriptRunBreaker();
-// The Windows system ICU word BreakIterator for zh_TW, loaded on first use from System32. Fails
-// (boundaries returns false) when icu.dll cannot be loaded or a break iterator cannot be opened.
+// The system ICU word BreakIterator for zh_TW, loaded on first use on Windows and Linux.
+// Returns false when the system dictionary cannot be used.
 const WordBreaker& systemIcuBreaker();
 // The result of segmenting one text: boundaries start with 0 and end with text.size() (just {0} for empty
 // text), and `used` is the mode that actually produced them. Dictionary falls back to perCharacter when the
@@ -32,8 +32,8 @@ struct Words {
     std::vector<unsigned> bounds;
     WordSegmentation used = WordSegmentation::perCharacter;
 };
-// What segmentWords reports as `used` for any text: the mode itself, or perCharacter when the dictionary is unusable.
-WordSegmentation segmentationInUse(WordSegmentation mode, const WordBreaker& dictionary);
+// The effective mode for this text, including a per-character fallback if segmentation fails.
+WordSegmentation segmentationInUse(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary);
 Words segmentWords(std::u16string_view text, WordSegmentation mode, const WordBreaker& dictionary);
 // Whitespace other than a line feed: Ctrl+arrow does not stop on it and a double click takes it along.
 bool isSpaceWord(std::u16string_view text, unsigned begin, unsigned end);

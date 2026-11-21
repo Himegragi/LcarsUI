@@ -20,6 +20,137 @@ a different roaming profile root. Old settings headers, rich clipboard payloads 
 diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
 `Isoduo.RichText.1` and `ISODUODIAG 1 0`. Old menu command IDs have changed to `isoduo.*`.
 
+## Linux core build and tests
+
+With CMake 3.25 or newer, Ninja, and Clang with C++20 standard-library headers and a linker already on the Linux system, run from the checkout:
+
+```sh
+sh tools/test-linux-core.sh
+```
+
+The script configures a Release build with the desktop host and installation disabled, builds against the checked-in sources, and runs the headless CTest suite. Each run leaves a fresh directory under `${TMPDIR:-/tmp}` with `ctest-tests.json` and `ctest-results.xml`. Set `CC` and `CXX` to select different compiler executables, or `CMAKE_BUILD_PARALLEL_LEVEL` to set build parallelism.
+
+On Linux or WSL with unprivileged user and network namespaces enabled, configure, build and test without network access using:
+
+```sh
+unshare --user --map-current-user --net env -u DISPLAY -u WAYLAND_DISPLAY sh tools/test-linux-core.sh
+```
+
+`word_select` exercises the portable selection and fallback behavior. `word_select_icu`
+uses the installed system dictionary and skips when it is unavailable. To require
+that the real dictionary cases run, invoke `isoduo_word_select_tests --require-icu`.
+Linux Core builds and installed consumers need only the platform dynamic loader.
+Dictionary mode optionally loads the system ICU runtime (`libicuuc.so.60` through
+`libicuuc.so.99`, or `libicuuc.so` with unversioned exports) and its CJK break data.
+Ubuntu 26.04 provides these through `libicu78`. Core needs no ICU development
+package, and can build and run offline with or without the runtime.
+
+## Linux native desktop build
+
+Install CMake, Ninja, Clang or GCC with C++20 support, pkg-config, and development
+packages for EGL 1.5, X11, X11-XCB, XCB, Wayland 1.22 or newer, xkbcommon,
+Fontconfig, GIO, and Pango. The build also needs `wayland-scanner` and the protocol XML
+from `wayland-protocols` 1.31 or newer. On Ubuntu these packages are `libegl-dev`,
+`libx11-dev`, `libx11-xcb-dev`, `libxcb1-dev`, `libwayland-dev`,
+`libwayland-bin`, `wayland-protocols`, `libxkbcommon-dev`,
+`libfontconfig-dev`, `libglib2.0-dev`, and `libpango1.0-dev`.
+The Linux settings demo uses Zenity for renderer recovery. When GTK 3 development
+files (`libgtk-3-dev` on Ubuntu) are available at configure time, the build also
+produces `isoduo_settings_recovery_dialog`. Keep this optional executable beside
+the demo so it can open the recovery dialog if Zenity is unavailable or fails.
+A dirty draft stays open if neither prompt can run. The demo builds the prompt from
+public interfaces only: `NativeWindow` and `Desktop::post`, which brings the
+prompt's answer back to the desktop thread. On X11 the prompt is attached to the
+main window through `NativeWindow::windowId`: Zenity gets `--attach=XID`, and
+because Zenity 4 accepts but ignores that option, the demo also sets
+`WM_TRANSIENT_FOR` on the Zenity window; the GTK helper makes itself transient
+for the same XID. On Wayland the prompt opens unparented: an external prompt
+process cannot reliably be made a child of another client's surface. This is a
+known platform limit.
+
+The Linux host reads the desktop's animation preference at creation. GNOME
+provides enable-animations and reduced-motion settings. Xfce can provide the
+optional `Gtk/EnableAnimations` setting through Xfconf. When the preference is
+unavailable, animations stay enabled. Focus indicators follow Isoduo's automatic
+rules unless the application sets a different focus indicator mode.
+
+```sh
+cmake -S . -B build-linux -G Ninja -DCMAKE_BUILD_TYPE=Release -DISODUO_BUILD_DESKTOP=ON
+cmake --build build-linux
+ctest --test-dir build-linux --output-on-failure
+./build-linux/isoduo_edit_form_web
+```
+
+`DesktopConfig::backend` is a `std::optional<DesktopBackendKind>` and is empty by
+default, which selects the backend automatically. On Linux this
+uses `XDG_SESSION_TYPE` when it names Wayland or X11, then checks for a configured
+Wayland connection before checking `DISPLAY`. An explicit `wayland` or `x11`
+selects that native connection. If it fails, `StartupFailure::backend` identifies
+the selected backend; it is empty only when automatic selection finds no native
+session. Linux `nativeWindow()` returns a borrowed tagged reference:
+a `wl_display*` and `wl_surface*` on Wayland, or a `Display*` and XID on X11.
+It is valid while the native window lives, including across a renderer rebuild.
+
+Run the following probes in a GNOME Wayland session and an Xfce Xorg session,
+using the corresponding `wayland` or `x11` argument as `BACKEND`.
+
+- `isoduo_linux_desktop_native BACKEND close`: record context capabilities and
+  native window identity. Request a close, activate the button in the same
+  window, then request a second close and check the exit status.
+- `isoduo_linux_desktop_native BACKEND program`: follow the same steps to
+  exercise a programmatic close inside the second close callback.
+- `isoduo_linux_desktop_native BACKEND wrapper`: activate the button and close
+  the window created by `runDesktop`.
+- `isoduo_linux_desktop_native BACKEND faults`: exercise structured startup
+  failures, optional context capabilities, wrong-thread close and explicit
+  renderer rebuild. Use a Wayland client trace for the surface commit and
+  `xprop -id XID` for the X11 window.
+
+Run the following with `ISODUO_BUILD_TESTS=ON` from the repository root.
+Set `BACKEND=wayland` in GNOME Wayland or `BACKEND=x11` in Xfce Xorg.
+
+- **Clipboard.** Run `./build-linux/isoduo_linux_clipboard_native source` and
+  `./build-linux/isoduo_linux_clipboard_native target` in separate terminals.
+  Select all and copy in the source, then select all and paste in the target.
+  Compare the target's logged text and style span. Repeat with `plain` as the
+  target to check text-only paste, and with `large` as the source to check a
+  large transfer. Copy and paste in both directions with a desktop text editor
+  as the peer. The `richtext` CTest exercises delayed completion and stale
+  paste and cut admission.
+- **IME.** Run `./build-linux/isoduo_linux_text_geometry "$BACKEND" input`.
+  With the session's input method active, compose in the single-line field
+  and check candidate placement at the caret. Commit Traditional Chinese text
+  and use Ctrl+G to record the value and selection. Repeat with Escape during
+  composition and with a focus change before commit. Sample the original and
+  destination fields to check that cancellation preserves committed text and
+  that a commit applies once to the field that owns the composition. Repeat
+  in the multiline and styled fields.
+- **Scale and resize.** Run
+  `./build-linux/isoduo_linux_text_geometry "$BACKEND" input 640 720`.
+  At the session's original scale, click a character in the single-line field
+  and use Ctrl+G to record the caret. Use Ctrl+D to open the dropdown and
+  click an option. Repeat after resizing and at a different desktop scale,
+  moving the window between outputs if available. Compare the logged
+  `Frame` dimensions, effective scale, scroll bounds and hit positions with
+  the selection and dropdown reports. Use Ctrl+Q to close and restore the
+  original desktop scale.
+- **AT-SPI and renderer recovery.** With PyGObject and the AT-SPI typelib
+  installed and the GTK helper built, run the queued-event and recovery probes in
+  each native session. The queued-event probe includes replacement of a text field
+  before AT-SPI receives its pending edits.
+
+  ```sh
+  /usr/bin/python3 tests/linux_accessibility_client.py build-linux/isoduo_linux_accessibility_host --queued-events
+  /usr/bin/python3 tests/linux_failure_prompt_client.py build-linux/isoduo_linux_failure_prompt
+  ```
+
+After changes to system font layout or desktop preference acquisition, check
+both native sessions with an installed family that has real bold and italic
+faces and a regular-only font in the user's font directory. Check mixed-script
+fallback, missing-family and missing-glyph diagnostics, and the session's
+animation setting or its enabled default. The headless `linux_fonts` and
+`linux_preferences` tests cover the shared font and settings fixtures.
+
 ## S1 minimal edit form
 
 [The V01 edit form](examples/edit_form/README.md) composes labels, buttons, and a single-line field with typed handles and explicit application data connections. The same form runs with Minimal Web and Material-inspired appearances.
@@ -33,7 +164,7 @@ diagnostic exports remain readable; new output uses `isoduo-settings-demo`,
 
 `build.ps1` runs all CTests by default. Use `-SkipTests` for a build only or `-Tests <regex>` to select CTests. It can also be launched from Git Bash; the script prioritizes Windows `tar` over Git's GNU `tar` for configure. For the foreground platform checks, use `verify-idle.ps1` on an idle desktop with the required display scales; see its parameters for selecting runs.
 
-The build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
+The Windows build requires Visual Studio C++ Build Tools, the Windows SDK, clang-cl, CMake and Ninja. Core-only builds omit the native host, OpenGL and font dependencies. The [independent consumer](examples/consumer/main.cpp) shows assembly, validation and layout using only public headers.
 
 Applications retain the handles returned by `Ui::addTextField`, `addButton` and `addLabel`; the layout accepts those handles. Each `Ui::addX` makes a component of its own type (`ComponentKind`), so the `ComponentConfig` it takes names none: write `ui.addButton({.id = "profile.save"})`. A read source (`isoduo::Source<T>`, here `Source<std::u16string>`) supplies the application-owned value and notification subscription, while a separate explicit immediate, confirmed, or confirmation-group connection supplies the write action. For example:
 
@@ -139,7 +270,7 @@ auto first = note.scrollLine();                   // Query<unsigned>
 ui.semantics().perform({"item.note"}, isoduo::Verb::scroll, 4);  // the same operation, same Status values
 ```
 
-- **Value.** A line break is one LF (`\n`) and counts as one character toward `maxLength`. A value containing CR, or any other control character, is invalid wherever a value enters (initial value, source, `setValue`, semantic `setValue`). Pasted CRLF, lone CR and lone LF each become one LF; copy and cut write CRLF to the clipboard. Single-line fields still turn pasted breaks into spaces. ComponentSnapshot and UI Automation report the value with its LF characters.
+- **Value.** A line break is one LF (`\n`) and counts as one character toward `maxLength`. A value containing CR, or any other control character, is invalid wherever a value enters (initial value, source, `setValue`, semantic `setValue`). Pasted CRLF, lone CR and lone LF each become one LF; copy and cut hand the clipboard LF, which the Windows clipboard stores as CRLF and the Linux (Wayland and X11) clipboards keep as LF. Single-line fields still turn pasted breaks into spaces. ComponentSnapshot and UI Automation report the value with its LF characters.
 - **Keys.** Enter and Shift+Enter insert a line break (one undo entry each) and never reach Enter shortcuts; Ctrl+Enter does, so an application can make it "OK". Tab still moves focus. Enter while an input method is composing belongs to the input method. Up/Down move by display line (a wrapped piece counts) and keep their column; Home/End go to the line's start/end, Ctrl+Home/Ctrl+End to the text's; PageUp/PageDown move `visibleLines` lines. Shift extends the selection.
 - **Layout.** The height is exactly `visibleLines` lines. Long lines wrap at the field's edge like labels; there is no horizontal scrolling. The scrollbar's width is always reserved, so the first lines never re-wrap when the scrollbar appears; the thumb shows only when the text overflows.
 - **Scrolling.** The scroll position is the index of the first visible display line, so it keeps its meaning across text size and density changes (the same text stays on top). It follows the caret when the caret moves, never moves the caret, and never snaps back after the wheel or the thumb scrolled it. The wheel scrolls the field first and passes to the page at the ends. Inside an open dialog the dialog's own scrollable content (this field included) takes the wheel and the thumb; the page behind still does not. A position past the last page is `Status::invalidValue` for both entry points.
@@ -161,7 +292,7 @@ note.doubleClick(12);                        // select it, and arm a drag that g
 ui.semantics().perform({"item.note"}, isoduo::Verb::selectParagraph, 12);  // the same operations, same Status values
 ```
 
-- **Where words are.** `dictionary` (the default) asks the Windows system ICU (`icu.dll`, loaded from System32 on first use, locale `zh_TW`), so Chinese is cut into words (設定|管理|示範). If the library is missing or cannot open a break iterator the field falls back to `perCharacter` without interrupting anything; `wordSegmentation()` reports the mode set, `wordSegmentationInUse()` the mode in effect. `perCharacter`: every Chinese or Japanese character is a word, a run of Latin letters and digits is one word. `scriptRun`: a run of Chinese or Japanese characters is one word. In every mode each punctuation mark and each LF is a word of its own and a run of spaces stays together. The dictionary result follows the Windows version, so only rule-independent cases (script changes, punctuation) are asserted against it.
+- **Where words are.** `dictionary` (the default) asks system ICU for `zh_TW` word boundaries, so Chinese is cut into words. ICU is loaded on first use from System32 on Windows and from the system's shared libraries on Linux. If the dictionary is unavailable, the field falls back to `perCharacter`. `wordSegmentation()` reports the requested mode and `wordSegmentationInUse()` reports the effective mode. `perCharacter` gives each Chinese or Japanese character its own word and keeps runs of Latin letters and digits together. `scriptRun` also keeps Chinese or Japanese runs together. The two rule modes split each punctuation mark and keep runs of spaces together. Dictionary boundaries follow the installed ICU version. Every mode treats each LF as a separate word.
 - **Clicks.** The desktop host reads `GetDoubleClickTime()` and `SM_CXDOUBLECLK/SM_CYDOUBLECLK` on each press and lets core count: a press counts as the next click when it comes within the double-click time of the previous one and inside the box centered on the first press; the fourth press is a single click again. Core takes an injectable clock and settings (`UiState::setClickClock/set_click_settings`) and the press entry `UiState::textPointerDown`, so tests never depend on a real clock.
 - **Read-only and disabled.** A read-only field selects and moves by words, and Ctrl+Backspace/Delete answer `Status::readOnly`. A disabled field does nothing (`Status::disabled`). Clicks during input-method composition behave like a single click does.
 - **Programmatic control.** `TextFieldHandle::setWordSegmentation / wordSegmentation / wordSegmentationInUse / wordAt / paragraphAt / nextWordStop / previousWordStop / selectWord / selectParagraph / doubleClick / tripleClick`, and the semantic `Verb::setWordSegmentation / selectWord / selectParagraph / doubleClick / tripleClick` with `SemanticTree::textUnit` and `wordStop`, share one set of functions.
@@ -187,7 +318,7 @@ auto value = note.richValue();                                      // Query<Ric
 - **Keys.** Ctrl+B / Ctrl+I / Ctrl+U are taken by a focused rich field before any application shortcut on the same chord (any other field leaves them to the application). With a selection the attribute is applied to all of it unless all of it already has it, then removed. With a caret only, the next typed text changes: it ends when the caret moves or text is inserted. There is no built-in toolbar or menu and no color shortcut: an application calls `toggleStyle` / `applyStyle` from its own buttons.
 - **Typed text** takes the style of the character before the caret, or of the one after it at the start of a paragraph (an empty paragraph is plain); a temporary typing style from Ctrl+B etc. wins. `typingStyle()` / `setTypingStyle()` read and set it. An IME preedit is shown in the style it will take.
 - **Faces.** A family's real Bold / Italic / Bold Italic file is used when the system has one (Microsoft JhengHei Bold, Segoe UI Bold and so on); otherwise the regular face is synthesized (heavier outline and wider advance for bold, a sheared outline for italic), fallback fonts included. Wrapping and caret stops use the real widths, and the glyph cache keeps the four looks of a glyph apart. Underline is a thin rectangle under the run.
-- **Clipboard.** Copy and cut write plain text (CRLF) and, beside it, the framework's private payload (`Clipboard::writeRich`; the Windows host registers the format `Isoduo.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `writeRich` / `readRich` carries plain text only.
+- **Clipboard.** Copy and cut write plain text (CRLF on Windows, LF on Linux) and, beside it, the framework's private payload (`Clipboard::writeRich`; the Windows host registers the format `Isoduo.RichText.1`). Pasting between rich fields keeps the styles; text from elsewhere is pasted as plain text in the typing style. A payload that does not belong to the plain text beside it is ignored. Plain fields only ever take the plain text. A custom `Clipboard` that does not override `writeRich` / `readRich` carries plain text only.
 - **History and data connections.** One style application is one undo entry. Rich fields connect with `connectRichSource` / `connectRichImmediate` / `connectRichConfirmed` (the plain `connect_*` answer `notSupported`, and these answer `notSupported` on a plain field); a confirmation group takes them through `Ui::connectConfirmation` (a `Change<TextFieldHandle, RichText>` per rich field). A source value that does not normalize is ignored like any invalid source value; a source that differs only in styles counts as a different value (conflicts, `useLatest`, `resetToSource`).
 - **Semantic layer and UI Automation.** `NodeSnapshot::rich / styles / typingStyle`; `Verb::setStyle` (`StyleEdit{begin, end, change}`), `Verb::setTypingStyle` (`TextStyle`) and `Verb::setValue` with a `RichText`, all admitted like the typed calls and listed in snapshot `verbs`; property event `styles`; `SemanticTree::textColor(ref, name)` gives the color a name paints in right now. The text pattern reports `UIA_FontWeightAttributeId` (400 / 700), `UIA_IsItalicAttributeId`, `UIA_UnderlineStyleAttributeId` (0 / single) and `UIA_ForegroundColorAttributeId` of the current theme, `UiaGetReservedMixedAttributeValue` for a range that mixes values, and `FindAttribute` for the four attributes.
 
@@ -386,6 +517,7 @@ lists, per change, which idle-desktop runs the author still has to do before a r
 | #102 shared snapshot fields | none: owning `CommonState` extraction and complete snapshot equality only; no host or layout changes, and option-node values are preserved for #106; `snapshots` and `demo_render_compare` cover the refactor |
 | #104 individual component removal | `-Only clipboard,ime,dpi`: row/grid compaction changes layout; removal discards IME preedit and suppresses blur validation through the core focus seam. No `desktop_host.cpp` or `uia_provider.cpp` changes. `removals` and `handles` cover the code and semantic contracts; the demo adds no removal controls. |
 | #101 aligned component and semantic snapshots (0.4.0) | `-Only uia,axe,demo-uia`: the UIA adapter combines item and parent `IsEnabled` and propagates parent availability events; `snapshots` is the core twin. No `desktop_host.cpp` or layout change. Check right-click and keyboard menus once with real input; component `focused` is false while the menu owns input. |
+| PR #115 native Linux desktop and its review fixes | `-Only clipboard,ime,dpi,presentation`: `src/layout.cpp` now keeps breaking a line until it fits (text wrapping on every platform), and the Windows clipboard, not core, turns LF into CRLF. `isoduo_host_verify --richtext-only` (real rich clipboard), `--context-menu-only`, `--multiline-only` and `--dd-only`: menu, right-click and thumb routing now come from the shared `src/pointer_routing.cpp`. `--render-compare` and `--demo-compare` on a real GPU, `-Only uia,demo-uia`, and Debug `host_native`. `pointer_routing`, `multiline`, `clipboard_contract` and `desktop_post` are the CTest twins. With real input: right-click the second line of a multi-line field (the caret now lands on that line), press a dialog's dropdown where a page scrollbar lies underneath (it now opens), drag a thumb, and compose with Microsoft Bopomofo in a wrapped multi-line field. |
 | #106 option snapshots describe their own state (0.4.0) | `-Only uia,axe,demo-uia`: options no longer inherit parent descriptions, errors, labels or selection requirements; disabled list rows are not keyboard-focusable. `option_nodes` is the core twin. No host/provider or layout code changes; `tests/uia/verify.ps1` requires the two new UIA09 property checks. |
 
 The idle script reports a missing or failing run as a failure; the author-run items in each ticket stay open until the

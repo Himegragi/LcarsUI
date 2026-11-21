@@ -526,7 +526,7 @@ public:
         }
         if (!ref.item) {
             n.wordSegmentation = field.segmentation;
-            n.wordSegmentationInUse = segmentationInUse(field.segmentation, UiState::Internals::dictionary(ui));
+            n.wordSegmentationInUse = segmentationInUse(field.session.text, field.segmentation, UiState::Internals::dictionary(ui));
         }
     }
     void verbs(const VerbContext& c, std::vector<Verb>& out) const override {
