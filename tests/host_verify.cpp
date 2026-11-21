@@ -16,6 +16,9 @@
 #include <imm.h>
 #include <psapi.h>
 #include <msctf.h>
+#include <dwrite_3.h>
+#include <shlobj.h>
+#include <wrl/client.h>
 #include <algorithm>
 #include <atomic>
 #include <chrono>
@@ -24,6 +27,8 @@
 #include <functional>
 #include <iostream>
 #include <map>
+#include <memory>
+#include <set>
 #include <sstream>
 #include <thread>
 
@@ -53,12 +58,14 @@ struct Report {
         std::cout << (pass ? "PASS " : "FAIL ") << appearance << ' ' << id << ' ' << evidence << '\n';
     }
     void open(const char* id, const std::string& evidence) {
-        out << appearance << '\t' << id << "\tOPEN\t" << evidence << '\n';
-        std::cout << "OPEN " << appearance << ' ' << id << ' ' << evidence << '\n';
+        record(id, "OPEN", evidence);
+    }
+    void record(const char* id, const char* status, const std::string& evidence) {
+        out << appearance << '\t' << id << '\t' << status << '\t' << evidence << '\n';
+        std::cout << status << ' ' << appearance << ' ' << id << ' ' << evidence << '\n';
     }
     void na(const char* id, const std::string& evidence) {
-        out << appearance << '\t' << id << "\tN/A\t" << evidence << '\n';
-        std::cout << "N/A " << appearance << ' ' << id << ' ' << evidence << '\n';
+        record(id, "N/A", evidence);
     }
 };
 std::string narrow(std::u16string_view text) {
@@ -4133,6 +4140,123 @@ int runClipboard(const std::filesystem::path& folder, int repeat) {
     return report.failures ? 1 : 0;
 }
 
+std::set<std::filesystem::path> registeredUserFontPaths() {
+    PWSTR localAppData = nullptr;
+    if (FAILED(SHGetKnownFolderPath(FOLDERID_LocalAppData, 0, nullptr, &localAppData)))
+        throw std::runtime_error("Cannot locate LocalAppData");
+    const std::unique_ptr<wchar_t, decltype(&CoTaskMemFree)> local(localAppData, CoTaskMemFree);
+    const auto fontDir = std::filesystem::path(local.get()) / L"Microsoft" / L"Windows" / L"Fonts";
+    const auto prefix = fontDir.native() + L"\\";
+
+    HKEY handle = nullptr;
+    const auto opened = RegOpenKeyExW(HKEY_CURRENT_USER, LR"(Software\Microsoft\Windows NT\CurrentVersion\Fonts)",
+                                      0, KEY_QUERY_VALUE, &handle);
+    if (opened == ERROR_FILE_NOT_FOUND) return {};
+    if (opened != ERROR_SUCCESS) throw std::runtime_error("Cannot open HKCU Fonts");
+    const std::unique_ptr<std::remove_pointer_t<HKEY>, decltype(&RegCloseKey)> key(handle, RegCloseKey);
+    DWORD maxName = 0, maxBytes = 0;
+    if (RegQueryInfoKeyW(key.get(), nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+                        nullptr, &maxName, &maxBytes, nullptr, nullptr) != ERROR_SUCCESS)
+        throw std::runtime_error("Cannot query HKCU Fonts");
+    std::vector<wchar_t> name(maxName + 1);
+    std::vector<wchar_t> value(maxBytes / sizeof(wchar_t) + 1);
+    std::set<std::filesystem::path> paths;
+    for (DWORD i = 0; ; ++i) {
+        DWORD nameSize = static_cast<DWORD>(name.size()), bytes = maxBytes, type = 0;
+        const auto enumerated = RegEnumValueW(key.get(), i, name.data(), &nameSize, nullptr, &type,
+                                              reinterpret_cast<BYTE*>(value.data()), &bytes);
+        if (enumerated == ERROR_NO_MORE_ITEMS) break;
+        if (enumerated != ERROR_SUCCESS) throw std::runtime_error("Cannot enumerate HKCU Fonts");
+        if (type != REG_SZ && type != REG_EXPAND_SZ) continue;
+        value[bytes / sizeof(wchar_t)] = L'\0';
+        if (!value.front()) continue;
+        std::wstring pathText(value.data());
+        if (type == REG_EXPAND_SZ) {
+            const auto length = ExpandEnvironmentStringsW(pathText.c_str(), nullptr, 0);
+            std::wstring expanded(length, L'\0');
+            if (!length || ExpandEnvironmentStringsW(pathText.c_str(), expanded.data(), length) != length)
+                throw std::runtime_error("Cannot expand HKCU font path");
+            expanded.pop_back();
+            pathText = std::move(expanded);
+        }
+        std::filesystem::path file(pathText);
+        if (file.is_relative()) file = fontDir / file;
+        file = file.lexically_normal().make_preferred();
+        const auto& path = file.native();
+        if (path.size() > prefix.size() &&
+            CompareStringOrdinal(path.c_str(), static_cast<int>(prefix.size()), prefix.c_str(),
+                                 static_cast<int>(prefix.size()), TRUE) == CSTR_EQUAL)
+            paths.insert(file);
+    }
+    return paths;
+}
+
+std::set<std::u16string> fileFontFamilies(IDWriteFactory5& factory, const std::filesystem::path& path) {
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IDWriteFontFile> file;
+    ComPtr<IDWriteFontSetBuilder1> builder;
+    ComPtr<IDWriteFontSet> set;
+    if (FAILED(factory.CreateFontFileReference(path.c_str(), nullptr, &file)) ||
+        FAILED(factory.CreateFontSetBuilder(&builder)) || FAILED(builder->AddFontFile(file.Get())) ||
+        FAILED(builder->CreateFontSet(&set)) || !set->GetFontCount())
+        throw std::runtime_error("DirectWrite could not read the font file");
+
+    std::set<std::u16string> families;
+    for (UINT32 i = 0; i < set->GetFontCount(); ++i) {
+        ComPtr<IDWriteLocalizedStrings> names;
+        BOOL exists = FALSE;
+        if (FAILED(set->GetPropertyValues(i, DWRITE_FONT_PROPERTY_ID_TYPOGRAPHIC_FAMILY_NAME, &exists, &names)) || !exists) {
+            names.Reset();
+            if (FAILED(set->GetPropertyValues(i, DWRITE_FONT_PROPERTY_ID_WIN32_FAMILY_NAME, &exists, &names)) || !exists)
+                throw std::runtime_error("DirectWrite font family missing");
+        }
+        UINT32 index = 0, length = 0;
+        BOOL found = FALSE;
+        if (FAILED(names->FindLocaleName(L"en-us", &index, &found)))
+            throw std::runtime_error("Cannot find DirectWrite font family locale");
+        if (!found) index = 0;
+        if (FAILED(names->GetStringLength(index, &length)) || !length)
+            throw std::runtime_error("DirectWrite font family name is empty");
+        std::wstring family(length + 1, L'\0');
+        if (FAILED(names->GetString(index, family.data(), length + 1)))
+            throw std::runtime_error("Cannot read DirectWrite font family name");
+        families.emplace(family.begin(), family.begin() + length);
+    }
+    return families;
+}
+
+void checkUserFonts(Report& report) {
+    try {
+        const auto paths = registeredUserFontPaths();
+        if (paths.empty()) {
+            report.record("PR03", "BLOCKED", "Install a font for the current user under %LOCALAPPDATA%\\Microsoft\\Windows\\Fonts and rerun.");
+            return;
+        }
+        Microsoft::WRL::ComPtr<IDWriteFactory5> factory;
+        if (FAILED(DWriteCreateFactory(DWRITE_FACTORY_TYPE_SHARED, __uuidof(IDWriteFactory5),
+                                       reinterpret_cast<IUnknown**>(factory.GetAddressOf()))))
+            throw std::runtime_error("Cannot create DirectWrite font factory");
+        const auto& catalog = systemFontCatalog();
+        for (const auto& path : paths) {
+            try {
+                for (const auto& family : fileFontFamilies(*factory.Get(), path)) {
+                    PresentationSettings settings;
+                    settings.fontFamily = family;
+                    const auto resolved = catalog.resolve(settings);
+                    report.check("PR03", catalog.contains(family) && resolved.requestedAvailable && resolved.primary == family,
+                                 narrow(family) + " | " + narrow(path.native()));
+                }
+            } catch (const std::exception& error) {
+                report.check("PR03", false, narrow(path.native()) + " | " + error.what());
+            }
+        }
+    } catch (const std::exception& error) {
+        report.check("PR03", false, error.what());
+    }
+}
+
+int trialScreenshots(const std::filesystem::path& folder, Report* report = nullptr);
+
 int runPresentationIdle(const std::filesystem::path& folder) {
     std::filesystem::create_directories(folder);
     Report report(folder / "presentation.tsv");
@@ -4175,11 +4299,11 @@ int runPresentationIdle(const std::filesystem::path& folder) {
             report.check("PR01", composing && positions && committed, profiles.active() + "; IMTCTIP " + fileVersion(LR"(C:\Windows\System32\IME\IMETC\IMTCTIP.DLL)") + "; candidates and caret=" + std::to_string(positions) + "; single commit and undo=" + std::to_string(committed));
         } catch (const Blocked& error) { report.check("PR01", false, error.what()); }
         dpiSession(*appearance, report, true);
-        report.open("PR03", "Install a font for the current user, confirm its catalog entry and local path, and inspect its display in V04; record the evidence manually.");
-        report.open("PR04", "Generate trial screenshots and record first-frame font-switch timing and user feedback.");
+        checkUserFonts(report);
     }
     CoUninitialize();
-    return report.failures ? 1 : 0;
+    const int trialResult = trialScreenshots(folder / "trial", &report);
+    return report.failures || trialResult ? 1 : 0;
 }
 
 int nativePresentationMatrix(const std::filesystem::path& folder) {
@@ -4205,7 +4329,7 @@ int nativePresentationMatrix(const std::filesystem::path& folder) {
     return report.failures ? 1 : 0;
 }
 
-int trialScreenshots(const std::filesystem::path& folder) {
+int trialScreenshots(const std::filesystem::path& folder, Report* report) {
     std::filesystem::create_directories(folder);
     std::ofstream manifest(folder / "trial.tsv");
     std::ofstream timing(folder / "font-switch-timing.tsv");
@@ -4220,10 +4344,16 @@ int trialScreenshots(const std::filesystem::path& folder) {
             bool accepted = bool(f.form.ui.setPresentation(settings));
             f.host.paint();
             auto elapsed = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - start).count();
-            timing << name << "\tMingLiU\t" << elapsed << '\t' << (accepted ? "recorded" : "FAIL") << '\n';
-            if (!accepted) return 1;
-            settings.fontFamily.clear(); if (!f.form.ui.setPresentation(settings)) return 1;
+            timing << name << "\tMingLiU\t" << elapsed << '\t' << (accepted ? "recorded" : "unavailable (font rejected)") << '\n';
+            if (accepted) {
+                settings.fontFamily.clear();
+                if (!f.form.ui.setPresentation(settings)) return 1;
+            }
         } else timing << name << "\tMingLiU\t\tN/A (font absent)\n";
+        if (report) {
+            report->appearance = name;
+            report->record("PR04", "REPORT", "trial/font-switch-timing.tsv");
+        }
         for (bool dark : {false, true}) for (bool compact : {false, true}) for (int size : {16, 28}) {
             auto settings = f.form.ui.presentation();
             settings.variant = dark ? ThemeVariant::dark() : ThemeVariant::light();

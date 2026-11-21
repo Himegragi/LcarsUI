@@ -39,8 +39,14 @@ $ctest = Join-Path (Split-Path $cmake) 'ctest.exe'
 $suffix = if ($CoreOnly) { '-core' } else { '' }
 $buildDir = Join-Path $PSScriptRoot "build/$Configuration$suffix"
 $desktop = if ($CoreOnly) { 'OFF' } else { 'ON' }
+. "$PSScriptRoot/cmake/SourceRevision.ps1"
+$revision = Get-IsoduoSourceRevision -IncludeDirty
+$revisionFile = Join-Path $buildDir 'source-revision.txt'
+if (Test-Path -LiteralPath $revisionFile) { Remove-Item -LiteralPath $revisionFile }
 Invoke-Native $cmake @('-S', $PSScriptRoot, '-B', $buildDir, '-G', 'Ninja', "-DCMAKE_C_COMPILER=$compiler", "-DCMAKE_CXX_COMPILER=$compiler", "-DCMAKE_BUILD_TYPE=$Configuration", "-DISODUO_BUILD_DESKTOP=$desktop") 'Configure failed'
 Invoke-Native $cmake @('--build', $buildDir, '--parallel', '4') 'Build failed'
+@("commit=$($revision.Commit)", "dirty=$($revision.Dirty.ToString().ToLowerInvariant())") |
+    Set-Content -Encoding ASCII -LiteralPath $revisionFile
 [pscustomobject]@{ InstallationPath = $vsRoot; InstallationVersion = $vs.InstallationVersion; Generator = $vs.Generator; ToolsetVersion = $toolsetVersion } |
     ConvertTo-Json | Set-Content -Encoding UTF8 (Join-Path $buildDir 'isoduo-visual-studio.json')
 if (-not $SkipTests) {
